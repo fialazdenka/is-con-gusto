@@ -1,0 +1,166 @@
+/* ============================================================
+   GLOBAL – CSS Custom Properties + Reset
+   ============================================================ */
+
+:root {
+  /* Background */
+  --bg: #f1f5f9;
+  --surface: #ffffff;
+  --surface-raised: #f8fafc;
+
+  /* Borders */
+  --border: #e2e8f0;
+  --border-light: #f1f5f9;
+
+  /* Text */
+  --text-1: #0f172a;
+  --text-2: #475569;
+  --text-3: #94a3b8;
+  --text-inv: #ffffff;
+
+  /* Sidebar */
+  --sb-bg: #0f172a;
+  --sb-text: #94a3b8;
+  --sb-text-active: #f1f5f9;
+  --sb-active-bg: #1e293b;
+  --sb-hover-bg: rgba(255, 255, 255, 0.05);
+  --sb-w: 236px;
+  --sb-w-col: 58px;
+
+  /* Topbar */
+  --tb-h: 58px;
+
+  /* Status */
+  --c-ok: #16a34a;
+  --c-ok-bg: #dcfce7;
+  --c-ok-text: #15803d;
+
+  --c-err: #dc2626;
+  --c-err-bg: #fee2e2;
+  --c-err-text: #b91c1c;
+
+  --c-warn: #d97706;
+  --c-warn-bg: #fef3c7;
+  --c-warn-text: #b45309;
+
+  --c-info: #2563eb;
+  --c-info-bg: #dbeafe;
+  --c-info-text: #1d4ed8;
+
+  --c-live: #ea580c;
+  --c-live-bg: #fff7ed;
+  --c-live-text: #c2410c;
+
+  --c-neutral-bg: #f1f5f9;
+  --c-neutral-text: #475569;
+
+  /* Chart */
+  --chart-k: #3b82f6;
+  --chart-b: #22c55e;
+  --chart-prev: #cbd5e1;
+
+  /* Shadows */
+  --sh-sm: 0 1px 3px 0 rgb(0 0 0 / 0.06), 0 1px 2px -1px rgb(0 0 0 / 0.06);
+  --sh-md: 0 4px 6px -1px rgb(0 0 0 / 0.07), 0 2px 4px -2px rgb(0 0 0 / 0.07);
+  --sh-lg: 0 10px 15px -3px rgb(0 0 0 / 0.08), 0 4px 6px -4px rgb(0 0 0 / 0.05);
+  --sh-xl: 0 20px 25px -5px rgb(0 0 0 / 0.1), 0 8px 10px -6px rgb(0 0 0 / 0.05);
+
+  /* Radius */
+  --r-sm: 4px;
+  --r-md: 8px;
+  --r-lg: 12px;
+  --r-xl: 16px;
+  --r-full: 9999px;
+
+  /* Font sizes */
+  --fs-xs: 11px;
+  --fs-sm: 12px;
+  --fs-base: 13px;
+  --fs-md: 14px;
+  --fs-lg: 16px;
+  --fs-xl: 20px;
+  --fs-2xl: 24px;
+  --fs-3xl: 30px;
+
+  /* Spacing scale */
+  --s1: 4px;
+  --s2: 8px;
+  --s3: 12px;
+  --s4: 16px;
+  --s5: 20px;
+  --s6: 24px;
+  --s8: 32px;
+
+  /* Font */
+  --font: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto,
+    'Helvetica Neue', Arial, sans-serif;
+}
+
+/* ─── Reset ──────────────────────────────────────────────── */
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html,
+body {
+  height: 100%;
+  font-family: var(--font);
+  font-size: var(--fs-base);
+  color: var(--text-1);
+  background: var(--bg);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+#root {
+  height: 100%;
+}
+
+a {
+  color: inherit;
+  text-decoration: none;
+}
+
+button {
+  font-family: inherit;
+  font-size: inherit;
+  cursor: pointer;
+  border: none;
+  background: none;
+  padding: 0;
+  color: inherit;
+}
+
+input,
+select,
+textarea {
+  font-family: inherit;
+  font-size: inherit;
+}
+
+table {
+  border-collapse: collapse;
+  width: 100%;
+}
+
+/* ─── Scrollbar ──────────────────────────────────────────── */
+
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #94a3b8;
+}
