@@ -1,17 +1,11 @@
-// ─────────────────────────────────────────────────────────────
 // COMPONENT: Alert Strip — Notification Banner
-// SOURCE:    standard admin pattern → Bootstrap Alert
-// CUSTOM:    NO
+// SOURCE: Larkon _alert.scss + Bootstrap alert component
+// CUSTOM: NO
 //
-// LARKON MAPPING:
-//   Each strip: <Alert variant="danger|warning|info"
-//                 className="d-flex align-items-center gap-3 mb-2">
-//   Icon:       <i className="ri-error-warning-line fs-5 flex-shrink-0">
-//   Message:    <span className="flex-grow-1"> s <strong>
-//   CTA link:   <Alert.Link className="fw-bold text-nowrap ms-auto">
-//   Container:  <div className="d-flex flex-column gap-2 mb-4">
-//   Podmíněné renderování: {chyba.length > 0 && <Alert ...>}
-// ─────────────────────────────────────────────────────────────
+// Larkon class mapping:
+//   .alert.alert-danger.d-flex.align-items-center  → error strip
+//   .alert.alert-warning.d-flex.align-items-center → warning strip
+//   .alert-link.fw-semibold.ms-auto                → CTA link
 
 import type { ProvozovnaId } from '../types';
 import { DENNI_ZAVIERKY } from '../data';
@@ -37,11 +31,12 @@ export default function AlertStrip({ provozovna, onNavigate }: Props) {
   if (chyba.length === 0 && ceka.length === 0) return null;
 
   return (
-    <div className="section-gap">
+    <div className="d-flex flex-column gap-2 mb-4">
+      {/* SOURCE: Bootstrap .alert.alert-danger */}
       {chyba.length > 0 && (
-        <div className="alert-strip alert-err">
-          <span className="alert-icon">⚠</span>
-          <span className="alert-msg">
+        <div className="alert alert-danger d-flex align-items-center gap-2 mb-0">
+          <iconify-icon icon="solar:danger-triangle-bold-duotone" style={{ fontSize: 26, flexShrink: 0 }} />
+          <span className="flex-grow-1">
             <strong>{chyba.length} závěrka{chyba.length > 1 ? 'y' : ''} s chybou</strong>
             {' — '}
             {chyba.map((z, i) => (
@@ -51,20 +46,29 @@ export default function AlertStrip({ provozovna, onNavigate }: Props) {
               </span>
             ))}
           </span>
-          <span className="alert-cta" onClick={onNavigate}>
+          <span
+            className="alert-link fw-semibold text-nowrap ms-auto"
+            style={{ cursor: 'pointer' }}
+            onClick={onNavigate}
+          >
             Zobrazit →
           </span>
         </div>
       )}
 
+      {/* SOURCE: Bootstrap .alert.alert-warning */}
       {ceka.length > 0 && (
-        <div className="alert-strip alert-warn">
-          <span className="alert-icon">⏳</span>
-          <span className="alert-msg">
+        <div className="alert alert-warning d-flex align-items-center gap-2 mb-0">
+          <iconify-icon icon="solar:clock-circle-bold-duotone" style={{ fontSize: 26, flexShrink: 0 }} />
+          <span className="flex-grow-1">
             <strong>{ceka.length} závěrka{ceka.length > 1 ? 'y' : ''} čeká</strong>
             {' na doplnění'}
           </span>
-          <span className="alert-cta" onClick={onNavigate}>
+          <span
+            className="alert-link fw-semibold text-nowrap ms-auto"
+            style={{ cursor: 'pointer' }}
+            onClick={onNavigate}
+          >
             Doplnit →
           </span>
         </div>

@@ -1,15 +1,20 @@
 // COMPONENT: Dashboard View – hlavní obsah
-// SOURCE: Larkon-like
+// SOURCE: Larkon _page-title.scss + Bootstrap layout
 // CUSTOM: NO
+//
+// Larkon class mapping:
+//   .page-title-box             → page header row
+//   .row.g-4.mb-4               → 2-1 grid (ProvozonySummary + CashflowPreview)
+//   .col-md-8 / .col-md-4       → poměr sloupců
 
 import type { AppState } from '../types';
 import KPIStrip from './KPIStrip';
 import AlertStrip from './AlertStrip';
 import TrzbyWidget from './TrzbyWidget';
 import ProvozonySummary from './ProvozonySummary';
-import DenniZavierkyPreview from './DenniZavierkyPreview';
 import CashflowPreview from './CashflowPreview';
 import TrzbyTable from './TrzbyTable';
+import PohledavkyWidget from './PohledavkyWidget';
 
 interface Props {
   state: AppState;
@@ -18,14 +23,11 @@ interface Props {
 }
 
 export default function DashboardView({ state, update, onOpenDrawer }: Props) {
-  const { selectedProvozovna } = state;
+  const { selectedProvozovna, period } = state;
 
   const now = new Date('2026-04-17');
   const dateStr = now.toLocaleDateString('cs-CZ', {
-    weekday: 'long',
-    day: 'numeric',
-    month: 'long',
-    year: 'numeric',
+    weekday: 'long', day: 'numeric', month: 'long', year: 'numeric',
   });
 
   function navTo(section: typeof state.selectedSection) {
@@ -34,19 +36,21 @@ export default function DashboardView({ state, update, onOpenDrawer }: Props) {
 
   return (
     <>
-      {/* Page header */}
-      <div className="page-header">
+      {/* SOURCE: Larkon .page-title-box */}
+      <div className="page-title-box">
         <div>
-          <h1 className="page-title">Dashboard</h1>
-          <p className="page-sub">{dateStr} · přehled za posledních 7 dní</p>
+          <h4 className="page-title fw-semibold mb-1">Dashboard</h4>
+          <p className="text-muted mb-0">{dateStr} · přehled za posledních 7 dní</p>
         </div>
-        <div className="page-actions">
-          <button className="btn btn-secondary btn-sm">⬇ Export PDF</button>
-          <button className="btn btn-primary btn-sm">＋ Nová závěrka</button>
+        <div className="d-flex align-items-center gap-2">
+          <button className="btn btn-light btn-sm">
+            Export PDF
+          </button>
+          <button className="btn btn-primary btn-sm">
+            Nová závěrka
+          </button>
         </div>
       </div>
-
-      {/* ── Vrstva 1: STRATEGICKÝ PŘEHLED ── */}
 
       {/* Alert strip – závěrky s chybou / čekající */}
       <AlertStrip
@@ -54,42 +58,42 @@ export default function DashboardView({ state, update, onOpenDrawer }: Props) {
         onNavigate={() => navTo('zavierky')}
       />
 
-      {/* ── Vrstva 1: HLAVNÍ TRŽBY WIDGET ── */}
-
-      {/* Hlavní tržby widget (chart) – nahoře dle zadání */}
+      {/* Hlavní tržby widget */}
       <TrzbyWidget
         provozovna={selectedProvozovna}
+        period={period}
         onDrillDown={(id) => update({ selectedProvozovna: id })}
       />
 
       {/* KPI strip – 4 karty */}
-      <KPIStrip provozovna={selectedProvozovna} />
+      <KPIStrip provozovna={selectedProvozovna} period={period} />
 
-      {/* ── Vrstva 2: OPERATIVA ── */}
-
-      {/* ── Vrstva 3: ROZPAD ── */}
-
-      <div className="grid-2-1 section-gap">
-        {/* Rozpad provozoven */}
-        <ProvozonySummary
-          selectedProvozovna={selectedProvozovna}
-          onOpenDrawer={onOpenDrawer}
-        />
-
-        {/* Cashflow preview */}
-        <CashflowPreview onNavigate={() => navTo('cashflow')} />
+      {/* Rozpad + cashflow – SOURCE: Bootstrap .row.g-4 */}
+      <div className="row g-4 mb-4">
+        <div className="col-lg-7">
+          <ProvozonySummary
+            selectedProvozovna={selectedProvozovna}
+            onOpenDrawer={onOpenDrawer}
+          />
+        </div>
+        <div className="col-lg-5">
+          <CashflowPreview onNavigate={() => navTo('cashflow')} />
+        </div>
       </div>
 
-      {/* ── Vrstva 4: DETAILNÍ TABULKY ── */}
+      {/* Pohledávky + tržby tabulka – SOURCE: Bootstrap .row.g-4 */}
+      <div className="row g-4 mb-4">
+        <div className="col-lg-5">
+          <PohledavkyWidget
+            provozovna={selectedProvozovna}
+            onNavigate={() => navTo('pohledavky')}
+          />
+        </div>
+        <div className="col-lg-7">
+          <TrzbyTable provozovna={selectedProvozovna} />
+        </div>
+      </div>
 
-      {/* Denní závěrky preview */}
-      <DenniZavierkyPreview
-        provozovna={selectedProvozovna}
-        onNavigate={() => navTo('zavierky')}
-      />
-
-      {/* Tržby detail tabulka */}
-      <TrzbyTable provozovna={selectedProvozovna} />
     </>
   );
 }

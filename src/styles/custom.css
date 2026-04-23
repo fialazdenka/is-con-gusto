@@ -1,0 +1,412 @@
+/* ============================================================
+   CUSTOM.CSS – vše zde je mimo Larkon/Bootstrap
+   Tento soubor obsahuje VÝHRADNĚ custom přidání/přepisy.
+   Larkon CSS přichází z larkon/larkon.scss (nezasahujeme).
+
+   Sekce:
+     1.  Brand accent (Con Gusto gold #c9911a)
+     2.  SPA root layout (React + Larkon koordinace výšky)
+     3.  Search icon fix (iconify-icon vertikální pozice)
+     4.  CUSTOM vizuální indikátor (.lk-custom / .lk-custom-label)
+     5.  SVG chart kontejner (.chart-area / .chart-svg)
+     6.  Scrollbar styling
+     7.  Segment control (.lk-segment / .lk-seg-btn)
+     8.  Grid helpers (.lk-grid-*)
+     9.  Balance panel řádek (.balance-result-row)
+    10.  Sticky bulk-action bar (.bulk-bar)
+    11.  Topbar dvouřádkový layout (.topbar-rows / .topbar-row-*)
+    12.  Mobilní backdrop + responzivní media query (‹768px)
+   ============================================================ */
+
+/* ─── Brand accent: Con Gusto gold ──────────────────────────
+   Přepis Bootstrap primary → zlatá/amber.
+   Pro návrat: smazat celý tento blok.
+   ─────────────────────────────────────────────────────────── */
+:root {
+  --bs-primary:                 #c9911a;
+  --bs-primary-rgb:             201, 145, 26;
+  --bs-primary-text-emphasis:   #7a5510;
+  --bs-primary-bg-subtle:       #fdf3dc;
+  --bs-primary-border-subtle:   #f0d584;
+  --bs-link-color:              #c9911a;
+  --bs-link-hover-color:        #a87515;
+}
+
+.btn-primary {
+  --bs-btn-bg:                  #c9911a;
+  --bs-btn-border-color:        #c9911a;
+  --bs-btn-hover-bg:            #b07d15;
+  --bs-btn-hover-border-color:  #a87515;
+  --bs-btn-active-bg:           #a87515;
+  --bs-btn-active-border-color: #a87515;
+  --bs-btn-color:               #fff;
+  --bs-btn-hover-color:         #fff;
+  --bs-btn-active-color:        #fff;
+  --bs-btn-disabled-bg:         #c9911a;
+  --bs-btn-disabled-border-color: #c9911a;
+}
+
+.text-primary          { color: #c9911a !important; }
+.bg-primary            { background-color: #c9911a !important; }
+.bg-primary-subtle     { background-color: #fdf3dc !important; }
+.bg-soft-primary       { background-color: #fdf3dc !important; }
+.text-bg-primary       { background-color: #c9911a !important; color: #fff !important; }
+.border-primary        { border-color: #c9911a !important; }
+.badge.bg-primary      { background-color: #c9911a !important; }
+.table-primary         { --bs-table-bg: #fdf3dc; --bs-table-border-color: #f0d584; }
+.alert-link            { color: #7a5510 !important; }
+
+/* warning → stejná zlatá (odstraní oranžové tóny) */
+:root {
+  --bs-warning:                 #c9911a;
+  --bs-warning-rgb:             201, 145, 26;
+  --bs-warning-text-emphasis:   #7a5510;
+  --bs-warning-bg-subtle:       #fdf3dc;
+  --bs-warning-border-subtle:   #f0d584;
+}
+
+.btn-warning {
+  --bs-btn-bg:                  #c9911a;
+  --bs-btn-border-color:        #c9911a;
+  --bs-btn-hover-bg:            #b07d15;
+  --bs-btn-hover-border-color:  #a87515;
+  --bs-btn-active-bg:           #a87515;
+  --bs-btn-color:               #fff;
+  --bs-btn-hover-color:         #fff;
+  --bs-btn-active-color:        #fff;
+}
+
+.text-warning          { color: #c9911a !important; }
+.bg-warning            { background-color: #c9911a !important; }
+.bg-warning-subtle     { background-color: #fdf3dc !important; }
+.bg-soft-warning       { background-color: #fdf3dc !important; }
+.border-warning        { border-color: #c9911a !important; }
+.badge.bg-warning      { background-color: #c9911a !important; color: #fff !important; }
+.table-warning         { --bs-table-bg: #fdf3dc; --bs-table-border-color: #f0d584; }
+
+/* ─────────────────────────────────────────────────────────── */
+
+/* ─── 2. SPA root layout ─────────────────────────────────────
+   Larkon je multi-page Blade app; React SPA potřebuje 100% výšku
+   a koordinaci s Larkon topbar (--bs-topbar-height = 100px).
+   ─────────────────────────────────────────────────────────── */
+html, body, #root {
+  height: 100%;
+}
+
+body {
+  overflow: hidden;
+}
+
+.wrapper {
+  height: 100%;
+  overflow: hidden;
+}
+
+.page-content {
+  height: calc(100% - var(--bs-topbar-height));
+  overflow-y: auto;
+}
+
+.page-content > .container-fluid {
+  padding-top: 1.5rem;
+}
+
+/* ─── 3. Search icon fix ─────────────────────────────────────
+   iconify-icon má display:inline-block; bez override visí ikona mimo střed.
+   ─────────────────────────────────────────────────────────── */
+/* search-widget-icon – iconify-icon má display:inline-block, fixujeme vertikální pozici */
+.search-widget-icon {
+  display: flex !important;
+  align-items: center;
+  position: absolute;
+  z-index: 10;
+  font-size: 20px !important;
+  left: 11px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--bs-secondary-color);
+  pointer-events: none;
+}
+
+/* ─── 4. CUSTOM vizuální indikátor ──────────────────────────
+   Zvýrazní části wireframu, které nejsou z Larkon a v produkci
+   budou nahrazeny (ApexCharts, file upload, PDF viewer...).
+   Použij: <div className="lk-custom">
+             <div className="lk-custom-label">CUSTOM: popis</div>
+             ...obsah...
+           </div>
+   V produkci: smazat .lk-custom + .lk-custom-label ze všech JSX.
+   ──────────────────────────────────────────────────────────── */
+
+.lk-custom {
+  border: 2px dashed var(--bs-primary);
+  border-radius: var(--bs-border-radius);
+  position: relative;
+  padding-top: 28px;
+}
+
+.lk-custom-label {
+  position: absolute;
+  top: -11px;
+  left: 12px;
+  background: white;
+  padding: 2px 10px;
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--bs-primary);
+  font-family: monospace;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+/* ─── 5. SVG Chart kontejner (CUSTOM – v produkci: ApexCharts) ─
+   Použito v: TrzbyWidget, CashflowView, ProvozovnaDrawer, KPIStrip.
+   V produkci nahradit ApexCharts (grouped bar / sparkline).
+   ─────────────────────────────────────────────────────────── */
+
+.chart-area {
+  width: 100%;
+  height: 220px;
+  position: relative;
+}
+
+.chart-svg {
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+/* ─── 6. Scrollbar styling ───────────────────────────────────── */
+
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: #d8dfe7; border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: #b0b0bb; }
+
+/* ─── 7. Segment control ─────────────────────────────────────
+   Topbar přepínač Live/Závěrka + presety období. Není v Larkon.
+   V produkci nahradit Bootstrap ButtonGroup nebo ToggleButton.
+   ─────────────────────────────────────────────────────────── */
+
+.lk-segment {
+  display: inline-flex;
+  background: var(--bs-light);
+  border: 1px solid var(--bs-border-color);
+  border-radius: var(--bs-border-radius);
+  padding: 3px;
+  gap: 2px;
+}
+
+.lk-seg-btn {
+  padding: 4px 12px;
+  border-radius: calc(var(--bs-border-radius) - 2px);
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--bs-secondary-color);
+  cursor: pointer;
+  white-space: nowrap;
+  user-select: none;
+  border: none;
+  background: transparent;
+  transition: all 0.14s;
+}
+
+.lk-seg-btn:hover {
+  background: white;
+  color: var(--bs-body-color);
+}
+
+.lk-seg-btn.active {
+  background: white;
+  color: var(--bs-body-color);
+  box-shadow: var(--bs-box-shadow-sm);
+  font-weight: 600;
+}
+
+/* ─── 8. Grid helpers ────────────────────────────────────────
+   Alternativa k Bootstrap row/col pro fixní 2/3/4-sloupcové layouty.
+   Na mobilu přepisuje media query níže (2-1 → 1 sloupec).
+   ─────────────────────────────────────────────────────────── */
+.lk-grid-4 { display: grid; grid-template-columns: repeat(4, 1fr); gap: 1rem; }
+.lk-grid-3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1rem; }
+.lk-grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
+.lk-grid-2-1 { display: grid; grid-template-columns: 2fr 1fr; gap: 1rem; }
+.lk-grid-3-1 { display: grid; grid-template-columns: 3fr 1fr; gap: 1rem; }
+
+/* ─── 9. Balance panel řádek ─────────────────────────────────
+   Oddělovač a layout pro výsledkový řádek v BalancePanel.tsx.
+   ─────────────────────────────────────────────────────────── */
+.balance-result-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 10px 0;
+  border-top: 2px solid var(--bs-border-color);
+  margin-top: 8px;
+}
+
+/* ─── 10. Sticky bulk-action bar ─────────────────────────────
+   Zlatý sticky bar dole v FakturyView pro hromadné schválení.
+   Není v Larkon – v produkci zvážit Bootstrap Toast nebo Offcanvas footer.
+   ─────────────────────────────────────────────────────────── */
+.bulk-bar {
+  position: sticky;
+  bottom: 0;
+  background: var(--bs-primary);
+  color: white;
+  padding: 12px 20px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  border-radius: var(--bs-border-radius) var(--bs-border-radius) 0 0;
+  box-shadow: 0 -4px 12px rgba(0,0,0,0.15);
+  z-index: 10;
+}
+
+/* ─── Finanční částky nikdy nezalamovat ─────────────────────── */
+.font-monospace { white-space: nowrap; }
+
+/* ─── Breadcrumb topbar ──────────────────────────────────────── */
+.topbar-section-title {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--bs-headings-color, var(--bs-body-color));
+  font-family: var(--bs-font-sans-serif);
+}
+
+/* ─── 11. Dvouřádkový topbar layout ─────────────────────────
+   Larkon topbar je jednořádkový. Přidáváme druhý řádek s filtry
+   (jen na stránkách Dashboard a Tržby; řídí isDashboard v Topbar.tsx).
+   Na mobilu: 2. řádek scrolluje horizontálně (viz sekce 12).
+   ─────────────────────────────────────────────────────────── */
+
+.topbar-rows {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  justify-content: center;
+}
+
+.topbar-row-main {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 54px;
+}
+
+.topbar-row-filters {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 40px;
+  border-top: 1px solid var(--bs-border-color);
+}
+
+.topbar-divider {
+  width: 1px;
+  height: 18px;
+  background: var(--bs-border-color);
+  flex-shrink: 0;
+  margin: 0 2px;
+}
+
+/* Menší segment v druhém řádku */
+.topbar-row-filters .lk-seg-btn {
+  padding: 3px 10px;
+  font-size: 11.5px;
+}
+
+/* ─── 12. Mobilní backdrop + responzivní media query ─────────
+   Backdrop pro mobilní sidebar overlay (mob-nav-backdrop div v AppShell).
+   Larkon řídí sidebar přes html[data-menu-size="hidden"] + .sidebar-enable.
+   ─────────────────────────────────────────────────────────── */
+.mob-nav-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.45);
+  z-index: 1045;
+  animation: mob-fade 0.15s ease;
+}
+
+@keyframes mob-fade {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+/* ─── Responzivní design (‹768px = Bootstrap ‹md) ──────────── */
+@media (max-width: 767.98px) {
+  /* Page content: celá šířka, bez levého margin pro sidebar */
+  .page-content {
+    margin-left: 0 !important;
+  }
+
+  /* Topbar: menší vodorovné odsazení */
+  .topbar {
+    padding: 0 12px !important;
+  }
+
+  /* Topbar search: schovat na mobilu */
+  .app-search {
+    display: none !important;
+  }
+
+  /* Topbar řádek 2: horizontální scroll místo zalomení */
+  .topbar-row-filters {
+    overflow-x: auto !important;
+    flex-wrap: nowrap !important;
+    scrollbar-width: none;
+    -webkit-overflow-scrolling: touch;
+    padding-bottom: 2px;
+  }
+  .topbar-row-filters::-webkit-scrollbar {
+    display: none;
+  }
+
+  /* Offcanvas drawery: max. šířka obrazovky */
+  .offcanvas.offcanvas-end {
+    width: min(520px, 100vw) !important;
+  }
+
+  /* Bootstrap modals: celá šířka */
+  .modal-dialog {
+    max-width: calc(100vw - 16px) !important;
+    margin: 8px auto !important;
+  }
+  .modal-dialog.modal-lg,
+  .modal-dialog.modal-xl {
+    max-width: calc(100vw - 16px) !important;
+  }
+
+  /* KPI karty: 2 sloupce místo 4 */
+  .row.g-3 > .col-md-3 {
+    flex: 0 0 50% !important;
+    max-width: 50% !important;
+  }
+
+  /* Balance panel (PlatbyView, CashflowView): 1 sloupec */
+  .lk-grid-2-1,
+  .lk-grid-3-1 {
+    grid-template-columns: 1fr !important;
+  }
+
+  /* Sticky bulk-action bar: zalomit */
+  .bulk-bar {
+    flex-wrap: wrap;
+    font-size: 13px;
+  }
+
+  /* Utility: skrýt tabulkové sloupce na mobilu */
+  .d-mobile-none {
+    display: none !important;
+  }
+
+  /* Stránkové hlavičky: stack vertikálně */
+  .page-header-row {
+    flex-direction: column !important;
+    align-items: flex-start !important;
+    gap: 10px !important;
+  }
+}

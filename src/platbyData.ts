@@ -8,6 +8,8 @@ export type FakturaStavPlatby =
   | 'nova'         // zadaná, čeká na přiřazení
   | 'ke-schvaleni' // spárovaná se Septem, čeká na schválení
   | 'schvalena'    // schválená k úhradě
+  | 'zamitnuta'    // zamítnuta schvalovatelem
+  | 'zastavena'    // pozdržená – čeká na dořešení sporu / dokladů
   | 'odeslana'     // odeslaná do banky
   | 'zaplacena';   // zaplacená (spárovaná)
 
@@ -28,6 +30,26 @@ export type OstatniTyp =
 
 export type FutureRevMode = 'off' | 'budouci' | 'budouci-plus';
 
+export type TypDokladu = 'prijata' | 'vydana';
+
+export type SchvalovatelRole = 'fakturant' | 'schvalovatel' | 'majitel';
+
+export interface SchvalovatelOsoba {
+  id: string;
+  jmeno: string;
+  role: SchvalovatelRole;
+  provozovna?: string; // pokud je vázán na konkrétní provozovnu
+  avatar?: string;     // iniciály pro fallback
+}
+
+export const SCHVALOVACI_OSOBY: SchvalovatelOsoba[] = [
+  { id: 'u-petra',  jmeno: 'Petra Nováková',  role: 'fakturant',    avatar: 'PN' },
+  { id: 'u-martin', jmeno: 'Martin Kovář',    role: 'schvalovatel', provozovna: 'cg-brno', avatar: 'MK' },
+  { id: 'u-jana',   jmeno: 'Jana Horáková',   role: 'schvalovatel', provozovna: 'piazza',  avatar: 'JH' },
+  { id: 'u-tomas',  jmeno: 'Tomáš Blažek',   role: 'schvalovatel', provozovna: 'monte',   avatar: 'TB' },
+  { id: 'u-petr',   jmeno: 'Petr Dohnal',     role: 'majitel',      avatar: 'PD' },
+];
+
 export interface FakturaPlatby {
   id: string;
   cislo: string;
@@ -35,10 +57,15 @@ export interface FakturaPlatby {
   kategorie: FakturaKategorie;
   provozovna: string;
   castka: number;
-  datum: string;      // datum vystavení
-  splatnost: string;  // účetní splatnost
+  datum: string;          // datum vystavení
+  splatnost: string;      // účetní splatnost
   stav: FakturaStavPlatby;
+  typDokladu: TypDokladu;
   poznamka?: string;
+  prirazenaOsoba?: string;  // id osoby přiřazené ke schválení
+  schvalil?: string;        // jméno (denormalizováno) – kdo schválil / zamítl
+  datumSchvaleni?: string;  // datum schválení / zamítnutí
+  strediskoOverride?: string;
 }
 
 export interface OstatniPlatba {
@@ -83,7 +110,10 @@ export const FAKTURY_PLATBY: FakturaPlatby[] = [
     datum: '2026-04-10',
     splatnost: '2026-04-14',
     stav: 'schvalena',
+    typDokladu: 'prijata',
     poznamka: 'Nákup 8.4. – týdenní zásoby',
+    schvalil: 'Petr Dohnal',
+    datumSchvaleni: '11. 4. 2026',
   },
   {
     id: 'fp02',
@@ -95,7 +125,9 @@ export const FAKTURY_PLATBY: FakturaPlatby[] = [
     datum: '2026-04-09',
     splatnost: '2026-04-15',
     stav: 'ke-schvaleni',
+    typDokladu: 'prijata',
     poznamka: 'Čeká na schválení Septou',
+    prirazenaOsoba: 'u-jana',
   },
   // ── SPLATNÉ TENTO TÝDEN (13–19.4.) ──
   {
@@ -108,7 +140,10 @@ export const FAKTURY_PLATBY: FakturaPlatby[] = [
     datum: '2026-04-05',
     splatnost: '2026-04-20',
     stav: 'schvalena',
+    typDokladu: 'prijata',
     poznamka: 'Měsíční nájemné duben',
+    schvalil: 'Martin Kovář',
+    datumSchvaleni: '8. 4. 2026',
   },
   {
     id: 'fp04',
@@ -120,6 +155,9 @@ export const FAKTURY_PLATBY: FakturaPlatby[] = [
     datum: '2026-04-07',
     splatnost: '2026-04-18',
     stav: 'schvalena',
+    typDokladu: 'prijata',
+    schvalil: 'Tomáš Blažek',
+    datumSchvaleni: '9. 4. 2026',
   },
   {
     id: 'fp05',
@@ -131,7 +169,10 @@ export const FAKTURY_PLATBY: FakturaPlatby[] = [
     datum: '2026-04-10',
     splatnost: '2026-04-17',
     stav: 'schvalena',
+    typDokladu: 'prijata',
     poznamka: 'Stravenkový příspěvek',
+    schvalil: 'Jana Horáková',
+    datumSchvaleni: '12. 4. 2026',
   },
   {
     id: 'fp06',
@@ -143,6 +184,9 @@ export const FAKTURY_PLATBY: FakturaPlatby[] = [
     datum: '2026-04-08',
     splatnost: '2026-04-18',
     stav: 'schvalena',
+    typDokladu: 'prijata',
+    schvalil: 'Martin Kovář',
+    datumSchvaleni: '10. 4. 2026',
   },
   {
     id: 'fp07',
@@ -154,31 +198,38 @@ export const FAKTURY_PLATBY: FakturaPlatby[] = [
     datum: '2026-04-10',
     splatnost: '2026-04-19',
     stav: 'schvalena',
+    typDokladu: 'prijata',
+    schvalil: 'Martin Kovář',
+    datumSchvaleni: '12. 4. 2026',
   },
   // ── NESCHVÁLENÉ (nova / ke-schvaleni) ──
   {
     id: 'fp08',
-    cislo: 'FAK-2026-0050',
-    dodavatel: 'Pronto Print (menu karty)',
+    cislo: 'VYD-2026-0018',
+    dodavatel: 'Firemní catering – AutoPalace a.s.',
     kategorie: 'sluzby',
     provozovna: 'monte',
     castka: 3_500,
     datum: '2026-04-12',
     splatnost: '2026-04-19',
     stav: 'nova',
-    poznamka: 'Nová, čeká na přiřazení',
+    typDokladu: 'vydana',
+    poznamka: 'Pracovní obědy 9.–11.4.',
+    prirazenaOsoba: 'u-tomas',
   },
   {
     id: 'fp09',
-    cislo: 'FAK-2026-0053',
-    dodavatel: 'Metro AG',
-    kategorie: 'zbozi',
+    cislo: 'VYD-2026-0017',
+    dodavatel: 'Konferenční raut – Brno Hotel',
+    kategorie: 'sluzby',
     provozovna: 'piazza',
     castka: 18_400,
     datum: '2026-04-11',
     splatnost: '2026-04-22',
     stav: 'ke-schvaleni',
-    poznamka: 'Spárovaná se Septem – čeká na schválení',
+    typDokladu: 'vydana',
+    poznamka: 'Smluvní catering 8.4.',
+    prirazenaOsoba: 'u-martin',
   },
   // ── MIMO TÝDEN (pozdější splatnost) ──
   {
@@ -191,6 +242,9 @@ export const FAKTURY_PLATBY: FakturaPlatby[] = [
     datum: '2026-04-12',
     splatnost: '2026-04-26',
     stav: 'schvalena',
+    typDokladu: 'prijata',
+    schvalil: 'Jana Horáková',
+    datumSchvaleni: '14. 4. 2026',
   },
   {
     id: 'fp11',
@@ -202,6 +256,9 @@ export const FAKTURY_PLATBY: FakturaPlatby[] = [
     datum: '2026-04-12',
     splatnost: '2026-04-26',
     stav: 'schvalena',
+    typDokladu: 'prijata',
+    schvalil: 'Tomáš Blažek',
+    datumSchvaleni: '14. 4. 2026',
   },
   {
     id: 'fp12',
@@ -213,6 +270,9 @@ export const FAKTURY_PLATBY: FakturaPlatby[] = [
     datum: '2026-04-10',
     splatnost: '2026-04-22',
     stav: 'schvalena',
+    typDokladu: 'prijata',
+    schvalil: 'Petr Dohnal',
+    datumSchvaleni: '13. 4. 2026',
   },
   {
     id: 'fp13',
@@ -224,6 +284,23 @@ export const FAKTURY_PLATBY: FakturaPlatby[] = [
     datum: '2026-04-10',
     splatnost: '2026-04-25',
     stav: 'schvalena',
+    typDokladu: 'prijata',
+    schvalil: 'Martin Kovář',
+    datumSchvaleni: '13. 4. 2026',
+  },
+  // ── ZASTAVENÉ ──
+  {
+    id: 'fp15',
+    cislo: 'FAK-2026-0049',
+    dodavatel: 'Zásoba s.r.o. (reklamace)',
+    kategorie: 'zbozi',
+    provozovna: 'cg-brno',
+    castka: 9_600,
+    datum: '2026-04-09',
+    splatnost: '2026-04-20',
+    stav: 'zastavena',
+    typDokladu: 'prijata',
+    poznamka: 'Pozdrženo – probíhá reklamace zboží',
   },
   // ── ZAPLACENÉ ──
   {
@@ -236,6 +313,7 @@ export const FAKTURY_PLATBY: FakturaPlatby[] = [
     datum: '2026-04-01',
     splatnost: '2026-04-15',
     stav: 'zaplacena',
+    typDokladu: 'prijata',
   },
 ];
 

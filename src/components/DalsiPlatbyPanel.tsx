@@ -1,6 +1,15 @@
-// COMPONENT: Ostatní platby v období – Collapsible panel
-// SOURCE: Larkon-like → Card + Accordion + ListGroup
+// COMPONENT: Ostatní platby v období – Collapsible Card
+// SOURCE: Larkon _card.scss + _tables.scss + _badge.scss
 // CUSTOM: NO
+//
+// Larkon class mapping:
+//   .card                              → karta
+//   .card-header (klikatelný)          → collapsible hlavička
+//   .table.table-hover.table-centered.table-nowrap → tabulka
+//   .form-check-input                  → checkbox
+//   .badge.bg-secondary-subtle.text-secondary → typ badge
+//   .badge.bg-warning-subtle.text-warning → zahrnuto badge
+//   .btn.btn-link.btn-sm               → toggle tlačítko
 
 import { useState } from 'react';
 import type { ProvozovnaId } from '../types';
@@ -16,11 +25,11 @@ interface Props {
 }
 
 const TYP_IKONY: Record<string, string> = {
-  'trv-prikaz':    '🔄',
-  'splatka-uveru': '🏦',
-  'poplatek':      '💶',
-  'vyplata':       '👤',
-  'dalsi':         '📋',
+  'trv-prikaz':    'solar:refresh-bold-duotone',
+  'splatka-uveru': 'solar:bank-bold-duotone',
+  'poplatek':      'solar:bill-bold-duotone',
+  'vyplata':       'solar:user-bold-duotone',
+  'dalsi':         'solar:document-bold-duotone',
 };
 
 export default function DalsiPlatbyPanel({
@@ -36,122 +45,127 @@ export default function DalsiPlatbyPanel({
     (o) => o.datum >= periodOd && o.datum <= periodDo
   );
 
-  const celkem = platby.reduce((s, o) => s + o.castka, 0);
-  const vybrano = platby.filter((o) => selectedIds.has(o.id));
+  const celkem    = platby.reduce((s, o) => s + o.castka, 0);
+  const vybrano   = platby.filter((o) => selectedIds.has(o.id));
   const vybranoSum = vybrano.reduce((s, o) => s + o.castka, 0);
 
   const getProvName  = (id: string) => PROVOZOVNY.find((p) => p.id === id)?.shortName ?? id;
   const getProvColor = (id: string) => PROVOZOVNY.find((p) => p.id === id)?.color ?? '#94a3b8';
 
   return (
-    // COMPONENT: Card + Accordion (Collapsible section)
-    // SOURCE: Larkon-like → Card + Accordion / CollapseToggle
-    // CUSTOM: NO
-    <div className="card section-gap">
-      {/* Collapsible header */}
+    <div className="card mb-4">
+      {/* SOURCE: Larkon .card-header – klikatelný collapsible toggle */}
       <div
-        className="collapsible-toggle"
+        className="card-header d-flex align-items-center justify-content-between"
+        style={{ cursor: 'pointer' }}
         onClick={() => setOpen((o) => !o)}
-        style={{ paddingBottom: open ? 0 : undefined }}
       >
-        <div className="flex items-center gap-3">
-          <span className="fw-700 fs-md">Ostatní platby v období</span>
-          <span className="badge badge-neutral">{platby.length} položek</span>
+        <div className="d-flex align-items-center gap-2">
+          <h5 className="card-title mb-0">Ostatní platby v období</h5>
+          <span className="badge bg-secondary-subtle text-secondary">{platby.length} položek</span>
           {vybrano.length > 0 && (
-            <span className="badge badge-warn">{vybrano.length} zahrnuto</span>
+            <span className="badge bg-warning-subtle text-warning">{vybrano.length} zahrnuto</span>
           )}
         </div>
-        <div className="flex items-center gap-3">
-          <span className="fw-700 fv-mono fs-md">{fCzk(celkem)}</span>
+        <div className="d-flex align-items-center gap-3">
+          <span className="fw-bold font-monospace">{fCzk(celkem)}</span>
           {vybranoSum > 0 && (
-            <span className="fs-sm c-2 fv-mono">(vybráno: {fCzk(vybranoSum)})</span>
+            <span className="text-muted fs-13 font-monospace">(vybráno: {fCzk(vybranoSum)})</span>
           )}
-          <span className={`collapsible-arrow${open ? ' open' : ''}`}>▾</span>
+          <iconify-icon
+            icon={open ? 'solar:alt-arrow-up-bold' : 'solar:alt-arrow-down-bold'}
+            className="text-muted"
+          />
         </div>
       </div>
 
       {open && (
-        <div style={{ borderTop: '1px solid var(--border)' }}>
-          <div className="table-wrap">
-            <table className="dtable">
-              <thead>
+        // SOURCE: Larkon .table.table-hover.table-centered.table-nowrap
+        <div className="table-responsive">
+          <table className="table table-hover table-centered table-nowrap mb-0">
+            <thead className="table-light">
+              <tr>
+                <th style={{ width: 36 }}>
+                  <span className="text-muted fs-12">Zahrnout</span>
+                </th>
+                <th>Typ</th>
+                <th>Popis</th>
+                {provozovna === 'all' && <th>Provoz</th>}
+                <th className="text-end">Částka</th>
+                <th>Datum</th>
+                <th>Periodicita</th>
+              </tr>
+            </thead>
+            <tbody>
+              {platby.length === 0 && (
                 <tr>
-                  <th style={{ width: 36 }}>Zahrnout</th>
-                  <th>Typ</th>
-                  <th>Popis</th>
-                  {provozovna === 'all' && <th>Provoz</th>}
-                  <th className="td-r">Částka</th>
-                  <th>Datum</th>
-                  <th>Periodicita</th>
+                  <td colSpan={7} className="text-center py-4 text-muted">
+                    V tomto období nejsou žádné ostatní platby
+                  </td>
                 </tr>
-              </thead>
-              <tbody>
-                {platby.length === 0 && (
-                  <tr>
-                    <td colSpan={7} style={{ textAlign: 'center', padding: '24px', color: 'var(--text-3)' }}>
-                      V tomto období nejsou žádné ostatní platby
+              )}
+              {platby.map((o) => {
+                const poSpl  = isPoSplatnosti(o.datum);
+                const vybran = selectedIds.has(o.id);
+                return (
+                  <tr
+                    key={o.id}
+                    className={vybran ? 'table-primary' : poSpl ? 'table-danger' : ''}
+                    style={{ cursor: 'pointer' }}
+                    onClick={() => onToggle(o.id)}
+                  >
+                    <td onClick={(e) => e.stopPropagation()}>
+                      {/* SOURCE: Bootstrap .form-check-input */}
+                      <input
+                        type="checkbox"
+                        className="form-check-input"
+                        checked={vybran}
+                        onChange={() => onToggle(o.id)}
+                      />
                     </td>
-                  </tr>
-                )}
-                {platby.map((o) => {
-                  const poSpl  = isPoSplatnosti(o.datum);
-                  const vybran = selectedIds.has(o.id);
-                  return (
-                    <tr
-                      key={o.id}
-                      style={{ background: vybran ? '#eff6ff' : poSpl ? '#fff8f8' : undefined, cursor: 'pointer' }}
-                      onClick={() => onToggle(o.id)}
-                    >
-                      <td onClick={(e) => e.stopPropagation()}>
-                        <input
-                          type="checkbox"
-                          checked={vybran}
-                          onChange={() => onToggle(o.id)}
-                          style={{ cursor: 'pointer' }}
-                        />
-                      </td>
+                    <td>
+                      <div className="d-flex align-items-center gap-2">
+                        <iconify-icon icon={TYP_IKONY[o.typ] ?? 'solar:document-bold-duotone'} className="text-muted" />
+                        {/* SOURCE: Larkon .badge.bg-secondary-subtle.text-secondary */}
+                        <span className="badge bg-secondary-subtle text-secondary fs-11">
+                          {OSTPLATBA_LABELS[o.typ]}
+                        </span>
+                      </div>
+                    </td>
+                    <td className="fw-semibold">{o.popis}</td>
+                    {provozovna === 'all' && (
                       <td>
-                        <div className="flex items-center gap-2">
-                          <span>{TYP_IKONY[o.typ] ?? '📋'}</span>
-                          <span className="badge badge-neutral fs-xs">
-                            {OSTPLATBA_LABELS[o.typ]}
-                          </span>
+                        <div className="d-flex align-items-center gap-2">
+                          <span
+                            className="rounded-circle d-inline-block flex-shrink-0"
+                            style={{ width: 8, height: 8, background: getProvColor(o.provozovna) }}
+                          />
+                          <span className="fs-13">{getProvName(o.provozovna)}</span>
                         </div>
                       </td>
-                      <td className="fw-500">{o.popis}</td>
-                      {provozovna === 'all' && (
-                        <td>
-                          <div className="flex items-center gap-2">
-                            <div className="prov-dot" style={{ background: getProvColor(o.provozovna) }} />
-                            <span className="fs-sm">{getProvName(o.provozovna)}</span>
-                          </div>
-                        </td>
-                      )}
-                      <td className="td-r td-mono fw-700">{fCzk(o.castka)}</td>
-                      <td>
-                        <span className={poSpl ? 'c-err fw-700' : 'c-2'}>
-                          {fDate(o.datum)}
-                        </span>
-                        {poSpl && <div className="fs-xs c-err fw-600">PO SPLATNOSTI</div>}
-                      </td>
-                      <td className="c-2 fs-sm">{o.periodicita ?? '—'}</td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-              {platby.length > 0 && (
-                <tfoot>
-                  <tr style={{ background: '#f8fafc' }}>
-                    <td colSpan={provozovna === 'all' ? 4 : 3} className="fw-700">
-                      Celkem ostatní platby
+                    )}
+                    <td className="text-end font-monospace fw-bold">{fCzk(o.castka)}</td>
+                    <td>
+                      <span className={poSpl ? 'text-danger fw-bold' : 'text-muted'}>
+                        {fDate(o.datum)}
+                      </span>
+                      {poSpl && <div className="text-danger fs-11 fw-bold">PO SPLATNOSTI</div>}
                     </td>
-                    <td className="td-r td-mono fw-700">{fCzk(celkem)}</td>
-                    <td colSpan={2} />
+                    <td className="text-muted fs-13">{o.periodicita ?? '—'}</td>
                   </tr>
-                </tfoot>
-              )}
-            </table>
-          </div>
+                );
+              })}
+            </tbody>
+            {platby.length > 0 && (
+              <tfoot>
+                <tr className="fw-bold table-light">
+                  <td colSpan={provozovna === 'all' ? 4 : 3}>Celkem ostatní platby</td>
+                  <td className="text-end font-monospace">{fCzk(celkem)}</td>
+                  <td colSpan={2} />
+                </tr>
+              </tfoot>
+            )}
+          </table>
         </div>
       )}
     </div>

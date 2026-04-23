@@ -1,9 +1,22 @@
 // COMPONENT: Faktury Table – výběr k úhradě
-// SOURCE: Larkon-like → Card + Table + Checkbox + Badge
-// CUSTOM: NO
+// SOURCE: Larkon _card.scss + _tables.scss + _badge.scss
+// CUSTOM: přiřazení sloupec + KAT_META barevné badge (dynamická mapa kategorií)
+//
+// Larkon class mapping:
+//   .card                              → karta
+//   .card-header / .card-body          → header + body
+//   .card-title                        → titulek
+//   .table-responsive                  → horizontální scroll na mobilu
+//   .table.table-hover.table-centered.table-nowrap → tabulka
+//   .badge.bg-{color}-subtle.text-{color} → stav faktury (Bootstrap badge pattern)
+//   .form-check-input                  → checkbox výběr řádku
+//   .btn.btn-light.btn-sm              → akce tlačítka (Schválit, Zamítnout, Detail)
+//   CUSTOM: KAT_META color map         → dynamická barva badge dle kategorie
+//   CUSTOM: "Přiřazeno" sloupec        → avatar 24px + křestní jméno schvalovatele
+//   CUSTOM: localPrirazeni prop        → session-local přiřazení (v produkci backend)
 
 import type { ProvozovnaId } from '../types';
-import type { FakturaStavPlatby, FakturaKategorie } from '../platbyData';
+import type { FakturaStavPlatby, FakturaKategorie, TypDokladu } from '../platbyData';
 import {
   getFakturyForProvozovna,
   getOdeslatDo,
@@ -12,6 +25,7 @@ import {
   isSplatneVObdobi,
   KATEGORIE_LABELS,
   PROCESSING_DAYS_DEFAULT,
+  SCHVALOVACI_OSOBY,
 } from '../platbyData';
 import { PROVOZOVNY, fCzk, fDate } from '../data';
 
@@ -21,27 +35,34 @@ interface Props {
   periodDo: string;
   kategorieFilter: string;
   stavFilter: string;
+  typDokladu: TypDokladu | 'all';
   selectedIds: Set<string>;
   onToggle: (id: string) => void;
   onToggleAll: (ids: string[]) => void;
   processingDays: number;
+  localStavy?: Record<string, FakturaStavPlatby>;
+  localPrirazeni?: Record<string, string>;
+  onRowClick?: (id: string) => void;
 }
 
+// Larkon Bootstrap badge mapping
 const STAV_META: Record<FakturaStavPlatby, { cls: string; label: string }> = {
-  nova:        { cls: 'badge-neutral', label: 'Nová' },
-  'ke-schvaleni': { cls: 'badge-warn', label: 'Ke schválení' },
-  schvalena:   { cls: 'badge-ok',     label: 'Schválená' },
-  odeslana:    { cls: 'badge-info',   label: 'Odeslaná' },
-  zaplacena:   { cls: 'badge-ok',     label: 'Zaplacená' },
+  nova:           { cls: 'bg-secondary-subtle text-secondary', label: 'Nová' },
+  'ke-schvaleni': { cls: 'bg-warning-subtle text-warning',     label: 'Ke schválení' },
+  schvalena:      { cls: 'bg-success-subtle text-success',     label: 'Schválená' },
+  zamitnuta:      { cls: 'bg-danger-subtle text-danger',       label: 'Zamítnutá' },
+  zastavena:      { cls: 'bg-danger-subtle text-danger',       label: 'Zastavená' },
+  odeslana:       { cls: 'bg-info-subtle text-info',           label: 'Odeslaná' },
+  zaplacena:      { cls: 'bg-success-subtle text-success',     label: 'Zaplacená' },
 };
 
 const KAT_META: Record<FakturaKategorie, { color: string }> = {
-  zbozi:   { color: '#3b82f6' },
+  zbozi:   { color: '#1c84ee' },
   energie: { color: '#f97316' },
   sluzby:  { color: '#8b5cf6' },
   najem:   { color: '#ec4899' },
   vyplaty: { color: '#14b8a6' },
-  ostatni: { color: '#94a3b8' },
+  ostatni: { color: '#9097a7' },
 };
 
 export default function FakturyTable({
@@ -50,16 +71,23 @@ export default function FakturyTable({
   periodDo,
   kategorieFilter,
   stavFilter,
+  typDokladu,
   selectedIds,
   onToggle,
   onToggleAll,
   processingDays,
+  localStavy = {},
+  localPrirazeni = {},
+  onRowClick,
 }: Props) {
   const vsechny = getFakturyForProvozovna(provozovna);
 
-  // Filtrování
   const zobrazene = vsechny.filter((f) => {
     if (f.stav === 'zaplacena' || f.stav === 'odeslana') return false;
+    if (stavFilter === 'zamitnuta') return f.stav === 'zamitnuta';
+    if (f.stav === 'zamitnuta') return false; // skryté ve výchozím pohledu
+    if (stavFilter === 'zastavena' && f.stav !== 'zastavena') return false;
+    if (typDokladu !== 'all' && f.typDokladu !== typDokladu) return false;
     if (kategorieFilter !== 'all' && f.kategorie !== kategorieFilter) return false;
     if (stavFilter === 'schvalena' && f.stav !== 'schvalena') return false;
     if (stavFilter === 'neschvalena' && f.stav !== 'nova' && f.stav !== 'ke-schvaleni') return false;
@@ -68,43 +96,34 @@ export default function FakturyTable({
     return true;
   });
 
-  // Pouze schválené se dají vybrat k platbě
   const vybiratelne = zobrazene.filter((f) => f.stav === 'schvalena');
-  const vsechnyVybrany =
-    vybiratelne.length > 0 && vybiratelne.every((f) => selectedIds.has(f.id));
+  const vsechnyVybrany = vybiratelne.length > 0 && vybiratelne.every((f) => selectedIds.has(f.id));
   const nekteréVybrany = vybiratelne.some((f) => selectedIds.has(f.id));
 
   const getProvName  = (id: string) => PROVOZOVNY.find((p) => p.id === id)?.shortName ?? id;
-  const getProvColor = (id: string) => PROVOZOVNY.find((p) => p.id === id)?.color ?? '#94a3b8';
+  const getProvColor = (id: string) => PROVOZOVNY.find((p) => p.id === id)?.color ?? '#9097a7';
+
+  void PROCESSING_DAYS_DEFAULT;
 
   return (
-    // COMPONENT: Card + Table (s Checkbox, Badge, ProgressBar urgence)
-    // SOURCE: Larkon-like
-    // CUSTOM: NO
     <div className="card">
-      <div className="card-header">
-        <div className="card-title-wrap">
-          <div className="card-title">Faktury k úhradě</div>
-          <div className="card-sub">
+      {/* SOURCE: Larkon .card-header */}
+      <div className="card-header d-flex align-items-center justify-content-between gap-3">
+        <h5 className="card-title mb-0 flex-grow-1">
+          Faktury k úhradě
+          <small className="text-muted fw-normal ms-2 fs-13">
             {zobrazene.length} faktur · {vybiratelne.filter((f) => selectedIds.has(f.id)).length} vybráno
-          </div>
-        </div>
-        <div className="card-actions">
+          </small>
+        </h5>
+        <div className="d-flex gap-2">
           {nekteréVybrany && (
-            <button
-              className="btn btn-ghost btn-sm c-2"
-              onClick={() => onToggleAll([])}
-            >
+            <button className="btn btn-light btn-sm" onClick={() => onToggleAll([])}>
               Zrušit výběr
             </button>
           )}
           <button
-            className="btn btn-secondary btn-sm"
-            onClick={() =>
-              onToggleAll(
-                vsechnyVybrany ? [] : vybiratelne.map((f) => f.id)
-              )
-            }
+            className="btn btn-light btn-sm"
+            onClick={() => onToggleAll(vsechnyVybrany ? [] : vybiratelne.map((f) => f.id))}
             disabled={vybiratelne.length === 0}
           >
             {vsechnyVybrany ? 'Odznačit vše' : 'Vybrat vše schválené'}
@@ -112,80 +131,86 @@ export default function FakturyTable({
         </div>
       </div>
 
-      <div className="table-wrap">
-        <table className="dtable">
-          <thead>
+      {/* SOURCE: Larkon .table.table-hover.table-centered.table-nowrap */}
+      <div className="table-responsive">
+        <table className="table table-hover table-centered table-nowrap mb-0">
+          <thead className="table-light">
             <tr>
               <th style={{ width: 36 }}>
                 <input
                   type="checkbox"
+                  className="form-check-input"
                   checked={vsechnyVybrany}
-                  ref={(el) => {
-                    if (el) el.indeterminate = nekteréVybrany && !vsechnyVybrany;
-                  }}
-                  onChange={() =>
-                    onToggleAll(vsechnyVybrany ? [] : vybiratelne.map((f) => f.id))
-                  }
+                  ref={(el) => { if (el) el.indeterminate = nekteréVybrany && !vsechnyVybrany; }}
+                  onChange={() => onToggleAll(vsechnyVybrany ? [] : vybiratelne.map((f) => f.id))}
                   disabled={vybiratelne.length === 0}
-                  style={{ cursor: 'pointer' }}
                 />
               </th>
               <th>Číslo</th>
               <th>Dodavatel</th>
+              <th>Typ dokladu</th>
               <th>Kategorie</th>
               {provozovna === 'all' && <th>Provoz</th>}
-              <th className="td-r">Částka</th>
+              <th className="text-end">Částka</th>
               <th>Splatnost</th>
               <th>Odeslat do</th>
+              <th>Přiřazeno</th>
               <th>Stav</th>
             </tr>
           </thead>
           <tbody>
             {zobrazene.length === 0 && (
               <tr>
-                <td colSpan={9} style={{ textAlign: 'center', padding: '32px', color: 'var(--text-3)' }}>
+                <td colSpan={11} className="text-center py-4 text-muted">
                   Žádné faktury neodpovídají filtru
                 </td>
               </tr>
             )}
             {zobrazene.map((f) => {
+              const effectiveStav  = localStavy[f.id] ?? f.stav;
+              const prirazeniId    = localPrirazeni[f.id] ?? f.prirazenaOsoba ?? '';
+              const prirazenaOsoba = SCHVALOVACI_OSOBY.find((o) => o.id === prirazeniId);
               const poSpl    = isPoSplatnosti(f.splatnost);
               const urgentni = isUrgentni(f.splatnost, processingDays);
               const odeslatDo = getOdeslatDo(f.splatnost, processingDays);
-              const vybiratelna = f.stav === 'schvalena';
+              const vybiratelna = effectiveStav === 'schvalena';
               const vybrana = selectedIds.has(f.id);
-              const { cls, label } = STAV_META[f.stav];
+              const { cls, label } = STAV_META[effectiveStav] ?? STAV_META['nova'];
 
-              let rowBg = '';
-              if (vybrana) rowBg = '#eff6ff';
-              else if (poSpl) rowBg = '#fff8f8';
-              else if (urgentni) rowBg = '#fffbf0';
+              let rowClass = '';
+              if (vybrana) rowClass = 'table-primary';
+              else if (poSpl) rowClass = 'table-danger';
+              else if (urgentni) rowClass = 'table-warning';
 
               return (
                 <tr
                   key={f.id}
-                  style={{ background: rowBg, cursor: vybiratelna ? 'pointer' : 'default' }}
-                  onClick={() => vybiratelna && onToggle(f.id)}
+                  className={rowClass}
+                  style={{ cursor: 'pointer' }}
+                  onClick={() => onRowClick ? onRowClick(f.id) : (vybiratelna && onToggle(f.id))}
                 >
                   <td onClick={(e) => e.stopPropagation()}>
                     <input
                       type="checkbox"
+                      className="form-check-input"
                       checked={vybrana}
                       disabled={!vybiratelna}
                       onChange={() => vybiratelna && onToggle(f.id)}
-                      style={{ cursor: vybiratelna ? 'pointer' : 'default' }}
                     />
                   </td>
-                  <td className="td-mono" style={{ fontSize: 11, color: 'var(--text-2)' }}>
-                    {f.cislo}
+                  <td className="text-muted fs-12 font-monospace">{f.cislo}</td>
+                  <td>
+                    <div className="fw-semibold">{f.dodavatel}</div>
+                    {f.poznamka && <div className="text-muted fs-12">{f.poznamka}</div>}
                   </td>
                   <td>
-                    <div className="fw-600" style={{ fontSize: 13 }}>{f.dodavatel}</div>
-                    {f.poznamka && (
-                      <div className="fs-xs c-2">{f.poznamka}</div>
-                    )}
+                    <span className={`badge ${f.typDokladu === 'vydana' ? 'bg-purple-subtle text-purple' : 'bg-primary-subtle text-primary'}`}
+                      style={f.typDokladu === 'vydana' ? { background: '#8b5cf61a', color: '#8b5cf6' } : {}}>
+                      {f.typDokladu === 'vydana' ? 'Vydaná' : 'Přijatá'}
+                    </span>
                   </td>
                   <td>
+                    {/* Dynamic color badge – kategorie (custom color) */}
                     <span
                       className="badge"
                       style={{
@@ -199,35 +224,47 @@ export default function FakturyTable({
                   </td>
                   {provozovna === 'all' && (
                     <td>
-                      <div className="flex items-center gap-2">
-                        <div className="prov-dot" style={{ background: getProvColor(f.provozovna) }} />
-                        <span className="fs-sm">{getProvName(f.provozovna)}</span>
+                      <div className="d-flex align-items-center gap-2">
+                        <span
+                          className="rounded-circle d-inline-block"
+                          style={{ width: 8, height: 8, background: getProvColor(f.provozovna), flexShrink: 0 }}
+                        />
+                        <span className="fs-13">{getProvName(f.provozovna)}</span>
                       </div>
                     </td>
                   )}
-                  <td className="td-r td-mono fw-700">{fCzk(f.castka)}</td>
+                  <td className="text-end fw-bold font-monospace">{fCzk(f.castka)}</td>
                   <td>
-                    <span className={poSpl ? 'c-err fw-700' : 'c-2'}>
+                    <span className={poSpl ? 'text-danger fw-bold' : 'text-muted'}>
                       {fDate(f.splatnost)}
                     </span>
-                    {poSpl && (
-                      <div className="fs-xs c-err fw-600">PO SPLATNOSTI</div>
-                    )}
+                    {poSpl && <div className="text-danger fs-11 fw-bold">PO SPLATNOSTI</div>}
                   </td>
                   <td>
-                    <span
-                      className={urgentni ? 'fw-700' : 'c-2'}
-                      style={{ color: urgentni && !poSpl ? 'var(--c-warn)' : undefined }}
-                    >
+                    <span className={urgentni && !poSpl ? 'text-warning fw-bold' : 'text-muted'}>
                       {fDate(odeslatDo)}
                     </span>
                     {urgentni && !poSpl && (
-                      <div className="fs-xs fw-600" style={{ color: 'var(--c-warn)' }}>
-                        Dnes!
-                      </div>
+                      <div className="text-warning fs-11 fw-bold">Dnes!</div>
                     )}
                   </td>
                   <td>
+                    {prirazenaOsoba ? (
+                      <div className="d-flex align-items-center gap-2">
+                        <div
+                          className="rounded-circle d-flex align-items-center justify-content-center flex-shrink-0 fw-bold text-white"
+                          style={{ width: 24, height: 24, fontSize: 9, background: '#c9911a' }}
+                        >
+                          {prirazenaOsoba.avatar}
+                        </div>
+                        <span className="fs-12 text-nowrap">{prirazenaOsoba.jmeno.split(' ')[0]}</span>
+                      </div>
+                    ) : (
+                      <span className="text-muted fs-12">—</span>
+                    )}
+                  </td>
+                  <td>
+                    {/* SOURCE: Larkon .badge.bg-{color}-subtle.text-{color} */}
                     <span className={`badge ${cls}`}>{label}</span>
                   </td>
                 </tr>
@@ -237,26 +274,15 @@ export default function FakturyTable({
         </table>
       </div>
 
-      {/* Footer - zpracování dnů */}
-      <div className="card-footer">
-        <div className="fs-xs c-2">
-          Datum odeslání = splatnost −{' '}
-          <strong>{processingDays} dny</strong> (zpracování banky) ·{' '}
-          <span className="c-warn fw-600">oranžová</span> = odeslat dnes ·{' '}
-          <span className="c-err fw-600">červená</span> = po splatnosti
-        </div>
-        <div className="flex items-center gap-2">
-          <span className="fs-xs c-2">Nastavit zprac. dny:</span>
-          <select
-            className="select"
-            style={{ padding: '2px 24px 2px 8px', fontSize: 11 }}
-            value={processingDays}
-            disabled
-          >
-            {[1, 2, 3].map((d) => (
-              <option key={d} value={d}>{d} {d === 1 ? 'den' : 'dny'}</option>
-            ))}
-          </select>
+      {/* SOURCE: Larkon .card-footer */}
+      <div className="card-footer py-3 bg-light bg-opacity-50">
+        <div className="d-flex align-items-center justify-content-between flex-wrap gap-2">
+          <span className="text-muted fs-12">
+            Datum odeslání = splatnost −{' '}
+            <strong>{processingDays} dny</strong> (zpracování banky) ·{' '}
+            <span className="text-warning fw-semibold">oranžová</span> = odeslat dnes ·{' '}
+            <span className="text-danger fw-semibold">červená</span> = po splatnosti
+          </span>
         </div>
       </div>
     </div>

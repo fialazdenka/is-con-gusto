@@ -1,69 +1,80 @@
 /* ============================================================
    GLOBAL – CSS Custom Properties + Reset
+   Design system: Larkon v1.1.0
    ============================================================ */
+
+@import url('https://fonts.googleapis.com/css2?family=Hanken+Grotesk:ital,wght@0,100..900;1,100..900&family=Play:wght@400;700&display=swap');
 
 :root {
   /* Background */
-  --bg: #f1f5f9;
+  --bg: #f9f7f7;
   --surface: #ffffff;
-  --surface-raised: #f8fafc;
+  --surface-raised: #f8f5f1;
 
   /* Borders */
-  --border: #e2e8f0;
-  --border-light: #f1f5f9;
+  --border: #eaedf1;
+  --border-light: #f0eeee;
 
   /* Text */
-  --text-1: #0f172a;
-  --text-2: #475569;
-  --text-3: #94a3b8;
+  --text-1: #313b5e;
+  --text-2: #5d7186;
+  --text-3: #9097a7;
   --text-inv: #ffffff;
 
+  /* Primary (Larkon orange) */
+  --c-primary: #ff6c2f;
+  --c-primary-hover: #e85c1f;
+  --c-primary-soft: rgba(255, 108, 47, 0.1);
+
   /* Sidebar */
-  --sb-bg: #0f172a;
-  --sb-text: #94a3b8;
-  --sb-text-active: #f1f5f9;
-  --sb-active-bg: #1e293b;
-  --sb-hover-bg: rgba(255, 255, 255, 0.05);
-  --sb-w: 236px;
-  --sb-w-col: 58px;
+  --sb-bg: #262d34;
+  --sb-border: #2f3944;
+  --sb-text: #9097a7;
+  --sb-text-active: #ffffff;
+  --sb-active-bg: transparent;
+  --sb-hover-bg: transparent;
+  --sb-w: 280px;
+  --sb-w-col: 75px;
 
   /* Topbar */
-  --tb-h: 58px;
+  --tb-h: 70px;
+  --tb-bg: #f9f7f7;
+  --tb-text: #707793;
 
   /* Status */
-  --c-ok: #16a34a;
+  --c-ok: #22c55e;
   --c-ok-bg: #dcfce7;
-  --c-ok-text: #15803d;
+  --c-ok-text: #16a34a;
 
-  --c-err: #dc2626;
+  --c-err: #ef5f5f;
   --c-err-bg: #fee2e2;
-  --c-err-text: #b91c1c;
+  --c-err-text: #c53030;
 
-  --c-warn: #d97706;
+  --c-warn: #f9b931;
   --c-warn-bg: #fef3c7;
   --c-warn-text: #b45309;
 
-  --c-info: #2563eb;
+  --c-info: #1c84ee;
   --c-info-bg: #dbeafe;
   --c-info-text: #1d4ed8;
 
-  --c-live: #ea580c;
-  --c-live-bg: #fff7ed;
+  --c-live: #ff6c2f;
+  --c-live-bg: #fff0e8;
   --c-live-text: #c2410c;
 
-  --c-neutral-bg: #f1f5f9;
-  --c-neutral-text: #475569;
+  --c-neutral-bg: #eef2f7;
+  --c-neutral-text: #5d7186;
 
   /* Chart */
-  --chart-k: #3b82f6;
+  --chart-k: #1c84ee;
   --chart-b: #22c55e;
-  --chart-prev: #cbd5e1;
+  --chart-prev: #d8dfe7;
 
-  /* Shadows */
-  --sh-sm: 0 1px 3px 0 rgb(0 0 0 / 0.06), 0 1px 2px -1px rgb(0 0 0 / 0.06);
-  --sh-md: 0 4px 6px -1px rgb(0 0 0 / 0.07), 0 2px 4px -2px rgb(0 0 0 / 0.07);
-  --sh-lg: 0 10px 15px -3px rgb(0 0 0 / 0.08), 0 4px 6px -4px rgb(0 0 0 / 0.05);
-  --sh-xl: 0 20px 25px -5px rgb(0 0 0 / 0.1), 0 8px 10px -6px rgb(0 0 0 / 0.05);
+  /* Shadows (Larkon) */
+  --sh-sm: 0px 3px 4px 0px rgba(0, 0, 0, 0.03);
+  --sh-md: 0 5px 10px rgba(30, 32, 37, 0.08);
+  --sh-lg: 0 5px 10px rgba(30, 32, 37, 0.12);
+  --sh-xl: 0 10px 40px rgba(30, 32, 37, 0.14);
 
   /* Radius */
   --r-sm: 4px;
@@ -75,8 +86,8 @@
   /* Font sizes */
   --fs-xs: 11px;
   --fs-sm: 12px;
-  --fs-base: 13px;
-  --fs-md: 14px;
+  --fs-base: 14px;
+  --fs-md: 15px;
   --fs-lg: 16px;
   --fs-xl: 20px;
   --fs-2xl: 24px;
@@ -92,8 +103,8 @@
   --s8: 32px;
 
   /* Font */
-  --font: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto,
-    'Helvetica Neue', Arial, sans-serif;
+  --font: 'Hanken Grotesk', -apple-system, BlinkMacSystemFont, sans-serif;
+  --font-heading: 'Play', 'Hanken Grotesk', sans-serif;
 }
 
 /* ─── Reset ──────────────────────────────────────────────── */
@@ -111,7 +122,7 @@ body {
   height: 100%;
   font-family: var(--font);
   font-size: var(--fs-base);
-  color: var(--text-1);
+  color: var(--text-2);
   background: var(--bg);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
@@ -119,6 +130,11 @@ body {
 
 #root {
   height: 100%;
+}
+
+h1, h2, h3, h4, h5, h6 {
+  font-family: var(--font-heading);
+  color: var(--text-1);
 }
 
 a {
@@ -158,9 +174,9 @@ table {
   background: transparent;
 }
 ::-webkit-scrollbar-thumb {
-  background: #cbd5e1;
+  background: #d8dfe7;
   border-radius: 3px;
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: #94a3b8;
+  background: #b0b0bb;
 }

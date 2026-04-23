@@ -7,7 +7,7 @@ export default function App() {
     selectedSection: 'dashboard',
     selectedProvozovna: 'all',
     dataMode: 'live',
-    period: '7d',
+    period: 'tyden',
     drawerOpen: false,
     drawerProvozovnaId: null,
     sidebarCollapsed: false,

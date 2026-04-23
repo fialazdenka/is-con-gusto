@@ -1,23 +1,17 @@
-// ─────────────────────────────────────────────────────────────
 // COMPONENT: Cashflow Preview — Summary Card + Stat List
-// SOURCE:    Larkon-like → Card + ListGroup + StatRow
-// CUSTOM:    NO
+// SOURCE: Larkon _card.scss + Bootstrap utilities
+// CUSTOM: NO
 //
-// LARKON MAPPING:
-//   Outer:       <Card>
-//   Zůstatek:    <div className="p-3 bg-primary bg-opacity-10 rounded mb-3">
-//                  + <h3 className="text-primary fw-bold"> + <Badge>
-//   KPI grid:    <Row className="g-3 mb-3">
-//     Po splat:  <Col><div className="p-3 bg-danger bg-opacity-10 rounded">
-//     Čekající:  <Col><div className="p-3 bg-warning bg-opacity-10 rounded">
-//   Pohyby:      <ListGroup variant="flush">
-//     Each item: <ListGroupItem className="d-flex justify-content-between
-//                  align-items-center px-0">
-//     Kladná:    className="text-success fw-bold"
-//     Záporná:   className="fw-bold"
-//   Section tit: <div className="text-uppercase fw-semibold text-muted
-//                  fs-11 mb-2">
-// ─────────────────────────────────────────────────────────────
+// Larkon class mapping:
+//   .card                                     → karta
+//   .card-header                              → hlavička
+//   .card-body                                → tělo
+//   .p-3.bg-info.bg-opacity-10.rounded        → zůstatek highlight blok
+//   .row.g-3                                  → 2-slot grid (po splatnosti / čekající)
+//   .p-3.bg-danger.bg-opacity-10.rounded      → po splatnosti blok
+//   .p-3.bg-warning.bg-opacity-10.rounded     → čekající blok
+//   .d-flex.justify-content-between.border-bottom.py-2 → pohyb řádek
+//   .text-uppercase.fw-semibold.text-muted.fs-11 → sekce titulek
 
 import { CASHFLOW_ITEMS, FAKTURY, ZUSTATEK_UCET, fCzk, fDate } from '../data';
 
@@ -33,94 +27,64 @@ export default function CashflowPreview({ onNavigate }: Props) {
   const sumaCekajici     = cekajici.reduce((s, f) => s + f.castka, 0);
 
   return (
-    // COMPONENT: Card (Cashflow + Faktury summary)
-    // SOURCE: Larkon-like
-    // CUSTOM: NO
-    <div className="card section-gap">
-      <div className="card-header">
-        <div className="card-title-wrap">
-          <div className="card-title">Cashflow & Faktury</div>
-          <div className="card-sub">Stav k dnešnímu dni</div>
-        </div>
-        <button className="btn btn-ghost btn-sm" onClick={onNavigate}>
+    <div className="card h-100">
+      {/* SOURCE: Larkon .card-header */}
+      <div className="card-header d-flex align-items-center justify-content-between">
+        <h5 className="card-title mb-0">
+          Cashflow &amp; Faktury
+          <small className="text-muted fw-normal ms-2 fs-13">Stav k dnešnímu dni</small>
+        </h5>
+        <button className="btn btn-light btn-sm" onClick={onNavigate}>
           Detail →
         </button>
       </div>
 
-      <div className="card-body" style={{ paddingBottom: 12 }}>
-        {/* Zůstatek */}
-        <div
-          className="flex items-center justify-between"
-          style={{
-            padding: '12px 16px',
-            background: 'var(--c-info-bg)',
-            borderRadius: 'var(--r-md)',
-            marginBottom: 16,
-          }}
-        >
+      <div className="card-body">
+        {/* Zůstatek – SOURCE: Bootstrap .p-3.bg-info.bg-opacity-10.rounded */}
+        <div className="p-3 bg-info bg-opacity-10 rounded mb-3 d-flex align-items-center justify-content-between">
           <div>
-            <div className="fs-xs c-2 mb-1">Zůstatek na účtu</div>
-            <div className="fs-2xl fw-700 fv-mono" style={{ color: 'var(--c-info)' }}>
-              {fCzk(ZUSTATEK_UCET)}
-            </div>
+            <div className="text-muted fs-12 mb-1">Zůstatek na účtu</div>
+            <h3 className="text-info fw-bold font-monospace mb-0 text-nowrap">{fCzk(ZUSTATEK_UCET)}</h3>
           </div>
-          <span className="badge badge-info">Aktuální</span>
+          <span className="badge bg-info-subtle text-info">Aktuální</span>
         </div>
 
-        {/* Faktury stats */}
-        <div className="grid-2 mb-4">
-          <div
-            className="flex flex-col gap-1"
-            style={{
-              padding: '12px 14px',
-              background: 'var(--c-err-bg)',
-              borderRadius: 'var(--r-md)',
-            }}
-          >
-            <div className="fs-xs" style={{ color: 'var(--c-err-text)', fontWeight: 600 }}>
-              Po splatnosti
+        {/* Faktury stats – SOURCE: Bootstrap .row.g-3 */}
+        <div className="row g-3 mb-3">
+          <div className="col-6">
+            <div className="p-3 bg-danger bg-opacity-10 rounded">
+              <div className="text-danger fw-semibold fs-12">Po splatnosti</div>
+              <div className="h5 fw-bold font-monospace text-danger mb-1 text-nowrap">{fCzk(sumaPoSplatnosti)}</div>
+              <div className="text-muted fs-12">{poSplatnosti.length} faktura</div>
             </div>
-            <div className="fs-lg fw-700 fv-mono" style={{ color: 'var(--c-err)' }}>
-              {fCzk(sumaPoSplatnosti)}
-            </div>
-            <div className="fs-xs c-2">{poSplatnosti.length} faktura</div>
           </div>
-          <div
-            className="flex flex-col gap-1"
-            style={{
-              padding: '12px 14px',
-              background: 'var(--c-warn-bg)',
-              borderRadius: 'var(--r-md)',
-            }}
-          >
-            <div className="fs-xs" style={{ color: 'var(--c-warn-text)', fontWeight: 600 }}>
-              Čekající platby
+          <div className="col-6">
+            <div className="p-3 bg-warning rounded">
+              <div className="text-white fw-semibold fs-12">Čekající platby</div>
+              <div className="h5 fw-bold font-monospace text-white mb-1 text-nowrap">{fCzk(sumaCekajici)}</div>
+              <div className="fs-12" style={{ color: 'rgba(255,255,255,0.75)' }}>{cekajici.length} faktury</div>
             </div>
-            <div className="fs-lg fw-700 fv-mono" style={{ color: 'var(--c-warn)' }}>
-              {fCzk(sumaCekajici)}
-            </div>
-            <div className="fs-xs c-2">{cekajici.length} faktury</div>
           </div>
         </div>
 
         {/* Recent cashflow items */}
-        <div className="drawer-section-title mb-3">Poslední pohyby</div>
+        <div className="text-uppercase fw-semibold text-muted fs-11 mb-2">Poslední pohyby</div>
         {CASHFLOW_ITEMS.slice(0, 4).map((item) => (
-          <div key={item.id} className="stat-row">
-            <div className="stat-row-left">
-              <span style={{ fontSize: 14 }}>
-                {item.typ === 'prijem' ? '↑' : '↓'}
-              </span>
-              <span className="fs-sm">{item.popis}</span>
+          <div key={item.id} className="d-flex justify-content-between align-items-center border-bottom py-3">
+            <div className="d-flex align-items-center gap-2">
+              <iconify-icon
+                icon={item.typ === 'prijem' ? 'solar:arrow-up-bold' : 'solar:arrow-down-bold'}
+                className={item.typ === 'prijem' ? 'text-success' : 'text-muted'}
+              />
+              <span className="fs-13">{item.popis}</span>
             </div>
-            <div className="stat-row-right">
+            <div className="text-end">
               <div
-                className="stat-row-val"
-                style={{ color: item.typ === 'prijem' ? 'var(--c-ok)' : 'var(--text-1)' }}
+                className={`fw-semibold font-monospace fs-13 text-nowrap ${item.typ === 'prijem' ? 'text-success' : ''}`}
               >
                 {item.typ === 'prijem' ? '+' : '−'} {fCzk(item.castka)}
               </div>
-              <div className="stat-row-sub">{fDate(item.datum)}</div>
+              <div className="text-muted fs-11">{fDate(item.datum)}</div>
             </div>
           </div>
         ))}

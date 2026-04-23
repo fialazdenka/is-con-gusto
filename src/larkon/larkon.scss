@@ -1,0 +1,34 @@
+// ============================================================
+// LARKON v1.1.0 – Bootstrap + Larkon overrides
+// Compiled for IS Con Gusto React wireframe
+// ============================================================
+
+// 1. Bootstrap functions (must come first)
+@import "bootstrap/scss/functions";
+@import "bootstrap/scss/variables";
+
+// 2. Larkon variable overrides
+@import "config/variables";
+@import "config/variables-dark";
+@import "config/variables-custom";
+@import "config/theme-mode";
+
+// 3. Full Bootstrap
+@import "bootstrap/scss/bootstrap";
+
+// 4. Larkon structure
+@import "structure/topbar";
+@import "structure/vertical";
+@import "structure/page-title";
+
+// 5. Larkon component extensions
+@import "buttons";
+@import "card";
+@import "badge";
+@import "tables";
+@import "avatar";
+@import "nav";
+@import "modal";
+@import "helper";
+@import "widgets";
+@import "reboot";

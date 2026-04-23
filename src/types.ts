@@ -1,6 +1,6 @@
-export type ProvozovnaId = 'all' | 'cg-brno' | 'piazza' | 'monte';
+export type ProvozovnaId = 'all' | string;
 export type DataMode = 'live' | 'zavierka';
-export type Period = '7d' | '30d' | 'mtd';
+export type Period = 'dnes' | 'vcera' | 'tyden' | 'minuly-tyden' | 'minuly-mesic' | 'rok';
 export type SidebarSection =
   | 'dashboard'
   | 'trzby'
@@ -8,6 +8,7 @@ export type SidebarSection =
   | 'provozovny'
   | 'cashflow'
   | 'faktury'
+  | 'pohledavky'
   | 'platby'
   | 'reporty'
   | 'nastaveni'

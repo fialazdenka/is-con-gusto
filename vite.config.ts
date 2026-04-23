@@ -3,5 +3,5 @@ import react from '@vitejs/plugin-react'
 
 export default defineConfig({
   plugins: [react()],
-  base: '/is-con-gusto/',
+  base: process.env.NODE_ENV === 'production' ? '/is-con-gusto/' : '/',
 })

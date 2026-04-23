@@ -1,5 +1,6 @@
 /* ============================================================
    COMPONENTS
+   Design system: Larkon v1.1.0
    ============================================================ */
 
 /* ─── Grid helpers ───────────────────────────────────────── */
@@ -11,9 +12,7 @@
 .grid-3-1 { display: grid; grid-template-columns: 3fr 1fr; gap: var(--s4); }
 
 /* ─── Card ───────────────────────────────────────────────────
-   COMPONENT: Card
-   SOURCE: Larkon-like
-   CUSTOM: NO
+   SOURCE: Larkon _card.scss
    ──────────────────────────────────────────────────────────── */
 
 .card {
@@ -21,6 +20,7 @@
   border: 1px solid var(--border);
   border-radius: var(--r-lg);
   box-shadow: var(--sh-sm);
+  margin-bottom: var(--s4);
 }
 
 .card-header {
@@ -40,10 +40,12 @@
 }
 
 .card-title {
-  font-size: var(--fs-md);
+  font-size: var(--fs-lg);
   font-weight: 700;
+  font-family: var(--font-heading);
   color: var(--text-1);
   line-height: 1.2;
+  margin: 0;
 }
 
 .card-sub {
@@ -65,15 +67,16 @@
 .card-footer {
   padding: var(--s3) var(--s5);
   border-top: 1px solid var(--border);
+  background: var(--surface-raised);
+  border-radius: 0 0 var(--r-lg) var(--r-lg);
   display: flex;
   align-items: center;
   justify-content: space-between;
 }
 
 /* ─── KPI Card ───────────────────────────────────────────────
-   COMPONENT: KPI / Stat Card
-   SOURCE: Larkon-like
-   CUSTOM: NO
+   SOURCE: Larkon _widgets.scss – stat card pattern
+   CUSTOM: top accent bar + gastro metrics
    ──────────────────────────────────────────────────────────── */
 
 .kpi-card {
@@ -106,14 +109,16 @@
   justify-content: space-between;
 }
 
+/* Icon wrap – SOURCE: Larkon .avatar-md .bg-soft-{color} */
+
 .kpi-icon-wrap {
-  width: 38px;
-  height: 38px;
+  width: 40px;
+  height: 40px;
   border-radius: var(--r-md);
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 18px;
+  font-size: 20px;
   flex-shrink: 0;
 }
 
@@ -126,7 +131,8 @@
 
 .kpi-value {
   font-size: 26px;
-  font-weight: 800;
+  font-weight: 700;
+  font-family: var(--font-heading);
   color: var(--text-1);
   line-height: 1;
   letter-spacing: -0.5px;
@@ -150,10 +156,7 @@
   color: var(--text-3);
 }
 
-/* Sparkline inside KPI
-   COMPONENT: Sparkline
-   SOURCE: standard admin pattern
-   CUSTOM: NO */
+/* Sparkline – CUSTOM (no Larkon equivalent) */
 
 .sparkline {
   display: flex;
@@ -176,16 +179,14 @@
 }
 
 /* ─── Badge ──────────────────────────────────────────────────
-   COMPONENT: Badge / Status Label
-   SOURCE: Larkon-like
-   CUSTOM: NO
+   SOURCE: Larkon _badge.scss
    ──────────────────────────────────────────────────────────── */
 
 .badge {
   display: inline-flex;
   align-items: center;
   gap: 4px;
-  padding: 2px 8px;
+  padding: 3px 9px;
   border-radius: var(--r-full);
   font-size: var(--fs-xs);
   font-weight: 600;
@@ -199,6 +200,9 @@
 .badge-info   { background: var(--c-info-bg); color: var(--c-info-text); }
 .badge-live   { background: var(--c-live-bg); color: var(--c-live-text); }
 .badge-neutral { background: var(--c-neutral-bg); color: var(--c-neutral-text); }
+
+/* Soft color badges – SOURCE: Larkon .badge-{color}-subtle */
+.badge-primary-soft { background: var(--c-primary-soft); color: var(--c-primary); }
 
 .badge-dot {
   width: 6px;
@@ -218,9 +222,7 @@
 }
 
 /* ─── Alert strip ────────────────────────────────────────────
-   COMPONENT: Alert / Info Strip
-   SOURCE: standard admin pattern
-   CUSTOM: NO
+   SOURCE: Larkon _alerts.scss
    ──────────────────────────────────────────────────────────── */
 
 .alert-strip {
@@ -243,36 +245,49 @@
 .alert-cta  { font-weight: 700; text-decoration: underline; cursor: pointer; white-space: nowrap; }
 
 /* ─── Button ─────────────────────────────────────────────────
-   COMPONENT: Button
-   SOURCE: Larkon-like
-   CUSTOM: NO
+   SOURCE: Larkon _buttons.scss
    ──────────────────────────────────────────────────────────── */
 
 .btn {
   display: inline-flex;
   align-items: center;
   gap: var(--s2);
-  padding: 7px var(--s4);
+  padding: 8px var(--s4);
   border-radius: var(--r-md);
   font-size: var(--fs-sm);
   font-weight: 600;
   cursor: pointer;
-  transition: all 0.14s;
+  transition: all 0.2s ease-in-out;
   white-space: nowrap;
   border: 1px solid transparent;
   line-height: 1;
   user-select: none;
 }
 
+/* Primary – Larkon orange */
 .btn-primary {
-  background: #2563eb;
+  background: var(--c-primary);
   color: white;
-  border-color: #2563eb;
+  border-color: var(--c-primary);
 }
-.btn-primary:hover { background: #1d4ed8; border-color: #1d4ed8; }
+.btn-primary:hover {
+  background: var(--c-primary-hover);
+  border-color: var(--c-primary-hover);
+}
+
+/* Soft primary – SOURCE: Larkon .btn-soft-primary */
+.btn-soft-primary {
+  background: var(--c-primary-soft);
+  color: var(--c-primary);
+  border-color: transparent;
+}
+.btn-soft-primary:hover {
+  background: var(--c-primary);
+  color: white;
+}
 
 .btn-secondary {
-  background: white;
+  background: var(--surface);
   color: var(--text-1);
   border-color: var(--border);
 }
@@ -284,43 +299,54 @@
 }
 .btn-ghost:hover { background: var(--bg); color: var(--text-1); }
 
+/* Soft success/danger – SOURCE: Larkon .btn-soft-{color} */
+.btn-soft-success {
+  background: var(--c-ok-bg);
+  color: var(--c-ok-text);
+  border-color: transparent;
+}
+.btn-soft-success:hover { background: var(--c-ok); color: white; }
+
+.btn-soft-danger {
+  background: var(--c-err-bg);
+  color: var(--c-err-text);
+  border-color: transparent;
+}
+.btn-soft-danger:hover { background: var(--c-err); color: white; }
+
 .btn-sm { padding: 5px var(--s3); font-size: var(--fs-xs); }
 .btn-xs { padding: 3px var(--s2); font-size: var(--fs-xs); }
 
 /* ─── Select ─────────────────────────────────────────────────
-   COMPONENT: Select / Dropdown
-   SOURCE: standard admin pattern
-   CUSTOM: NO
+   SOURCE: Larkon _forms.scss
    ──────────────────────────────────────────────────────────── */
 
 .select {
-  padding: 6px var(--s3);
-  padding-right: 26px;
+  padding: 7px var(--s3);
+  padding-right: 28px;
   border: 1px solid var(--border);
   border-radius: var(--r-md);
-  background: white;
+  background: var(--surface);
   font-size: var(--fs-sm);
   color: var(--text-1);
   cursor: pointer;
   outline: none;
-  transition: border-color 0.14s, box-shadow 0.14s;
+  transition: border-color 0.2s, box-shadow 0.2s;
   -webkit-appearance: none;
   appearance: none;
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='10' viewBox='0 0 10 10'%3E%3Cpath fill='%2394a3b8' d='M5 7L0.5 2.5h9z'/%3E%3C/svg%3E");
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='10' viewBox='0 0 10 10'%3E%3Cpath fill='%23b0b0bb' d='M5 7L0.5 2.5h9z'/%3E%3C/svg%3E");
   background-repeat: no-repeat;
   background-position: right 8px center;
   font-weight: 500;
 }
 
 .select:focus {
-  border-color: #3b82f6;
-  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.12);
+  border-color: var(--c-primary);
+  box-shadow: 0 0 0 3px rgba(255, 108, 47, 0.12);
 }
 
 /* ─── Data table ─────────────────────────────────────────────
-   COMPONENT: Data Table
-   SOURCE: Larkon-like
-   CUSTOM: NO
+   SOURCE: Larkon _tables.scss
    ──────────────────────────────────────────────────────────── */
 
 .table-wrap { overflow-x: auto; }
@@ -340,30 +366,29 @@
   color: var(--text-2);
   border-bottom: 1px solid var(--border);
   white-space: nowrap;
-  background: #fafafa;
+  background: var(--surface-raised);
 }
 
 .dtable td {
-  padding: 10px var(--s4);
+  padding: 11px var(--s4);
   font-size: var(--fs-sm);
   color: var(--text-1);
   border-bottom: 1px solid var(--border-light);
+  vertical-align: middle;
 }
 
 .dtable tbody tr { transition: background 0.1s; }
-.dtable tbody tr:hover { background: #fafafa; }
+.dtable tbody tr:hover { background: var(--surface-raised); }
 .dtable tbody tr:last-child td { border-bottom: none; }
 
 .td-r   { text-align: right; }
 .td-mono { font-variant-numeric: tabular-nums; }
 .td-muted { color: var(--text-2); }
-.td-link  { cursor: pointer; color: var(--c-info); font-weight: 600; }
+.td-link  { cursor: pointer; color: var(--c-primary); font-weight: 600; }
 .td-link:hover { text-decoration: underline; }
 
 /* ─── Filter bar ─────────────────────────────────────────────
-   COMPONENT: Filter Bar
    SOURCE: standard admin pattern
-   CUSTOM: NO
    ──────────────────────────────────────────────────────────── */
 
 .filter-bar {
@@ -382,9 +407,7 @@
 }
 
 /* ─── Tabs ───────────────────────────────────────────────────
-   COMPONENT: Tabs
-   SOURCE: Larkon-like
-   CUSTOM: NO
+   SOURCE: Larkon _nav.scss
    ──────────────────────────────────────────────────────────── */
 
 .tabs {
@@ -401,7 +424,7 @@
   color: var(--text-2);
   border-bottom: 2px solid transparent;
   margin-bottom: -2px;
-  transition: all 0.14s;
+  transition: all 0.2s;
   cursor: pointer;
   user-select: none;
 }
@@ -409,15 +432,13 @@
 .tab-btn:hover { color: var(--text-1); }
 
 .tab-btn.active {
-  color: #2563eb;
-  border-bottom-color: #2563eb;
+  color: var(--c-primary);
+  border-bottom-color: var(--c-primary);
   font-weight: 700;
 }
 
 /* ─── Collapsible section ────────────────────────────────────
-   COMPONENT: Collapsible / Accordion
-   SOURCE: standard admin pattern
-   CUSTOM: NO
+   SOURCE: Larkon _accordion.scss
    ──────────────────────────────────────────────────────────── */
 
 .collapsible-toggle {
@@ -438,9 +459,7 @@
 .collapsible-arrow.open { transform: rotate(180deg); }
 
 /* ─── Progress bar ───────────────────────────────────────────
-   COMPONENT: Progress / Mini Bar
-   SOURCE: standard admin pattern
-   CUSTOM: NO
+   SOURCE: Larkon _progress.scss
    ──────────────────────────────────────────────────────────── */
 
 .prog {
@@ -459,9 +478,7 @@
 }
 
 /* ─── Chart card ─────────────────────────────────────────────
-   COMPONENT: Chart Card
-   SOURCE: Larkon-like
-   CUSTOM: NO
+   CUSTOM: SVG chart (no Larkon equivalent – see docs)
    ──────────────────────────────────────────────────────────── */
 
 .chart-area {
@@ -475,8 +492,6 @@
   height: 100%;
   display: block;
 }
-
-/* Chart legend */
 
 .chart-legend {
   display: flex;
@@ -501,15 +516,71 @@
   flex-shrink: 0;
 }
 
+/* ─── Modal ──────────────────────────────────────────────────
+   SOURCE: Larkon _modal.scss
+   ──────────────────────────────────────────────────────────── */
+
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(15, 23, 42, 0.5);
+  z-index: 400;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  animation: fadeIn 0.15s ease;
+}
+
+.modal {
+  background: var(--surface);
+  border-radius: var(--r-lg);
+  box-shadow: var(--sh-xl);
+  width: 100%;
+  max-width: 480px;
+  margin: var(--s4);
+  animation: modalIn 0.2s ease;
+}
+
+@keyframes modalIn {
+  from { transform: scale(0.96) translateY(8px); opacity: 0; }
+  to   { transform: scale(1) translateY(0); opacity: 1; }
+}
+
+.modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--s5) var(--s6);
+  border-bottom: 1px solid var(--border);
+}
+
+.modal-title {
+  font-size: var(--fs-lg);
+  font-weight: 700;
+  font-family: var(--font-heading);
+  color: var(--text-1);
+}
+
+.modal-body {
+  padding: var(--s5) var(--s6);
+}
+
+.modal-footer {
+  padding: var(--s4) var(--s6);
+  border-top: 1px solid var(--border);
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--s3);
+}
+
 /* ─── Section spacer ─────────────────────────────────────────── */
 
 .section-gap   { margin-bottom: var(--s4); }
 .section-gap-lg { margin-bottom: var(--s6); }
 
-/* ─── Stat row (used in summary panels) ─────────────────────
-   COMPONENT: Stat Row
-   SOURCE: standard admin pattern
-   CUSTOM: NO */
+/* ─── Stat row ───────────────────────────────────────────────
+   SOURCE: Larkon _widgets.scss – stat list pattern
+   ──────────────────────────────────────────────────────────── */
 
 .stat-row {
   display: flex;
@@ -576,12 +647,13 @@
 
 .placeholder-icon {
   font-size: 52px;
-  opacity: 0.25;
+  opacity: 0.2;
 }
 
 .placeholder-title {
   font-size: var(--fs-xl);
   font-weight: 700;
+  font-family: var(--font-heading);
   color: var(--text-1);
 }
 
@@ -602,6 +674,7 @@
   background: var(--bg);
   border-radius: var(--r-md);
   padding: var(--s4);
+  border: 1px solid var(--border);
 }
 
 .drawer-kpi-label {
@@ -613,7 +686,8 @@
 
 .drawer-kpi-val {
   font-size: var(--fs-xl);
-  font-weight: 800;
+  font-weight: 700;
+  font-family: var(--font-heading);
   color: var(--text-1);
   font-variant-numeric: tabular-nums;
 }
@@ -681,6 +755,7 @@
 .c-warn  { color: var(--c-warn); }
 .c-info  { color: var(--c-info); }
 .c-live  { color: var(--c-live); }
+.c-primary { color: var(--c-primary); }
 
 .mt-1 { margin-top: var(--s1); }
 .mt-2 { margin-top: var(--s2); }

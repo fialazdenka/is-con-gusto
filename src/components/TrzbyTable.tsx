@@ -1,24 +1,18 @@
-// ─────────────────────────────────────────────────────────────
-// COMPONENT: Tržby Detail Table — Interactive DataTable + Tabs
-// SOURCE:    Larkon-like → Card + Nav Tabs + Table + Form.Select
-// CUSTOM:    NO
+// COMPONENT: Tržby Detail Table – Interactive DataTable + Tabs
+// SOURCE: Larkon _tables.scss + _card.scss + _nav.scss
+// CUSTOM: NO
 //
-// LARKON MAPPING:
-//   Outer:      <Card>
-//   Header:     <Card.Header className="d-flex align-items-center gap-3">
-//   Tabs:       <Nav variant="tabs" className="card-header-tabs mt-2">
-//                 <Nav.Item><Nav.Link active={...}>Podle dne</Nav.Link>
-//   Select:     <Form.Select size="sm" style={{width:"auto"}}>
-//   Export btn: <Button variant="outline-secondary" size="sm">
-//                 <Download size={13}/> Export
-//   Table:      <Table responsive hover> — klient-side sort:
-//                 onClick na <th> → setState sortKey + toggleDir
-//   Sort ikony: Lucide <ChevronsUpDown> / <ChevronUp> / <ChevronDown>
-//               className="ms-1 text-muted" size={12}
-//   Mode badge: stejné jako ostatní tabulky (live/závěrka)
-//   Tfoot:      <tfoot><tr className="fw-bold bg-light">
-//                 <td colSpan={3}>Celkem</td> + 3× <td className="text-end">
-// ─────────────────────────────────────────────────────────────
+// Larkon class mapping:
+//   .card                             → karta
+//   .card-header                      → header s tabs
+//   .nav.nav-tabs.card-header-tabs    → tab navigace
+//   .nav-item / .nav-link.active      → tab položka
+//   .table.table-hover.table-centered.table-nowrap → tabulka
+//   .badge.bg-success-subtle.text-success → live badge
+//   .badge.bg-info-subtle.text-info   → závěrka badge
+//   .form-select.form-select-sm       → filtr select
+//   .btn.btn-light.btn-sm             → export tlačítko
+//   tfoot.fw-bold + td                → součtový řádek
 
 import { useState } from 'react';
 import type { ProvozovnaId } from '../types';
@@ -31,8 +25,8 @@ interface Props {
 type SortKey = 'datum' | 'kuchyn' | 'bar' | 'celkem';
 
 export default function TrzbyTable({ provozovna }: Props) {
-  const [sortKey,  setSortKey]  = useState<SortKey>('datum');
-  const [sortDir,  setSortDir]  = useState<'asc' | 'desc'>('desc');
+  const [sortKey,   setSortKey]   = useState<SortKey>('datum');
+  const [sortDir,   setSortDir]   = useState<'asc' | 'desc'>('desc');
   const [activeTab, setActiveTab] = useState<'den' | 'provozovna'>('den');
 
   const rows = TRZBY_7D.filter(
@@ -58,8 +52,11 @@ export default function TrzbyTable({ provozovna }: Props) {
   }
 
   function SortIcon({ col }: { col: SortKey }) {
-    if (sortKey !== col) return <span style={{ opacity: 0.3 }}>⇅</span>;
-    return <span>{sortDir === 'asc' ? '↑' : '↓'}</span>;
+    if (sortKey !== col)
+      return <iconify-icon icon="solar:sort-bold" className="ms-1 text-muted fs-12" />;
+    return sortDir === 'asc'
+      ? <iconify-icon icon="solar:alt-arrow-up-bold" className="ms-1 fs-12" />
+      : <iconify-icon icon="solar:alt-arrow-down-bold" className="ms-1 fs-12" />;
   }
 
   const total = sorted.reduce(
@@ -67,52 +64,57 @@ export default function TrzbyTable({ provozovna }: Props) {
     { kuchyn: 0, bar: 0, celkem: 0 }
   );
 
+  void activeTab;
+
   return (
-    // COMPONENT: Card + Data Table + Tabs
-    // SOURCE: Larkon-like
-    // CUSTOM: NO
-    <div className="card">
+    <div className="card mb-4">
+      {/* SOURCE: Larkon .card-header s nav-tabs */}
       <div className="card-header">
-        <div className="card-title-wrap">
-          <div className="card-title">Tržby – detail</div>
-          <div className="card-sub">{sorted.length} záznamů</div>
+        <div className="d-flex align-items-center justify-content-between flex-wrap gap-2">
+          <h5 className="card-title mb-0">
+            Tržby – detail
+            <small className="text-muted fw-normal ms-2 fs-13">{sorted.length} záznamů</small>
+          </h5>
+          <div className="d-flex align-items-center gap-2">
+            <select className="form-select form-select-sm" style={{ width: 'auto' }} value={provozovna} disabled>
+              <option value="all">Všechny provozovny</option>
+              {PROVOZOVNY.map((p) => (
+                <option key={p.id} value={p.id}>{p.name}</option>
+              ))}
+            </select>
+            <button className="btn btn-light btn-sm">
+              Export
+            </button>
+          </div>
         </div>
-        <div className="card-actions">
-          <select
-            className="select"
-            value={provozovna}
-            disabled
-          >
-            <option value="all">Všechny provozovny</option>
-            {PROVOZOVNY.map((p) => (
-              <option key={p.id} value={p.id}>{p.name}</option>
-            ))}
-          </select>
-          <button className="btn btn-secondary btn-sm">⬇ Export</button>
-        </div>
+
+        {/* SOURCE: Larkon .nav.nav-tabs.card-header-tabs */}
+        <ul className="nav nav-tabs card-header-tabs mt-2">
+          <li className="nav-item">
+            <a
+              className={`nav-link${activeTab === 'den' ? ' active' : ''}`}
+              style={{ cursor: 'pointer' }}
+              onClick={() => setActiveTab('den')}
+            >
+              Podle dne
+            </a>
+          </li>
+          <li className="nav-item">
+            <a
+              className={`nav-link${activeTab === 'provozovna' ? ' active' : ''}`}
+              style={{ cursor: 'pointer' }}
+              onClick={() => setActiveTab('provozovna')}
+            >
+              Podle provozovny
+            </a>
+          </li>
+        </ul>
       </div>
 
-      <div style={{ padding: '0 20px' }}>
-        {/* Tabs */}
-        <div className="tabs">
-          <button
-            className={`tab-btn${activeTab === 'den' ? ' active' : ''}`}
-            onClick={() => setActiveTab('den')}
-          >
-            Podle dne
-          </button>
-          <button
-            className={`tab-btn${activeTab === 'provozovna' ? ' active' : ''}`}
-            onClick={() => setActiveTab('provozovna')}
-          >
-            Podle provozovny
-          </button>
-        </div>
-      </div>
-
-      <div className="table-wrap">
-        <table className="dtable">
-          <thead>
+      {/* SOURCE: Larkon .table.table-hover.table-centered.table-nowrap */}
+      <div className="table-responsive">
+        <table className="table table-hover table-centered table-nowrap mb-0">
+          <thead className="table-light">
             <tr>
               <th
                 style={{ cursor: 'pointer', userSelect: 'none' }}
@@ -123,21 +125,21 @@ export default function TrzbyTable({ provozovna }: Props) {
               <th>Provozovna</th>
               <th>Režim</th>
               <th
-                className="td-r"
+                className="text-end"
                 style={{ cursor: 'pointer', userSelect: 'none' }}
                 onClick={() => handleSort('kuchyn')}
               >
                 Kuchyň <SortIcon col="kuchyn" />
               </th>
               <th
-                className="td-r"
+                className="text-end"
                 style={{ cursor: 'pointer', userSelect: 'none' }}
                 onClick={() => handleSort('bar')}
               >
                 Bar <SortIcon col="bar" />
               </th>
               <th
-                className="td-r"
+                className="text-end"
                 style={{ cursor: 'pointer', userSelect: 'none' }}
                 onClick={() => handleSort('celkem')}
               >
@@ -148,46 +150,51 @@ export default function TrzbyTable({ provozovna }: Props) {
           <tbody>
             {sorted.map((row, i) => (
               <tr key={`${row.datum}-${row.provozovna}-${i}`}>
-                <td className="td-muted">{fDate(row.datum)}</td>
+                <td className="text-muted">{fDate(row.datum)}</td>
                 <td>
-                  <div className="flex items-center gap-2">
-                    <div className="prov-dot" style={{ background: getProvColor(row.provozovna) }} />
+                  <div className="d-flex align-items-center gap-2">
+                    <span
+                      className="rounded-circle d-inline-block flex-shrink-0"
+                      style={{ width: 8, height: 8, background: getProvColor(row.provozovna) }}
+                    />
                     {getProvName(row.provozovna)}
                   </div>
                 </td>
                 <td>
+                  {/* SOURCE: Larkon .badge.bg-{color}-subtle.text-{color} */}
                   {row.mode === 'live' ? (
-                    <span className="badge badge-live">
-                      <span className="badge-dot" /> Live
+                    <span className="badge bg-success-subtle text-success">
+                      <iconify-icon icon="solar:circle-bold" className="me-1" style={{ fontSize: 8 }} />
+                      Live
                     </span>
                   ) : (
-                    <span className="badge badge-info">
-                      <span className="badge-dot" /> Závěrka
+                    <span className="badge bg-info-subtle text-info">
+                      <iconify-icon icon="solar:record-bold" className="me-1" style={{ fontSize: 8 }} />
+                      Závěrka
                     </span>
                   )}
                 </td>
-                <td className="td-r td-mono" style={{ color: '#3b82f6' }}>
+                <td className="text-end font-monospace" style={{ color: '#1c84ee' }}>
                   {fCzk(row.kuchyn)}
                 </td>
-                <td className="td-r td-mono" style={{ color: '#16a34a' }}>
+                <td className="text-end font-monospace" style={{ color: '#16a34a' }}>
                   {fCzk(row.bar)}
                 </td>
-                <td className="td-r td-mono fw-700">{fCzk(row.celkem)}</td>
+                <td className="text-end font-monospace fw-bold">{fCzk(row.celkem)}</td>
               </tr>
             ))}
           </tbody>
           <tfoot>
-            <tr style={{ background: '#f8fafc', borderTop: '2px solid var(--border)' }}>
-              <td className="fw-700" colSpan={3}>
-                Celkem
-              </td>
-              <td className="td-r td-mono fw-700" style={{ color: '#3b82f6' }}>
+            {/* SOURCE: Bootstrap tfoot pattern */}
+            <tr className="fw-bold table-light">
+              <td colSpan={3}>Celkem</td>
+              <td className="text-end font-monospace" style={{ color: '#1c84ee' }}>
                 {fCzk(total.kuchyn)}
               </td>
-              <td className="td-r td-mono fw-700" style={{ color: '#16a34a' }}>
+              <td className="text-end font-monospace" style={{ color: '#16a34a' }}>
                 {fCzk(total.bar)}
               </td>
-              <td className="td-r td-mono fw-700" style={{ color: 'var(--c-info)', fontSize: 'var(--fs-md)' }}>
+              <td className="text-end font-monospace fs-6">
                 {fCzk(total.celkem)}
               </td>
             </tr>

@@ -1,7 +1,7 @@
 /* ============================================================
    LAYOUT SHELL
    COMPONENT: App Shell (Sidebar + Topbar + Content)
-   SOURCE: Larkon-like / standard admin pattern
+   SOURCE: Larkon _vertical.scss + _topbar.scss
    CUSTOM: NO
    ============================================================ */
 
@@ -12,9 +12,7 @@
 }
 
 /* ─── Sidebar ────────────────────────────────────────────────
-   COMPONENT: Sidebar Navigation
-   SOURCE: Larkon-like
-   CUSTOM: NO
+   SOURCE: Larkon .main-nav
    ──────────────────────────────────────────────────────────── */
 
 .sidebar {
@@ -24,9 +22,10 @@
   display: flex;
   flex-direction: column;
   overflow: hidden;
-  transition: width 0.22s ease, min-width 0.22s ease;
+  transition: width 0.3s ease-in-out, min-width 0.3s ease-in-out;
   z-index: 100;
   flex-shrink: 0;
+  border-right: 1px solid var(--sb-border);
 }
 
 .sidebar.collapsed {
@@ -34,28 +33,29 @@
   min-width: var(--sb-w-col);
 }
 
-/* Logo row */
+/* Logo row – SOURCE: Larkon .logo-box */
 
 .sb-logo {
   height: var(--tb-h);
   display: flex;
   align-items: center;
-  padding: 0 var(--s4);
-  border-bottom: 1px solid rgba(255, 255, 255, 0.07);
+  padding: 0 25px;
+  border-bottom: 1px solid var(--sb-border);
   gap: var(--s3);
   flex-shrink: 0;
 }
 
 .sb-logo-mark {
-  width: 30px;
-  height: 30px;
-  background: linear-gradient(135deg, #3b82f6, #1d4ed8);
+  width: 32px;
+  height: 32px;
+  background: var(--c-primary);
   border-radius: var(--r-md);
   display: flex;
   align-items: center;
   justify-content: center;
   font-size: 13px;
-  font-weight: 800;
+  font-weight: 700;
+  font-family: var(--font-heading);
   color: white;
   flex-shrink: 0;
   letter-spacing: -0.5px;
@@ -64,12 +64,14 @@
 
 .sb-logo-text {
   overflow: hidden;
-  line-height: 1.2;
+  line-height: 1.25;
+  transition: opacity 0.2s;
 }
 
 .sb-logo-title {
   font-size: var(--fs-md);
   font-weight: 700;
+  font-family: var(--font-heading);
   color: var(--sb-text-active);
   white-space: nowrap;
 }
@@ -84,7 +86,7 @@
   display: none;
 }
 
-/* Nav */
+/* Nav – SOURCE: Larkon .navbar-nav */
 
 .sb-nav {
   flex: 1;
@@ -93,66 +95,79 @@
   padding: var(--s3) 0;
 }
 
+/* Section label – SOURCE: Larkon .menu-title */
+
 .sb-section-label {
-  font-size: var(--fs-xs);
+  font-size: 11px;
   font-weight: 600;
   text-transform: uppercase;
-  letter-spacing: 0.07em;
-  color: rgba(148, 163, 184, 0.45);
-  padding: var(--s4) var(--s4) var(--s2);
+  letter-spacing: 0.05em;
+  color: rgba(144, 151, 167, 0.5);
+  padding: 10px 25px 6px;
   white-space: nowrap;
   overflow: hidden;
-  height: 32px;
+  height: 36px;
+  line-height: 1.8;
 }
 
 .sidebar.collapsed .sb-section-label {
   visibility: hidden;
 }
 
+/* Nav item – SOURCE: Larkon .nav-item + .nav-link */
+
 .sb-item {
   display: flex;
   align-items: center;
   gap: var(--s3);
-  padding: 7px var(--s3);
-  margin: 1px var(--s2);
-  border-radius: var(--r-md);
+  padding: 10px 25px;
+  margin: 0;
+  border-left: 3px solid transparent;
   color: var(--sb-text);
-  font-size: var(--fs-md);
-  font-weight: 500;
+  font-size: 15px;
+  font-weight: 400;
   cursor: pointer;
-  transition: background 0.14s, color 0.14s;
+  transition: all 0.2s ease-in-out;
   white-space: nowrap;
   user-select: none;
+  line-height: 1;
 }
 
 .sb-item:hover {
-  background: var(--sb-hover-bg);
   color: var(--sb-text-active);
+  background: rgba(255, 255, 255, 0.04);
 }
 
 .sb-item.active {
-  background: var(--sb-active-bg);
   color: var(--sb-text-active);
+  border-left-color: var(--c-primary);
+  font-weight: 500;
+  background: rgba(255, 108, 47, 0.06);
 }
 
 .sb-item.active .sb-icon {
-  color: #60a5fa;
+  color: var(--c-primary);
 }
 
+/* Nav icon – SOURCE: Larkon .nav-icon */
+
 .sb-icon {
-  width: 18px;
-  height: 18px;
+  width: 22px;
+  height: 22px;
   flex-shrink: 0;
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 15px;
+  font-size: 18px;
   line-height: 1;
+  color: inherit;
 }
+
+/* Nav label */
 
 .sb-label {
   flex: 1;
-  transition: opacity 0.15s;
+  transition: opacity 0.2s;
 }
 
 .sidebar.collapsed .sb-label {
@@ -161,6 +176,8 @@
   overflow: hidden;
   pointer-events: none;
 }
+
+/* Badge */
 
 .sb-badge {
   background: var(--c-err);
@@ -180,11 +197,11 @@
   display: none;
 }
 
-/* Footer */
+/* Footer user row */
 
 .sb-footer {
-  padding: var(--s3) var(--s3);
-  border-top: 1px solid rgba(255, 255, 255, 0.07);
+  padding: var(--s3);
+  border-top: 1px solid var(--sb-border);
   flex-shrink: 0;
 }
 
@@ -192,26 +209,27 @@
   display: flex;
   align-items: center;
   gap: var(--s3);
-  padding: var(--s2) var(--s2);
+  padding: var(--s2);
   border-radius: var(--r-md);
   cursor: pointer;
   transition: background 0.14s;
 }
 
 .sb-user:hover {
-  background: var(--sb-hover-bg);
+  background: rgba(255, 255, 255, 0.05);
 }
 
 .sb-avatar {
-  width: 30px;
-  height: 30px;
+  width: 32px;
+  height: 32px;
   border-radius: var(--r-full);
-  background: linear-gradient(135deg, #4f46e5, #7c3aed);
+  background: var(--c-primary);
   display: flex;
   align-items: center;
   justify-content: center;
   font-size: var(--fs-sm);
   font-weight: 700;
+  font-family: var(--font-heading);
   color: white;
   flex-shrink: 0;
   user-select: none;
@@ -251,14 +269,12 @@
 }
 
 /* ─── Topbar ─────────────────────────────────────────────────
-   COMPONENT: Topbar / Header
-   SOURCE: Larkon-like
-   CUSTOM: NO
+   SOURCE: Larkon _topbar.scss
    ──────────────────────────────────────────────────────────── */
 
 .topbar {
   height: var(--tb-h);
-  background: var(--surface);
+  background: var(--tb-bg);
   border-bottom: 1px solid var(--border);
   display: flex;
   align-items: center;
@@ -268,21 +284,23 @@
   z-index: 50;
 }
 
+/* Toggle button – SOURCE: Larkon .button-toggle-menu */
+
 .tb-toggle {
-  width: 32px;
-  height: 32px;
-  border-radius: var(--r-md);
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
   display: flex;
   align-items: center;
   justify-content: center;
-  color: var(--text-2);
-  transition: background 0.14s, color 0.14s;
+  color: var(--tb-text);
+  transition: background 0.2s, color 0.2s;
   flex-shrink: 0;
 }
 
 .tb-toggle:hover {
-  background: var(--bg);
-  color: var(--text-1);
+  background: var(--c-primary-soft);
+  color: var(--c-primary);
 }
 
 .tb-breadcrumb {
@@ -296,6 +314,7 @@
 .tb-breadcrumb-active {
   color: var(--text-1);
   font-weight: 600;
+  font-family: var(--font-heading);
 }
 
 .tb-sep {
@@ -303,14 +322,11 @@
   font-size: var(--fs-sm);
 }
 
-/* Segment control / switcher
-   COMPONENT: Segment Control
-   SOURCE: standard admin pattern
-   CUSTOM: NO */
+/* Segment control – SOURCE: standard admin pattern */
 
 .segment {
   display: flex;
-  background: var(--bg);
+  background: var(--border);
   border: 1px solid var(--border);
   border-radius: var(--r-md);
   padding: 3px;
@@ -330,12 +346,12 @@
 }
 
 .seg-btn:hover {
-  background: white;
+  background: var(--surface);
   color: var(--text-1);
 }
 
 .seg-btn.active {
-  background: white;
+  background: var(--surface);
   color: var(--text-1);
   box-shadow: var(--sh-sm);
   font-weight: 600;
@@ -351,22 +367,24 @@
   gap: var(--s2);
 }
 
+/* Topbar icon buttons – SOURCE: Larkon .topbar-button */
+
 .tb-icon-btn {
-  width: 34px;
-  height: 34px;
-  border-radius: var(--r-md);
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
   display: flex;
   align-items: center;
   justify-content: center;
-  color: var(--text-2);
+  color: var(--tb-text);
   position: relative;
-  transition: background 0.14s, color 0.14s;
+  transition: background 0.2s, color 0.2s;
   font-size: 16px;
 }
 
 .tb-icon-btn:hover {
-  background: var(--bg);
-  color: var(--text-1);
+  background: var(--c-primary-soft);
+  color: var(--c-primary);
 }
 
 .notif-dot {
@@ -377,7 +395,7 @@
   height: 8px;
   background: var(--c-err);
   border-radius: 50%;
-  border: 2px solid white;
+  border: 2px solid var(--tb-bg);
 }
 
 .tb-user {
@@ -392,19 +410,20 @@
 }
 
 .tb-user:hover {
-  background: var(--bg);
+  background: var(--c-primary-soft);
 }
 
 .tb-user-avatar {
-  width: 30px;
-  height: 30px;
+  width: 32px;
+  height: 32px;
   border-radius: var(--r-full);
-  background: linear-gradient(135deg, #4f46e5, #7c3aed);
+  background: var(--c-primary);
   display: flex;
   align-items: center;
   justify-content: center;
   font-size: var(--fs-sm);
   font-weight: 700;
+  font-family: var(--font-heading);
   color: white;
   flex-shrink: 0;
   user-select: none;
@@ -433,6 +452,7 @@
   flex: 1;
   overflow-y: auto;
   padding: var(--s6);
+  background: var(--bg);
 }
 
 .content-inner {
@@ -440,10 +460,7 @@
   margin: 0 auto;
 }
 
-/* Page header
-   COMPONENT: Page Header
-   SOURCE: standard admin pattern
-   CUSTOM: NO */
+/* Page header – SOURCE: Larkon .page-title-box */
 
 .page-header {
   display: flex;
@@ -454,8 +471,9 @@
 }
 
 .page-title {
-  font-size: var(--fs-xl);
+  font-size: var(--fs-2xl);
   font-weight: 700;
+  font-family: var(--font-heading);
   color: var(--text-1);
   line-height: 1.2;
 }
@@ -463,7 +481,7 @@
 .page-sub {
   font-size: var(--fs-sm);
   color: var(--text-2);
-  margin-top: 2px;
+  margin-top: 3px;
 }
 
 .page-actions {
@@ -474,9 +492,7 @@
 }
 
 /* ─── Overlay + Drawer ───────────────────────────────────────
-   COMPONENT: Drawer / Side Panel
-   SOURCE: Larkon-like
-   CUSTOM: NO
+   SOURCE: Larkon right-sidebar / offcanvas pattern
    ──────────────────────────────────────────────────────────── */
 
 .overlay {
@@ -537,25 +553,26 @@
 .drawer-title {
   font-size: var(--fs-lg);
   font-weight: 700;
+  font-family: var(--font-heading);
   color: var(--text-1);
 }
 
 .drawer-close {
   width: 32px;
   height: 32px;
-  border-radius: var(--r-md);
+  border-radius: 50%;
   display: flex;
   align-items: center;
   justify-content: center;
   color: var(--text-2);
   font-size: 18px;
-  transition: background 0.14s;
+  transition: background 0.14s, color 0.14s;
   flex-shrink: 0;
 }
 
 .drawer-close:hover {
-  background: var(--bg);
-  color: var(--text-1);
+  background: var(--c-primary-soft);
+  color: var(--c-primary);
 }
 
 .drawer-body {

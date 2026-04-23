@@ -1,6 +1,23 @@
 // COMPONENT: Platby – výběr a odeslání plateb do banky
-// SOURCE: Larkon-like → Page layout
-// CUSTOM: NO
+// SOURCE: Larkon _page-title.scss + Bootstrap layout + _alert.scss
+// CUSTOM: PARTIAL – layout Larkon, logika custom
+//   – zobrazuje pouze schválené faktury (stavFilter = "schvalena" fixed)
+//   – navigace zpět na FakturyView přes update({ selectedSection: "faktury" })
+//   – BalancePanel: custom kalkulátor s FutureRevMode (gastro logika)
+//   – PotvrditModal: double-confirm při nedostatku prostředků
+//   – DalsiPlatbyPanel: ostatní platby (trvalé příkazy, splátky, výplaty)
+//
+// Larkon class mapping:
+//   .page-title-box                       → page header row
+//   .alert.alert-{success|danger|warning} → stavové hlášení po odeslání
+//   .alert-link                           → CTA v alertu
+//   .card > .card-body                    → filter panel
+//   .form-control.form-control-sm         → date pickers (od / do)
+//   .form-select.form-select-sm           → kategorie select
+//   .row.g-4                              → hlavní layout (tabulka 8 + balance 4 sloupce)
+//   CUSTOM: BalancePanel                  → sticky cashflow kalkulátor (gastro doménová logika)
+//   CUSTOM: PotvrditModal                 → potvrzovací modal s dvojím potvrzením
+//   CUSTOM: DalsiPlatbyPanel              → ostatní platby mimo fakturační cyklus
 
 import { useState, useCallback } from 'react';
 import type { AppState } from '../types';
@@ -33,12 +50,12 @@ type Potvrzeni = 'idle' | 'confirm' | 'sent';
 export default function PlatbyView({ state, update }: Props) {
   const { selectedProvozovna } = state;
 
-  const [periodOd,      setPeriodOd]      = useState(TYDEN_OD);
-  const [periodDo,      setPeriodDo]      = useState(TYDEN_DO);
-  const [selectedFaIds, setSelectedFaIds] = useState<Set<string>>(new Set());
-  const [selectedOstIds,setSelectedOstIds]= useState<Set<string>>(new Set());
-  const [futureRevMode, setFutureRevMode] = useState<FutureRevMode>('off');
-  const [potvrzeni,     setPotvrzeni]     = useState<Potvrzeni>('idle');
+  const [periodOd,       setPeriodOd]       = useState(TYDEN_OD);
+  const [periodDo,       setPeriodDo]       = useState(TYDEN_DO);
+  const [selectedFaIds,  setSelectedFaIds]  = useState<Set<string>>(new Set());
+  const [selectedOstIds, setSelectedOstIds] = useState<Set<string>>(new Set());
+  const [futureRevMode,  setFutureRevMode]  = useState<FutureRevMode>('off');
+  const [potvrzeni,      setPotvrzeni]      = useState<Potvrzeni>('idle');
 
   const toggleFa = useCallback((id: string) => {
     setSelectedFaIds((prev) => {
@@ -60,7 +77,6 @@ export default function PlatbyView({ state, update }: Props) {
     });
   }, []);
 
-  // Balance výpočet pro modal
   const zustatek = getZustatek(selectedProvozovna);
   const sumaFa   = FAKTURY_PLATBY
     .filter((f) => selectedFaIds.has(f.id) && (selectedProvozovna === 'all' || f.provozovna === selectedProvozovna))
@@ -78,7 +94,6 @@ export default function PlatbyView({ state, update }: Props) {
     setPotvrzeni('sent');
   }
 
-  // Upozornění na neschválené (které nejdou vybrat)
   const neschvalene = getFakturyForProvozovna(selectedProvozovna).filter(
     (f) => f.stav === 'nova' || f.stav === 'ke-schvaleni'
   ).length;
@@ -86,48 +101,48 @@ export default function PlatbyView({ state, update }: Props) {
     (f) => f.stav !== 'zaplacena' && f.stav !== 'odeslana' && isPoSplatnosti(f.splatnost)
   ).length;
 
+  void PROCESSING_DAYS_DEFAULT;
+
   return (
     <>
-      {/* Stav: odesláno */}
+      {/* Stav: odesláno – SOURCE: Bootstrap .alert.alert-success */}
       {potvrzeni === 'sent' && (
-        <div className="alert-strip alert-info" style={{ marginBottom: 16 }}>
-          <span className="alert-icon">✓</span>
-          <span className="alert-msg fw-600">
+        <div className="alert alert-success d-flex align-items-center gap-2 mb-4">
+          <iconify-icon icon="solar:check-circle-bold-duotone" className="fs-5 flex-shrink-0" />
+          <span className="flex-grow-1 fw-semibold">
             Platby byly úspěšně odeslány do banky. Faktury jsou označeny jako „Odesláno k úhradě".
           </span>
-          <button className="alert-cta" onClick={() => setPotvrzeni('idle')}>Zavřít</button>
+          <button type="button" className="btn-close ms-auto" onClick={() => setPotvrzeni('idle')} />
         </div>
       )}
 
-      {/* Page header */}
-      <div className="page-header">
+      {/* SOURCE: Larkon .page-title-box */}
+      <div className="page-title-box">
         <div>
-          <h1 className="page-title">Platby</h1>
-          <div className="page-sub">
-            Výběr a odeslání plateb do banky · správa cashflow
-          </div>
+          <h4 className="page-title fw-semibold mb-1">Platby</h4>
+          <p className="text-muted mb-0">Výběr a odeslání plateb do banky · správa cashflow</p>
         </div>
-        <div className="page-actions">
-          <div className="flex items-center gap-2">
-            <span className="fs-sm c-2">Období:</span>
+        <div className="d-flex align-items-center gap-2 flex-wrap">
+          <div className="d-flex align-items-center gap-2">
+            <span className="text-muted fs-13">Období:</span>
             <input
               type="date"
-              className="select"
+              className="form-control form-control-sm"
               value={periodOd}
               onChange={(e) => setPeriodOd(e.target.value)}
               style={{ width: 140 }}
             />
-            <span className="c-2">–</span>
+            <span className="text-muted">–</span>
             <input
               type="date"
-              className="select"
+              className="form-control form-control-sm"
               value={periodDo}
               onChange={(e) => setPeriodDo(e.target.value)}
               style={{ width: 140 }}
             />
           </div>
           <button
-            className="btn btn-secondary btn-sm"
+            className="btn btn-light btn-sm"
             onClick={() => update({ selectedSection: 'faktury' })}
           >
             ← Správa faktur
@@ -135,17 +150,18 @@ export default function PlatbyView({ state, update }: Props) {
         </div>
       </div>
 
-      {/* Upozornění – redirect do Faktur */}
+      {/* Upozornění – SOURCE: Bootstrap .alert.alert-{danger|warning} */}
       {(poSplatCnt > 0 || neschvalene > 0) && (
-        <div style={{ marginBottom: 16 }}>
+        <div className="d-flex flex-column gap-2 mb-4">
           {poSplatCnt > 0 && (
-            <div className="alert-strip alert-err">
-              <span className="alert-icon">⚠</span>
-              <span className="alert-msg">
+            <div className="alert alert-danger d-flex align-items-center gap-2 mb-0">
+              <iconify-icon icon="solar:danger-triangle-bold-duotone" className="fs-5 flex-shrink-0" />
+              <span className="flex-grow-1">
                 <strong>{poSplatCnt} faktur po splatnosti</strong>
               </span>
               <span
-                className="alert-cta"
+                className="alert-link fw-semibold text-nowrap ms-auto"
+                style={{ cursor: 'pointer' }}
                 onClick={() => update({ selectedSection: 'faktury' })}
               >
                 Správa faktur →
@@ -153,13 +169,14 @@ export default function PlatbyView({ state, update }: Props) {
             </div>
           )}
           {neschvalene > 0 && (
-            <div className="alert-strip alert-warn" style={{ marginTop: poSplatCnt > 0 ? 6 : 0 }}>
-              <span className="alert-icon">⏳</span>
-              <span className="alert-msg">
+            <div className="alert alert-warning d-flex align-items-center gap-2 mb-0">
+              <iconify-icon icon="solar:clock-circle-bold-duotone" className="fs-5 flex-shrink-0" />
+              <span className="flex-grow-1">
                 <strong>{neschvalene} faktur čeká na schválení</strong> – nelze je vybrat k platbě
               </span>
               <span
-                className="alert-cta"
+                className="alert-link fw-semibold text-nowrap ms-auto"
+                style={{ cursor: 'pointer' }}
                 onClick={() => update({ selectedSection: 'faktury' })}
               >
                 Schválit →
@@ -169,75 +186,64 @@ export default function PlatbyView({ state, update }: Props) {
         </div>
       )}
 
-      {/* Filter bar – pouze kategorie, schválené jsou zobrazeny automaticky */}
-      <div className="card section-gap">
-        <div className="card-body" style={{ padding: '10px 16px' }}>
-          <div className="filter-bar" style={{ marginBottom: 0 }}>
-            <span className="filter-label">Kategorie:</span>
-            <select
-              className="select"
-              defaultValue="all"
-            >
+      {/* Filter bar – SOURCE: Larkon .card > .card-body */}
+      <div className="card mb-4">
+        <div className="card-body py-3">
+          <div className="d-flex align-items-center gap-2">
+            <span className="text-muted fs-13">Kategorie:</span>
+            {/* SOURCE: Bootstrap .form-select.form-select-sm */}
+            <select className="form-select form-select-sm" style={{ width: 'auto' }} defaultValue="all">
               <option value="all">Všechny kategorie</option>
               {(Object.keys(KATEGORIE_LABELS) as Array<keyof typeof KATEGORIE_LABELS>).map((k) => (
                 <option key={k} value={k}>{KATEGORIE_LABELS[k]}</option>
               ))}
             </select>
-            <span
-              className="badge badge-ok"
-              style={{ marginLeft: 8 }}
-            >
+            {/* SOURCE: Larkon .badge.bg-success-subtle.text-success */}
+            <span className="badge bg-success-subtle text-success ms-2">
               Zobrazeny pouze schválené faktury
             </span>
           </div>
         </div>
       </div>
 
-      {/* Hlavní layout: tabulka + balance panel */}
-      <div
-        style={{
-          display: 'grid',
-          gridTemplateColumns: '1fr 340px',
-          gap: 20,
-          alignItems: 'start',
-        }}
-      >
-        {/* Levý sloupec */}
-        <div>
+      {/* Hlavní layout – SOURCE: Bootstrap .row.g-4 */}
+      <div className="row g-4 align-items-start">
+        <div className="col-lg-8">
           <FakturyTable
             provozovna={selectedProvozovna}
             periodOd={periodOd}
             periodDo={periodDo}
             kategorieFilter="all"
             stavFilter="schvalena"
+            typDokladu="all"
             selectedIds={selectedFaIds}
             onToggle={toggleFa}
             onToggleAll={toggleAllFa}
             processingDays={PROCESSING_DAYS_DEFAULT}
           />
 
-          <div style={{ marginTop: 16 }}>
-            <DalsiPlatbyPanel
-              provozovna={selectedProvozovna}
-              periodOd={periodOd}
-              periodDo={periodDo}
-              selectedIds={selectedOstIds}
-              onToggle={toggleOst}
-            />
-          </div>
+          <DalsiPlatbyPanel
+            provozovna={selectedProvozovna}
+            periodOd={periodOd}
+            periodDo={periodDo}
+            selectedIds={selectedOstIds}
+            onToggle={toggleOst}
+          />
         </div>
 
-        {/* Pravý sloupec: balance calculator (sticky) */}
-        <BalancePanel
-          provozovna={selectedProvozovna}
-          periodOd={periodOd}
-          periodDo={periodDo}
-          selectedFaIds={selectedFaIds}
-          selectedOstatniIds={selectedOstIds}
-          futureRevMode={futureRevMode}
-          onFutureRevChange={setFutureRevMode}
-          onPotvrdit={() => setPotvrzeni('confirm')}
-        />
+        {/* Balance panel – sticky pravý sloupec */}
+        <div className="col-lg-4">
+          <BalancePanel
+            provozovna={selectedProvozovna}
+            periodOd={periodOd}
+            periodDo={periodDo}
+            selectedFaIds={selectedFaIds}
+            selectedOstatniIds={selectedOstIds}
+            futureRevMode={futureRevMode}
+            onFutureRevChange={setFutureRevMode}
+            onPotvrdit={() => setPotvrzeni('confirm')}
+          />
+        </div>
       </div>
 
       {/* Potvrzovací modal */}
