@@ -19,7 +19,7 @@
 //   CUSTOM: .lk-segment     → segment control (není v Larkon)
 //   CUSTOM: .topbar-divider → oddělovač mezi segmenty
 
-import type { AppState, ProvozovnaId, DataMode, Period, SidebarSection } from '../types';
+import type { AppState, ProvozovnaId, Period, SidebarSection } from '../types';
 import { PROVOZOVNY } from '../data';
 
 interface Props {
@@ -34,9 +34,9 @@ const SECTION_LABELS: Record<SidebarSection, string> = {
   zavierky:   'Denní závěrky',
   provozovny: 'Provozovny',
   cashflow:   'Cashflow',
-  faktury:     'Faktury',
-  pohledavky:  'Pohledávky',
-  platby:      'Platby',
+  faktury:    'Faktury',
+  pohledavky: 'Pohledávky',
+  platby:     'Platby',
   reporty:    'Reporty',
   nastaveni:  'Nastavení',
   komponenty: 'Mapa komponent',
@@ -51,9 +51,20 @@ const PERIOD_OPTS: { value: Period; label: string }[] = [
   { value: 'rok',          label: 'Aktuální rok' },
 ];
 
+// Skupiny provozoven – stejný výčet jako v Tržby detail
+const PROV_GROUPS: { label: string; ids: string[] }[] = [
+  { label: 'Restaurace',  ids: ['cg-brno', 'piazza', 'monte', 'teatr', 'jime-brno'] },
+  { label: 'Pivnice',     ids: ['u-capa', 'u-kohoutu', 'nad-hladinkou'] },
+  { label: 'Táckárny',   ids: ['tackarna-londyn', 'tackarna-turanka', 'tackarna-svedske-valy'] },
+  { label: 'KOREK',       ids: ['korek-winebar', 'korek-wines'] },
+  { label: 'Ostatní',     ids: ['flank', 'cg-catering'] },
+];
+
+const ACTIVE = PROVOZOVNY.filter((p) => p.status === 'active');
+
 export default function Topbar({ state, update, onMenuToggle }: Props) {
-  const { selectedSection, selectedProvozovna, dataMode, period } = state;
-  const isDashboard = selectedSection === 'dashboard' || selectedSection === 'trzby';
+  const { selectedSection, selectedProvozovna, period } = state;
+  const isDashboard = selectedSection === 'dashboard';
 
   return (
     <header className="topbar">
@@ -65,18 +76,11 @@ export default function Topbar({ state, update, onMenuToggle }: Props) {
 
             {/* Levá strana */}
             <div className="d-flex align-items-center gap-2">
-              {/* Hamburger – SOURCE: Larkon .button-toggle-menu */}
               <div className="topbar-item">
-                <button
-                  type="button"
-                  className="button-toggle-menu"
-                  onClick={onMenuToggle}
-                >
+                <button type="button" className="button-toggle-menu" onClick={onMenuToggle}>
                   <iconify-icon icon="solar:hamburger-menu-broken" className="align-middle" style={{ fontSize: 26 }} />
                 </button>
               </div>
-
-              {/* Název sekce */}
               <div className="topbar-item">
                 <h4 className="fw-bold topbar-button pe-none text-uppercase mb-0 fs-14">
                   {SECTION_LABELS[selectedSection]}
@@ -84,44 +88,30 @@ export default function Topbar({ state, update, onMenuToggle }: Props) {
               </div>
             </div>
 
-            {/* Pravá strana – SOURCE: Larkon topbar actions */}
+            {/* Pravá strana */}
             <div className="d-flex align-items-center gap-1">
-              {/* Search */}
               <form className="app-search d-none d-md-block">
                 <div className="position-relative">
                   <input type="search" className="form-control" placeholder="Hledat..." autoComplete="off" />
-                  <iconify-icon
-                    icon="solar:magnifer-linear"
-                    className="search-widget-icon"
-                    style={{ fontSize: 20, position: 'absolute', left: 11, top: '50%', transform: 'translateY(-50%)', zIndex: 10, color: 'var(--bs-secondary-color)', pointerEvents: 'none', display: 'flex' }}
-                  />
+                  <iconify-icon icon="solar:magnifer-linear" className="search-widget-icon"
+                    style={{ fontSize: 20, position: 'absolute', left: 11, top: '50%', transform: 'translateY(-50%)', zIndex: 10, color: 'var(--bs-secondary-color)', pointerEvents: 'none', display: 'flex' }} />
                 </div>
               </form>
-
-              {/* Notifications */}
               <div className="topbar-item">
                 <button type="button" className="topbar-button position-relative">
                   <iconify-icon icon="solar:bell-bing-bold-duotone" className="align-middle" style={{ fontSize: 26 }} />
-                  <span className="position-absolute topbar-badge fs-10 translate-middle badge bg-danger rounded-pill">
-                    3
-                  </span>
+                  <span className="position-absolute topbar-badge fs-10 translate-middle badge bg-danger rounded-pill">3</span>
                 </button>
               </div>
-
-              {/* Settings */}
               <div className="topbar-item d-none d-md-flex">
                 <button type="button" className="topbar-button">
                   <iconify-icon icon="solar:settings-bold-duotone" className="align-middle" style={{ fontSize: 26 }} />
                 </button>
               </div>
-
-              {/* User */}
               <div className="topbar-item">
                 <button type="button" className="topbar-button d-flex align-items-center gap-2">
-                  <div
-                    className="avatar-sm rounded-circle d-flex align-items-center justify-content-center text-white fw-bold flex-shrink-0"
-                    style={{ background: 'var(--bs-primary)', width: 32, height: 32, fontSize: 12 }}
-                  >
+                  <div className="avatar-sm rounded-circle d-flex align-items-center justify-content-center text-white fw-bold flex-shrink-0"
+                    style={{ background: 'var(--bs-primary)', width: 32, height: 32, fontSize: 12 }}>
                     MK
                   </div>
                   <span className="d-none d-lg-block fw-semibold fs-13">Martin Kovář</span>
@@ -130,65 +120,44 @@ export default function Topbar({ state, update, onMenuToggle }: Props) {
             </div>
           </div>
 
-          {/* ── Řádek 2: filtry (jen dashboard / tržby) ─────── */}
-          {isDashboard && (
-            <div className="topbar-row-filters">
+          {/* ── Řádek 2: filtry – vždy viditelné ────────────── */}
+          <div className="topbar-row-filters">
 
-              {/* Provozovna switcher – SOURCE: Bootstrap .form-select.form-select-sm */}
-              <select
-                className="form-select form-select-sm"
-                style={{ width: 'auto', minWidth: 160 }}
-                value={selectedProvozovna}
-                onChange={(e) => update({ selectedProvozovna: e.target.value as ProvozovnaId })}
-              >
-                <option value="all">Všechny provozovny</option>
-                <optgroup label="Aktivní">
-                  {PROVOZOVNY.filter((p) => p.status === 'active').map((p) => (
+            {/* Výběr provozovny – grouped jako v Tržby detail */}
+            <select
+              className="form-select form-select-sm topbar-prov-select"
+              value={selectedProvozovna}
+              onChange={(e) => update({ selectedProvozovna: e.target.value as ProvozovnaId })}
+            >
+              <option value="all">Všechny provozovny</option>
+              {PROV_GROUPS.map((g) => (
+                <optgroup key={g.label} label={g.label}>
+                  {ACTIVE.filter((p) => g.ids.includes(p.id)).map((p) => (
                     <option key={p.id} value={p.id}>{p.name}</option>
                   ))}
                 </optgroup>
-                <optgroup label="Plánované">
-                  {PROVOZOVNY.filter((p) => p.status === 'inactive').map((p) => (
-                    <option key={p.id} value={p.id}>{p.name}</option>
+              ))}
+            </select>
+
+            {/* Period pills – jen na dashboardu */}
+            {isDashboard && (
+              <>
+                <div className="topbar-divider" />
+                <div className="lk-segment">
+                  {PERIOD_OPTS.map((o) => (
+                    <button
+                      key={o.value}
+                      className={`lk-seg-btn${period === o.value ? ' active' : ''}`}
+                      onClick={() => update({ period: o.value })}
+                    >
+                      {o.label}
+                    </button>
                   ))}
-                </optgroup>
-              </select>
+                </div>
+              </>
+            )}
 
-              <div className="topbar-divider" />
-
-              {/* Live / Závěrka – CUSTOM: segment control */}
-              <div className="lk-segment">
-                <button
-                  className={`lk-seg-btn${dataMode === 'live' ? ' active' : ''}`}
-                  onClick={() => update({ dataMode: 'live' as DataMode })}
-                >
-                  ● Live
-                </button>
-                <button
-                  className={`lk-seg-btn${dataMode === 'zavierka' ? ' active' : ''}`}
-                  onClick={() => update({ dataMode: 'zavierka' as DataMode })}
-                >
-                  ◉ Závěrka
-                </button>
-              </div>
-
-              <div className="topbar-divider" />
-
-              {/* Presety období – CUSTOM: segment control */}
-              <div className="lk-segment">
-                {PERIOD_OPTS.map((o) => (
-                  <button
-                    key={o.value}
-                    className={`lk-seg-btn${period === o.value ? ' active' : ''}`}
-                    onClick={() => update({ period: o.value })}
-                  >
-                    {o.label}
-                  </button>
-                ))}
-              </div>
-
-            </div>
-          )}
+          </div>
 
         </div>
       </div>

@@ -52,7 +52,6 @@ export default function PohledavkyView({ state, update }: Props) {
   const { selectedProvozovna } = state;
 
   const [stavFilter,       setStavFilter]       = useState('all');
-  const [provozovnaFilter, setProvozovnaFilter] = useState('all');
   const [drawerPohId,      setDrawerPohId]      = useState<string | null>(null);
   const [showNova,         setShowNova]         = useState(false);
   const [localStavy,       setLocalStavy]       = useState<Record<string, PohledavkaStav>>({});
@@ -67,7 +66,7 @@ export default function PohledavkyView({ state, update }: Props) {
     opakovani: '' as '' | 'mesicni' | 'tydenni',
   });
 
-  const effectiveProv = (provozovnaFilter !== 'all' ? provozovnaFilter : selectedProvozovna) as ProvozovnaId;
+  const effectiveProv = selectedProvozovna as ProvozovnaId;
   const vsechny = getPohledavkyForProvozovna(effectiveProv);
 
   const zobrazene = vsechny.filter((p) => {
@@ -112,14 +111,8 @@ export default function PohledavkyView({ state, update }: Props) {
 
   return (
     <>
-      {/* SOURCE: Larkon .page-title-box */}
+      {/* ACTION BAR – SOURCE: Larkon .page-title-box (title odstraněn, zobrazen v topbaru) */}
       <div className="page-title-box">
-        <div>
-          <h4 className="page-title fw-semibold mb-1">Pohledávky</h4>
-          <p className="text-muted mb-0">
-            Vydané faktury a sledování úhrad · {pocetAktivnich} aktivních pohledávek
-          </p>
-        </div>
         <div className="d-flex align-items-center gap-2 flex-wrap">
           <button className="btn btn-light btn-sm">Export</button>
           <button className="btn btn-primary btn-sm" onClick={() => {
@@ -250,11 +243,6 @@ export default function PohledavkyView({ state, update }: Props) {
           <div className="d-flex align-items-center gap-2 flex-wrap">
             <span className="text-muted fs-13">Filtr:</span>
             <select className="form-select form-select-sm" style={{ width: 'auto' }}
-              value={provozovnaFilter} onChange={(e) => setProvozovnaFilter(e.target.value)}>
-              <option value="all">Všechna střediska</option>
-              {PROVOZOVNY_ACTIVE.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
-            </select>
-            <select className="form-select form-select-sm" style={{ width: 'auto' }}
               value={stavFilter} onChange={(e) => setStavFilter(e.target.value)}>
               <option value="all">Všechny stavy</option>
               <option value="aktivni">Aktivní</option>
@@ -262,9 +250,9 @@ export default function PohledavkyView({ state, update }: Props) {
               <option value="po-splatnosti">Po splatnosti</option>
               <option value="uhrazena">Uhrazené</option>
             </select>
-            {(stavFilter !== 'all' || provozovnaFilter !== 'all') && (
+            {stavFilter !== 'all' && (
               <button className="btn btn-link btn-sm ms-auto text-muted"
-                onClick={() => { setStavFilter('all'); setProvozovnaFilter('all'); }}>
+                onClick={() => setStavFilter('all')}>
                 Zrušit filtry ×
               </button>
             )}

@@ -51,7 +51,6 @@ export default function FakturyView({ state, update }: Props) {
   const [kategorieFilter,    setKategorieFilter]    = useState('all');
   const [stavFilter,         setStavFilter]         = useState('all');
   const [typDokladu,         setTypDokladu]         = useState<TypDokladu | 'all'>('all');
-  const [provozovnaFilter,   setProvozovnaFilter]   = useState<string>('all');
   const [selectedIds,        setSelectedIds]        = useState<Set<string>>(new Set());
 
   // Nová faktura – modal state
@@ -164,14 +163,8 @@ export default function FakturyView({ state, update }: Props) {
 
   return (
     <>
-      {/* SOURCE: Larkon .page-title-box */}
+      {/* ACTION BAR – SOURCE: Larkon .page-title-box (title odstraněn, zobrazen v topbaru) */}
       <div className="page-title-box">
-        <div>
-          <h4 className="page-title fw-semibold mb-1">Faktury</h4>
-          <p className="text-muted mb-0">
-            Správa a schvalování faktur · {allFaktury.length} faktur celkem
-          </p>
-        </div>
         <div className="d-flex align-items-center gap-2 flex-wrap">
           <div className="d-flex align-items-center gap-2">
             <span className="text-muted fs-13">Období:</span>
@@ -306,18 +299,6 @@ export default function FakturyView({ state, update }: Props) {
             <select
               className="form-select form-select-sm"
               style={{ width: 'auto' }}
-              value={provozovnaFilter}
-              onChange={(e) => { setProvozovnaFilter(e.target.value); setSelectedIds(new Set()); }}
-            >
-              <option value="all">Všechna střediska</option>
-              {PROVOZOVNY.filter((p) => p.status === 'active').map((p) => (
-                <option key={p.id} value={p.id}>{p.name}</option>
-              ))}
-            </select>
-
-            <select
-              className="form-select form-select-sm"
-              style={{ width: 'auto' }}
               value={stavFilter}
               onChange={(e) => setStavFilter(e.target.value)}
             >
@@ -354,10 +335,10 @@ export default function FakturyView({ state, update }: Props) {
               )}
             </div>
 
-            {(kategorieFilter !== 'all' || stavFilter !== 'all' || provozovnaFilter !== 'all') && (
+            {(kategorieFilter !== 'all' || stavFilter !== 'all') && (
               <button
                 className="btn btn-link btn-sm ms-auto text-muted"
-                onClick={() => { setKategorieFilter('all'); setStavFilter('all'); setProvozovnaFilter('all'); }}
+                onClick={() => { setKategorieFilter('all'); setStavFilter('all'); }}
               >
                 Zrušit filtry ×
               </button>
@@ -368,7 +349,7 @@ export default function FakturyView({ state, update }: Props) {
 
       {/* Tabulka faktur */}
       <FakturyTable
-        provozovna={(provozovnaFilter !== 'all' ? provozovnaFilter : selectedProvozovna) as ProvozovnaId}
+        provozovna={selectedProvozovna as ProvozovnaId}
         periodOd={periodOd}
         periodDo={periodDo}
         kategorieFilter={kategorieFilter}

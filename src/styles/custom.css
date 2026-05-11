@@ -88,7 +88,8 @@
 
 /* ─── 2. SPA root layout ─────────────────────────────────────
    Larkon je multi-page Blade app; React SPA potřebuje 100% výšku
-   a koordinaci s Larkon topbar (--bs-topbar-height = 100px).
+   a koordinaci s Larkon topbar.
+   Topbar je vždy dvouřádkový (filtr řada vždy viditelná) → 100px.
    ─────────────────────────────────────────────────────────── */
 html, body, #root {
   height: 100%;
@@ -101,6 +102,11 @@ body {
 .wrapper {
   height: 100%;
   overflow: hidden;
+}
+
+/* Topbar je vždy dvouřádkový – fixujeme výšku */
+:root {
+  --bs-topbar-height: 100px;
 }
 
 .page-content {
@@ -269,6 +275,14 @@ body {
 /* ─── Finanční částky nikdy nezalamovat ─────────────────────── */
 .font-monospace { white-space: nowrap; }
 
+/* ─── Svislé linky mezi sloupci ve všech tabulkách ──────────── */
+.table > :not(caption) > * > * {
+  border-right: 1px solid var(--bs-border-color);
+}
+.table > :not(caption) > * > *:last-child {
+  border-right: none;
+}
+
 /* ─── Breadcrumb topbar ──────────────────────────────────────── */
 .topbar-section-title {
   font-size: 15px;
@@ -313,6 +327,14 @@ body {
   margin: 0 2px;
 }
 
+/* Provozovna select v topbaru – stejný styl jako v Tržby detail */
+.topbar-prov-select {
+  min-width: 200px;
+  max-width: 260px;
+  font-size: 12px !important;
+  font-weight: 500;
+}
+
 /* Menší segment v druhém řádku */
 .topbar-row-filters .lk-seg-btn {
   padding: 3px 10px;
@@ -334,6 +356,508 @@ body {
 @keyframes mob-fade {
   from { opacity: 0; }
   to   { opacity: 1; }
+}
+
+/* ─── 13. Tržby v3 – KPI řádky + detail tabulka ─────────────
+   KPI přehled (Dnes/Včera/Týden/Měsíc) a velká detail tabulka
+   se sticky sloupci.
+   ─────────────────────────────────────────────────────────── */
+
+/* ── KPI boxíky (Dnes / Včera / Týden / Měsíc) ────────────── */
+
+.trzby-box {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  background: var(--bs-light);
+  border: 1px solid var(--bs-border-color);
+  border-radius: 10px;
+  padding: 16px;
+  transition: box-shadow 0.15s, transform 0.15s;
+}
+
+.trzby-box:hover {
+  box-shadow: 0 4px 16px rgba(0,0,0,0.08);
+  transform: translateY(-1px);
+}
+
+.trzby-box-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.trzby-box-period {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--bs-secondary-color);
+}
+
+.trzby-box-badge {
+  font-size: 11px !important;
+  flex-shrink: 0;
+}
+
+.trzby-box-value {
+  font-size: 1.35rem;
+  font-weight: 700;
+  line-height: 1.15;
+  color: var(--bs-body-color);
+  margin-top: 2px;
+  white-space: nowrap;
+}
+
+.trzby-box-sub {
+  font-size: 11px;
+  color: var(--bs-secondary-color);
+}
+
+.trzby-box-divider {
+  border-top: 1px solid var(--bs-border-color);
+  margin: 4px 0;
+}
+
+/* Comp/pred řádky: label nahoře, částka pod ním – nikdy se nezalomí */
+.trzby-box-comp {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 1px;
+  font-size: 11px;
+  color: var(--bs-secondary-color);
+}
+
+.trzby-box-comp-amount {
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+  color: var(--bs-body-color);
+}
+
+/* Dnes boxík: otevřené/uzavřené jako řádek (krátký obsah) */
+.trzby-box-comp--row {
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 12px;
+}
+
+.trzby-box-pred {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 1px;
+  font-size: 11px;
+  color: var(--bs-secondary-color);
+}
+
+.trzby-box-pred-amount {
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+/* Pulzující tečka u LIVE badge */
+.trzby-live-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #16a34a;
+  flex-shrink: 0;
+  animation: trzby-pulse 1.8s ease-in-out infinite;
+}
+
+@keyframes trzby-pulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50%       { opacity: 0.5; transform: scale(0.75); }
+}
+
+/* ─── Roční srovnání – sloupcová tabulka se dvěma sticky sloupci ──
+   Každý podnik má 3 řádky: 2026 / 2025 / % srovnání.
+   Název podniku je sloučen přes rowspan=3.
+   ─────────────────────────────────────────────────────────────── */
+
+/* Header cells */
+.trzby-rs-venue-h {
+  position: sticky;
+  left: 0;
+  z-index: 4;
+  background: #f2f4f7;
+  border-right: 1px solid var(--bs-border-color) !important;
+  min-width: 110px;
+  max-width: 130px;
+  white-space: nowrap;
+}
+
+.trzby-rs-year-h {
+  position: sticky;
+  left: 110px;
+  z-index: 4;
+  background: #f2f4f7;
+  border-right: 1px solid var(--bs-border-color) !important;
+  min-width: 60px;
+  white-space: nowrap;
+  text-align: center;
+}
+
+/* Body cells */
+.trzby-rs-venue-c {
+  position: sticky;
+  left: 0;
+  z-index: 3;
+  background: white;
+  border-right: 1px solid var(--bs-border-color) !important;
+  min-width: 110px;
+  max-width: 130px;
+  padding: 8px 10px;
+  vertical-align: middle;
+}
+
+.trzby-rs-year-c {
+  position: sticky;
+  left: 110px;
+  z-index: 3;
+  background: white;
+  border-right: 1px solid var(--bs-border-color) !important;
+  min-width: 60px;
+  font-size: 11px;
+  font-weight: 600;
+  white-space: nowrap;
+  text-align: center;
+  padding: 4px 8px;
+}
+
+/* Řádek 2026 – nejaktuálnější, lehce zvýrazněný */
+.trzby-rs-cur td { background: #fdfaf4; }
+.trzby-rs-cur .trzby-rs-venue-c,
+.trzby-rs-cur .trzby-rs-year-c { background: #fdfaf4; }
+/* Oddělení skupin podniků */
+.trzby-rs-cur td { border-top: 2px solid #dee2e6 !important; }
+
+/* Ostatní roky */
+.trzby-rs-prev td { background: white; }
+.trzby-rs-prev .trzby-rs-venue-c,
+.trzby-rs-prev .trzby-rs-year-c { background: white; }
+
+/* Toggle tlačítko v venue buňce */
+.trzby-rs-toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  border-radius: 4px;
+  border: 1px solid var(--bs-border-color);
+  background: white;
+  color: var(--bs-secondary-color);
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: background 0.12s, color 0.12s;
+}
+
+.trzby-rs-toggle:hover {
+  background: var(--bs-primary);
+  color: white;
+  border-color: var(--bs-primary);
+}
+
+/* Poslední řádek skupiny (nejstarší rok) – silnější dolní linka */
+.trzby-rs-last td {
+  border-bottom: 2px solid #dee2e6 !important;
+  padding-bottom: 8px !important;
+}
+.trzby-rs-last .trzby-rs-venue-c { border-bottom: 2px solid #dee2e6 !important; }
+
+/* Vývoj tržeb – toggle tlačítka výběru podniků */
+.trzby-chart-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 11px;
+  border-radius: 20px;
+  border: 1.5px solid var(--bs-border-color);
+  background: var(--bs-light);
+  color: var(--bs-secondary-color);
+  font-size: 11px;
+  font-weight: 500;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: all 0.14s;
+  line-height: 1.4;
+}
+
+.trzby-chart-toggle:hover {
+  background: white;
+  color: var(--bs-body-color);
+  border-color: var(--bs-secondary-color);
+}
+
+/* Sticky header Tržby detail – přichytí se pod topbar při scrollu */
+.trzby-detail-header-sticky {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  background: white;
+  border-radius: var(--bs-border-radius) var(--bs-border-radius) 0 0;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+}
+
+/* ── Detail tabulka ────────────────────────────────────────── */
+
+.trzby-detail-wrap {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  position: relative;
+}
+
+/* Použít border-separate, jinak sticky nefunguje správně */
+.trzby-detail-table {
+  border-collapse: separate;
+  border-spacing: 0;
+  min-width: max-content;
+  width: 100%;
+  font-size: 13px;
+}
+
+/* Hlavička */
+.trzby-detail-table thead tr th {
+  background: #f2f4f7;
+  border-bottom: 1px solid var(--bs-border-color);
+  border-top: 1px solid var(--bs-border-color);
+  padding: 10px 14px;
+  font-weight: 600;
+  font-size: 12px;
+  color: var(--bs-secondary-color);
+  white-space: nowrap;
+}
+
+/* Tělo */
+.trzby-detail-table tbody tr td {
+  padding: 8px 14px;
+  border-bottom: 1px solid #f0f0f0;
+  border-right: 1px solid var(--bs-border-color);
+  white-space: nowrap;
+  vertical-align: middle;
+}
+
+.trzby-detail-table tbody tr td:last-child,
+.trzby-detail-table thead tr th:last-child,
+.trzby-detail-table tfoot tr td:last-child {
+  border-right: none;
+}
+
+.trzby-detail-table tbody tr:hover td {
+  background: #fafbfc;
+}
+
+.trzby-detail-table tbody tr:hover .trzby-sticky-l,
+.trzby-detail-table tbody tr:hover .trzby-sticky-r {
+  background: #fafbfc;
+}
+
+/* Zápatí */
+.trzby-detail-table tfoot tr td {
+  padding: 10px 14px;
+  border-top: 2px solid var(--bs-border-color);
+  background: #f2f4f7;
+  font-size: 13px;
+  white-space: nowrap;
+}
+
+/* Datum sloupec (první, sticky vlevo) */
+.trzby-col-date {
+  min-width: 110px;
+  max-width: 140px;
+}
+
+/* Provozovna sloupce */
+.trzby-col-prov {
+  min-width: 130px;
+  text-align: right;
+}
+
+/* Celkem sloupec (poslední, sticky vpravo) */
+.trzby-col-total {
+  min-width: 140px;
+  text-align: right;
+}
+
+/* Sticky vlevo */
+.trzby-sticky-l {
+  position: sticky !important;
+  left: 0;
+  z-index: 3;
+  background: white;
+  border-right: 1px solid var(--bs-border-color) !important;
+}
+
+thead .trzby-sticky-l,
+tfoot .trzby-sticky-l {
+  background: #f2f4f7;
+  z-index: 4;
+}
+
+/* Sticky vpravo */
+.trzby-sticky-r {
+  position: sticky !important;
+  right: 0;
+  z-index: 3;
+  background: #f8f9fa;
+  border-left: 2px solid var(--bs-border-color) !important;
+  box-shadow: -3px 0 6px rgba(0,0,0,0.06);
+}
+
+thead .trzby-sticky-r,
+tfoot .trzby-sticky-r {
+  background: #f2f4f7;
+  z-index: 4;
+}
+
+/* ─── Stará sekce 13 (přejmenována) ──────────────────────────
+   Tržby filter bar, KPI cards, provozovna side panel, perf bar.
+   ─────────────────────────────────────────────────────────── */
+
+/* ─── 14. Tržby v3 – Revenue Analytics (původní sekce 13) ───
+   Filter bar, KPI cards, provozovna side panel, perf table bar.
+   ─────────────────────────────────────────────────────────── */
+
+/* Filter bar (period + provozovna inline) */
+.trzby-filter-bar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: white;
+  border: 1px solid var(--bs-border-color);
+  border-radius: 10px;
+  padding: 8px 14px;
+  flex-wrap: wrap;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.04);
+}
+
+.trzby-filter-section {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.trzby-filter-label {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  color: var(--bs-secondary-color);
+  letter-spacing: 0.05em;
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+
+.trzby-filter-divider {
+  width: 1px;
+  height: 22px;
+  background: var(--bs-border-color);
+  flex-shrink: 0;
+}
+
+.trzby-prov-select {
+  min-width: 130px;
+  width: auto !important;
+  font-size: 12px;
+}
+
+/* Timeline pills */
+.trzby-tl-pills {
+  display: flex;
+  gap: 3px;
+  flex-wrap: wrap;
+}
+
+.trzby-tl-pill {
+  padding: 4px 13px;
+  border-radius: 20px;
+  font-size: 12px;
+  font-weight: 500;
+  border: 1.5px solid transparent;
+  background: transparent;
+  color: var(--bs-secondary-color);
+  cursor: pointer;
+  transition: all 0.14s;
+  white-space: nowrap;
+  line-height: 1.4;
+}
+
+.trzby-tl-pill:hover {
+  background: var(--bs-light);
+  color: var(--bs-body-color);
+  border-color: var(--bs-border-color);
+}
+
+.trzby-tl-pill.active {
+  background: #c9911a;
+  color: #fff;
+  border-color: #c9911a;
+  font-weight: 600;
+  box-shadow: 0 2px 8px rgba(201, 145, 26, 0.28);
+}
+
+/* KPI cards */
+.trzby-kpi-card {
+  border-radius: 12px !important;
+  border: 1px solid #eaedf1 !important;
+  box-shadow: 0 1px 6px rgba(0,0,0,0.05) !important;
+  transition: box-shadow 0.2s ease, transform 0.2s ease;
+  cursor: default;
+}
+
+.trzby-kpi-card:hover {
+  box-shadow: 0 6px 22px rgba(0,0,0,0.09) !important;
+  transform: translateY(-2px);
+}
+
+.trzby-kpi-icon {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.trzby-kpi-badge {
+  font-size: 11px !important;
+}
+
+.trzby-kpi-value {
+  font-size: 1.15rem !important;
+  line-height: 1.2;
+}
+
+/* Provozovna side panel items */
+.trzby-prov-item {
+  padding: 7px 10px;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: background 0.12s;
+  border: 1.5px solid transparent;
+}
+
+.trzby-prov-item:hover {
+  background: var(--bs-light);
+}
+
+.trzby-prov-item.selected {
+  background: #fdf3dc;
+  border-color: #c9911a;
+}
+
+/* Table performance bar */
+.trzby-perf-bar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
 }
 
 /* ─── Responzivní design (‹768px = Bootstrap ‹md) ──────────── */
@@ -401,6 +925,43 @@ body {
   /* Utility: skrýt tabulkové sloupce na mobilu */
   .d-mobile-none {
     display: none !important;
+  }
+
+  /* KPI boxíky: menší hodnota + padding na mobilu */
+  .trzby-box-value {
+    font-size: 1.15rem;
+  }
+  .trzby-box {
+    padding: 12px;
+  }
+
+  /* Tržby filter bar: vertikální stack + scroll */
+  .trzby-filter-bar {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 8px;
+    padding: 10px 12px;
+  }
+
+  .trzby-filter-divider {
+    display: none;
+  }
+
+  .trzby-tl-pills {
+    overflow-x: auto;
+    flex-wrap: nowrap;
+    -webkit-overflow-scrolling: touch;
+    padding-bottom: 2px;
+    scrollbar-width: none;
+  }
+
+  .trzby-tl-pills::-webkit-scrollbar {
+    display: none;
+  }
+
+  /* KPI cards: 2 sloupce zachovány (col-6) */
+  .trzby-kpi-value {
+    font-size: 1rem !important;
   }
 
   /* Stránkové hlavičky: stack vertikálně */

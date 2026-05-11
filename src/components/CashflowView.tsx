@@ -126,18 +126,10 @@ function CashflowChart({ data }: { data: CashflowTyden[] }) {
 
 // ─── View ─────────────────────────────────────────────────────
 
-const PROV_TABS: { id: ProvozovnaId; label: string }[] = [
-  { id: 'all',     label: 'Celá firma' },
-  { id: 'cg-brno', label: 'Con Gusto Brno' },
-  { id: 'piazza',  label: 'Piazza' },
-  { id: 'monte',   label: 'Monte' },
-];
-
 export default function CashflowView({ state, update: _update }: Props) {
-  const [activeProv,  setActiveProv]  = useState<ProvozovnaId>('all');
   const [stavFilter,  setStavFilter]  = useState('all');
 
-  const effectiveProv = activeProv;
+  const effectiveProv = state.selectedProvozovna as ProvozovnaId;
   const kpi           = getCashflowKPI(effectiveProv);
   const tydny         = getCashflowTydny(effectiveProv);
   const { prijmy: prijmyKat, vydaje: vydajeKat } = getKategorieBreakdown(effectiveProv);
@@ -156,37 +148,13 @@ export default function CashflowView({ state, update: _update }: Props) {
 
   return (
     <>
-      {/* Page header */}
+      {/* ACTION BAR – title odstraněn, zobrazen v topbaru */}
       <div className="page-title-box">
-        <div>
-          <h4 className="page-title fw-semibold mb-1">Cashflow</h4>
-          <p className="text-muted mb-0">Přehled peněžních toků · duben 2026</p>
-        </div>
         <div className="d-flex align-items-center gap-2">
           <button className="btn btn-light btn-sm">Export PDF</button>
         </div>
       </div>
 
-      {/* Přepínač provozoven – SOURCE: Bootstrap .nav.nav-tabs */}
-      <ul className="nav nav-tabs mb-4">
-        {PROV_TABS.map((t) => {
-          const color = PROVOZOVNY.find((p) => p.id === t.id)?.color;
-          return (
-            <li key={t.id} className="nav-item">
-              <button
-                className={`nav-link d-flex align-items-center gap-2${activeProv === t.id ? ' active' : ''}`}
-                onClick={() => setActiveProv(t.id)}
-              >
-                {color && (
-                  <span className="rounded-circle d-inline-block"
-                    style={{ width: 8, height: 8, background: color, flexShrink: 0 }} />
-                )}
-                {t.label}
-              </button>
-            </li>
-          );
-        })}
-      </ul>
 
       {/* Čistý CF alert */}
       {kpi.cistyCC < 0 && (

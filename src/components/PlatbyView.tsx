@@ -116,12 +116,8 @@ export default function PlatbyView({ state, update }: Props) {
         </div>
       )}
 
-      {/* SOURCE: Larkon .page-title-box */}
+      {/* ACTION BAR – SOURCE: Larkon .page-title-box (title odstraněn, zobrazen v topbaru) */}
       <div className="page-title-box">
-        <div>
-          <h4 className="page-title fw-semibold mb-1">Platby</h4>
-          <p className="text-muted mb-0">Výběr a odeslání plateb do banky · správa cashflow</p>
-        </div>
         <div className="d-flex align-items-center gap-2 flex-wrap">
           <div className="d-flex align-items-center gap-2">
             <span className="text-muted fs-13">Období:</span>

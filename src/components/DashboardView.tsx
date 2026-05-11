@@ -36,19 +36,11 @@ export default function DashboardView({ state, update, onOpenDrawer }: Props) {
 
   return (
     <>
-      {/* SOURCE: Larkon .page-title-box */}
+      {/* ACTION BAR – SOURCE: Larkon .page-title-box (title odstraněn, zobrazen v topbaru) */}
       <div className="page-title-box">
-        <div>
-          <h4 className="page-title fw-semibold mb-1">Dashboard</h4>
-          <p className="text-muted mb-0">{dateStr} · přehled za posledních 7 dní</p>
-        </div>
         <div className="d-flex align-items-center gap-2">
-          <button className="btn btn-light btn-sm">
-            Export PDF
-          </button>
-          <button className="btn btn-primary btn-sm">
-            Nová závěrka
-          </button>
+          <button className="btn btn-light btn-sm">Export PDF</button>
+          <button className="btn btn-primary btn-sm">Nová závěrka</button>
         </div>
       </div>
 
