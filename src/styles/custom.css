@@ -1008,3 +1008,108 @@ tfoot .trzby-sticky-r {
     gap: 10px !important;
   }
 }
+
+/* ============================================================
+   PLATBY – operační finance dashboard (v3)
+   ============================================================ */
+
+/* Bank sync status bar */
+.platby-sync-bar {
+  background: var(--bs-body-bg);
+  border: 1px solid var(--bs-border-color);
+  border-radius: var(--bs-border-radius);
+  padding: 8px 14px;
+}
+
+.platby-sync-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  display: inline-block;
+  flex-shrink: 0;
+}
+.platby-sync-dot--ok    { background: #198754; box-shadow: 0 0 0 3px #19875422; }
+.platby-sync-dot--ceka  { background: #f0ad00; animation: trzby-pulse 1.8s ease-in-out infinite; }
+.platby-sync-dot--chyba { background: #dc3545; box-shadow: 0 0 0 3px #dc354522; }
+
+/* Payment state badges */
+.platby-stav-sparovani {
+  background: #cffafe !important;
+  color: #0e7490 !important;
+  font-weight: 600;
+}
+.platby-stav-chyba {
+  background: #dc3545 !important;
+  color: #fff !important;
+  font-weight: 700;
+}
+
+/* Alert for payment failure — stronger than alert-danger */
+.platby-alert-chyba {
+  background: #dc3545;
+  color: #fff;
+  border: none;
+  border-radius: var(--bs-border-radius);
+  border-left: 4px solid #991b1b;
+}
+.platby-alert-chyba strong { color: #fff; }
+
+/* Floating bulk action toolbar */
+.platby-bulk-toolbar {
+  position: fixed;
+  bottom: 24px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 150;
+  background: #1e293b;
+  color: #fff;
+  border-radius: 12px;
+  padding: 12px 20px;
+  box-shadow: 0 8px 32px rgba(0,0,0,0.28);
+  min-width: 420px;
+  max-width: calc(100vw - 48px);
+}
+.platby-bulk-toolbar .btn-light {
+  background: rgba(255,255,255,0.12);
+  border-color: rgba(255,255,255,0.2);
+  color: #fff;
+}
+.platby-bulk-toolbar .btn-light:hover {
+  background: rgba(255,255,255,0.2);
+}
+
+/* Audit timeline */
+.platby-audit-timeline {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+.platby-audit-item {
+  display: flex;
+  gap: 12px;
+  padding-bottom: 14px;
+  position: relative;
+}
+.platby-audit-item:not(:last-child)::before {
+  content: '';
+  position: absolute;
+  left: 11px;
+  top: 22px;
+  bottom: 0;
+  width: 1px;
+  background: var(--bs-border-color);
+}
+.platby-audit-dot {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  margin-top: 1px;
+}
+.platby-audit-content {
+  flex: 1;
+  min-width: 0;
+}

@@ -21,6 +21,7 @@ import {
   getZustatek,
   getCekajiciKarty,
   getOdhadZbytek,
+  getBankovniUcet,
 } from '../platbyData';
 import { fCzk } from '../data';
 
@@ -74,6 +75,7 @@ export default function BalancePanel({
 
   const dostatek     = vysledek >= 0;
   const pocetVybrano = vybrFaktury.length + vybrOstatni.length;
+  const ucet         = provozovna !== 'all' ? getBankovniUcet(provozovna) : undefined;
 
   return (
     <div style={{ position: 'sticky', top: 24, display: 'flex', flexDirection: 'column', gap: 16 }}>
@@ -85,6 +87,12 @@ export default function BalancePanel({
             Dostupnost prostředků
             <small className="text-muted fw-normal ms-2 fs-13">{pocetVybrano} položek vybráno</small>
           </h5>
+          {ucet && (
+            <div className="text-muted fs-11 font-monospace mt-1">{ucet.nazev} · {ucet.cisloUctu}</div>
+          )}
+          {provozovna === 'all' && (
+            <div className="text-warning fs-11 mt-1">⚠ Souhrnný přehled – export plateb vyžaduje výběr provozovny</div>
+          )}
         </div>
 
         <div className="card-body pt-3">

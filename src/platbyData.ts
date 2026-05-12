@@ -5,13 +5,16 @@
 // ─────────────────────────────────────────────────────────────
 
 export type FakturaStavPlatby =
-  | 'nova'         // zadaná, čeká na přiřazení
-  | 'ke-schvaleni' // spárovaná se Septem, čeká na schválení
-  | 'schvalena'    // schválená k úhradě
-  | 'zamitnuta'    // zamítnuta schvalovatelem
-  | 'zastavena'    // pozdržená – čeká na dořešení sporu / dokladů
-  | 'odeslana'     // odeslaná do banky
-  | 'zaplacena';   // zaplacená (spárovaná)
+  | 'nova'               // zadaná, čeká na přiřazení
+  | 'ke-schvaleni'       // spárovaná se Septem, čeká na schválení
+  | 'schvalena'          // schválená k úhradě
+  | 'zamitnuta'          // zamítnuta schvalovatelem
+  | 'zastavena'          // pozdržená – čeká na dořešení sporu / dokladů
+  | 'odeslana'           // odeslaná do banky
+  | 'zaplacena'          // zaplacená (spárovaná)
+  | 'v-bance'            // sent to bank, processing
+  | 'ceka-na-sparovani'  // bank processed, waiting for matching (2 working days)
+  | 'chyba-platby';      // payment failed — high urgency
 
 export type FakturaKategorie =
   | 'zbozi'
@@ -84,6 +87,34 @@ export interface UcetZustatek {
   cekajiciKarty: number; // kartové platby v cestě (nezapsané na účtu)
 }
 
+export interface BankovniUcet {
+  provozovna: string;
+  cisloUctu: string;
+  nazev: string;
+  banka: string;
+  zustatek: number;
+  cekajiciKarty: number;
+  iban: string;
+}
+
+export interface BankSyncStav {
+  provozovna: string;
+  posledniSync: string; // ISO datetime string
+  stav: 'ok' | 'ceka' | 'chyba';
+  zprava?: string;
+}
+
+export type AuditAkce = 'vytvorena' | 'prirazen' | 'schvalena' | 'zamitnuta' | 'zastavena'
+  | 'odeslana-do-banky' | 'v-bance' | 'sparovana' | 'chyba' | 'obnovena';
+
+export interface AuditZaznam {
+  cas: string;
+  kdo: string;
+  akce: AuditAkce;
+  stavPo?: FakturaStavPlatby;
+  poznamka?: string;
+}
+
 // ─── Nastavení ────────────────────────────────────────────────
 
 export const PROCESSING_DAYS_DEFAULT = 2; // dní před splatností = kdy musíme odeslat
@@ -95,6 +126,42 @@ export const UCTY: UcetZustatek[] = [
   { provozovna: 'piazza',  zustatek: 124_500, cekajiciKarty: 22_300 },
   { provozovna: 'monte',   zustatek:  75_500, cekajiciKarty: 18_600 },
 ];
+
+export const BANKOVNI_UCTY: BankovniUcet[] = [
+  { provozovna: 'cg-brno', cisloUctu: '1028374650/0300', nazev: 'CG Brno – Provozní', banka: 'Komerční banka',   zustatek: 287_300, cekajiciKarty: 42_100, iban: 'CZ5503000000001028374650' },
+  { provozovna: 'piazza',  cisloUctu: '2047836291/0800', nazev: 'Piazza – Provozní',   banka: 'Česká spořitelna', zustatek: 124_500, cekajiciKarty: 22_300, iban: 'CZ6808000000002047836291' },
+  { provozovna: 'monte',   cisloUctu: '3019284736/2010', nazev: 'Monte – Provozní',    banka: 'Fio banka',        zustatek:  75_500, cekajiciKarty: 18_600, iban: 'CZ9420100000003019284736' },
+];
+
+export const BANK_SYNC_DATA: BankSyncStav[] = [
+  { provozovna: 'cg-brno', posledniSync: '2026-04-17T14:32:00', stav: 'ok' },
+  { provozovna: 'piazza',  posledniSync: '2026-04-17T13:15:00', stav: 'ok' },
+  { provozovna: 'monte',   posledniSync: '2026-04-17T09:41:00', stav: 'ceka', zprava: 'Synchronizace probíhá' },
+];
+
+export const PLATBY_AUDIT: Record<string, AuditZaznam[]> = {
+  fp01: [
+    { cas: '10.4. 09:15', kdo: 'Petra Nováková', akce: 'vytvorena', stavPo: 'nova' },
+    { cas: '11.4. 11:20', kdo: 'Petr Dohnal',    akce: 'schvalena', stavPo: 'schvalena' },
+  ],
+  fp16: [
+    { cas: '15.4. 08:00', kdo: 'Petra Nováková', akce: 'vytvorena',       stavPo: 'nova' },
+    { cas: '15.4. 10:30', kdo: 'Martin Kovář',   akce: 'schvalena',       stavPo: 'schvalena' },
+    { cas: '17.4. 09:45', kdo: 'Petra Nováková', akce: 'odeslana-do-banky', stavPo: 'v-bance', poznamka: 'Dávka #B2026-0042' },
+  ],
+  fp17: [
+    { cas: '12.4. 09:00', kdo: 'Petra Nováková', akce: 'vytvorena',       stavPo: 'nova' },
+    { cas: '12.4. 14:00', kdo: 'Jana Horáková',  akce: 'schvalena',       stavPo: 'schvalena' },
+    { cas: '14.4. 09:00', kdo: 'Petra Nováková', akce: 'odeslana-do-banky', stavPo: 'v-bance', poznamka: 'Dávka #B2026-0039' },
+    { cas: '14.4. 23:55', kdo: 'Systém',         akce: 'v-bance',         stavPo: 'ceka-na-sparovani', poznamka: 'Platba zpracována bankou' },
+  ],
+  fp18: [
+    { cas: '10.4. 10:00', kdo: 'Petra Nováková', akce: 'vytvorena',       stavPo: 'nova' },
+    { cas: '11.4. 09:00', kdo: 'Tomáš Blažek',  akce: 'schvalena',       stavPo: 'schvalena' },
+    { cas: '13.4. 08:00', kdo: 'Petra Nováková', akce: 'odeslana-do-banky', stavPo: 'v-bance', poznamka: 'Dávka #B2026-0038' },
+    { cas: '15.4. 12:00', kdo: 'Systém',         akce: 'chyba',           stavPo: 'chyba-platby', poznamka: 'Nesprávné číslo účtu – platba vrácena bankou' },
+  ],
+};
 
 // ─── Faktury ──────────────────────────────────────────────────
 
@@ -315,6 +382,54 @@ export const FAKTURY_PLATBY: FakturaPlatby[] = [
     stav: 'zaplacena',
     typDokladu: 'prijata',
   },
+  // ── V BANCE ──
+  {
+    id: 'fp16',
+    cislo: 'FAK-2026-0053',
+    dodavatel: 'Zásobování Praha s.r.o.',
+    kategorie: 'zbozi' as FakturaKategorie,
+    provozovna: 'cg-brno',
+    castka: 28_600,
+    datum: '2026-04-15',
+    splatnost: '2026-04-19',
+    stav: 'v-bance' as FakturaStavPlatby,
+    typDokladu: 'prijata' as TypDokladu,
+    schvalil: 'Martin Kovář',
+    datumSchvaleni: '15. 4. 2026',
+    poznamka: 'Odesláno do banky 17.4. 09:45 · Dávka #B2026-0042',
+  },
+  // ── ČEKÁ NA SPÁROVÁNÍ ──
+  {
+    id: 'fp17',
+    cislo: 'FAK-2026-0038',
+    dodavatel: 'Pivovar Kozel a.s.',
+    kategorie: 'zbozi' as FakturaKategorie,
+    provozovna: 'piazza',
+    castka: 11_250,
+    datum: '2026-04-12',
+    splatnost: '2026-04-16',
+    stav: 'ceka-na-sparovani' as FakturaStavPlatby,
+    typDokladu: 'prijata' as TypDokladu,
+    schvalil: 'Jana Horáková',
+    datumSchvaleni: '12. 4. 2026',
+    poznamka: 'V bance od 14.4. – čeká na spárování',
+  },
+  // ── CHYBA PLATBY ──
+  {
+    id: 'fp18',
+    cislo: 'FAK-2026-0037',
+    dodavatel: 'Fresh Meat CZ s.r.o.',
+    kategorie: 'zbozi' as FakturaKategorie,
+    provozovna: 'monte',
+    castka: 16_800,
+    datum: '2026-04-10',
+    splatnost: '2026-04-15',
+    stav: 'chyba-platby' as FakturaStavPlatby,
+    typDokladu: 'prijata' as TypDokladu,
+    schvalil: 'Tomáš Blažek',
+    datumSchvaleni: '11. 4. 2026',
+    poznamka: 'CHYBA: Nesprávné číslo účtu dodavatele – platba vrácena',
+  },
 ];
 
 // ─── Ostatní platby v tomto týdnu (13–19.4.) ─────────────────
@@ -476,3 +591,29 @@ export const OSTPLATBA_LABELS: Record<OstatniTyp, string> = {
   'vyplata':       'Výplata',
   'dalsi':         'Ostatní',
 };
+
+export function getBankovniUcet(provozovna: string): BankovniUcet | undefined {
+  return BANKOVNI_UCTY.find((u) => u.provozovna === provozovna);
+}
+
+export function getBankSync(provozovna: string): BankSyncStav {
+  if (provozovna === 'all') {
+    const syncs = BANK_SYNC_DATA;
+    const hasChyba = syncs.some((s) => s.stav === 'chyba');
+    const hasCeka  = syncs.some((s) => s.stav === 'ceka');
+    const latest   = syncs.reduce((l, s) => s.posledniSync > l ? s.posledniSync : l, '');
+    return { provozovna: 'all', posledniSync: latest, stav: hasChyba ? 'chyba' : hasCeka ? 'ceka' : 'ok' };
+  }
+  return BANK_SYNC_DATA.find((s) => s.provozovna === provozovna)
+    ?? { provozovna, posledniSync: '', stav: 'chyba', zprava: 'Bankovní účet nenalezen' };
+}
+
+export function getPlatbyAudit(fakturaId: string): AuditZaznam[] {
+  return PLATBY_AUDIT[fakturaId] ?? [];
+}
+
+export function getFakturyVProcesu(provozovna: string): FakturaPlatby[] {
+  return getFakturyForProvozovna(provozovna).filter(
+    (f) => f.stav === 'v-bance' || f.stav === 'ceka-na-sparovani' || f.stav === 'chyba-platby'
+  );
+}

@@ -47,13 +47,16 @@ interface Props {
 
 // Larkon Bootstrap badge mapping
 const STAV_META: Record<FakturaStavPlatby, { cls: string; label: string }> = {
-  nova:           { cls: 'bg-secondary-subtle text-secondary', label: 'Nová' },
-  'ke-schvaleni': { cls: 'bg-warning-subtle text-warning',     label: 'Ke schválení' },
-  schvalena:      { cls: 'bg-success-subtle text-success',     label: 'Schválená' },
-  zamitnuta:      { cls: 'bg-danger-subtle text-danger',       label: 'Zamítnutá' },
-  zastavena:      { cls: 'bg-danger-subtle text-danger',       label: 'Zastavená' },
-  odeslana:       { cls: 'bg-info-subtle text-info',           label: 'Odeslaná' },
-  zaplacena:      { cls: 'bg-success-subtle text-success',     label: 'Zaplacená' },
+  nova:                 { cls: 'bg-secondary-subtle text-secondary', label: 'Nová' },
+  'ke-schvaleni':       { cls: 'bg-warning-subtle text-warning',     label: 'Ke schválení' },
+  schvalena:            { cls: 'bg-success-subtle text-success',     label: 'Schválená' },
+  zamitnuta:            { cls: 'bg-danger-subtle text-danger',       label: 'Zamítnutá' },
+  zastavena:            { cls: 'bg-danger-subtle text-danger',       label: 'Zastavená' },
+  odeslana:             { cls: 'bg-info-subtle text-info',           label: 'Odeslaná' },
+  zaplacena:            { cls: 'bg-success-subtle text-success',     label: 'Zaplacená' },
+  'v-bance':            { cls: 'bg-info-subtle text-info',           label: 'V bance' },
+  'ceka-na-sparovani':  { cls: 'platby-stav-sparovani',              label: 'Čeká na spárování' },
+  'chyba-platby':       { cls: 'platby-stav-chyba',                  label: 'Chyba platby' },
 };
 
 const KAT_META: Record<FakturaKategorie, { color: string }> = {
@@ -84,6 +87,7 @@ export default function FakturyTable({
 
   const zobrazene = vsechny.filter((f) => {
     if (f.stav === 'zaplacena' || f.stav === 'odeslana') return false;
+    if (stavFilter === 'platby-aktivni') return true;
     if (stavFilter === 'zamitnuta') return f.stav === 'zamitnuta';
     if (f.stav === 'zamitnuta') return false; // skryté ve výchozím pohledu
     if (stavFilter === 'zastavena' && f.stav !== 'zastavena') return false;
