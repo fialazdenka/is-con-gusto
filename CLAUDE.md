@@ -86,13 +86,23 @@ interface AppState {
 
 ### 1. KPI přehled (boxíky)
 - 4 boxíky `col-12 col-sm-6 col-xl-3`, vždy čitelné i na úzkém monitoru
-- **Dnes**: LIVE badge (pulzující tečka) + počet otevřených/uzavřených účtů (mock `UCTY_MOCK`)
+- **Badge** v pravém horním rohu: `.trzby-box-badge { font-size: 18px }`, LIVE tečka 12px
+- **%** formátováno česky: `.toFixed(1).replace('.', ',')`
+- **Dnes**: LIVE badge (pulzující tečka 12px) + počet otevřených/uzavřených účtů (mock `UCTY_MOCK`)
 - **Včera**: tržba + % vs. konkrétní den min. týden (např. "vs. středa 9.4.2026")
-- **Tento týden**: tržba + % vs. předchozí týden
-- **Duben 2026**: tržba za 17 dní + % vs. stejné období (1.4.–17.4.) minulý rok + predikce do konce dubna
+- **Tento týden**:
+  - Hodnota = součet dní co proběhly v týdnu (Po–dnešek, `TYDEN_DNI = 5`)
+  - % badge = srovnání stejného počtu dní minulého týdne (`tydenComp * TYDEN_DNI / 7`)
+  - vs. = celý minulý týden (6.4.–12.4., 7 dní) jako absolutní číslo
+  - Predikce = `(suma / TYDEN_DNI) × 7`
+- **Duben 2026**:
+  - Hodnota = tržba za 17 dní
+  - % badge + vs. = celý duben 2025 (`sumaCelyMesic` z LY dat)
+  - Predikce = `(suma / 17) × 30` (průměrný den × počet dní v měsíci)
 
 ### 2. Tržby detail (sticky header)
 - Card header sticky: `position: sticky; top: 0` – drží se při scrollu pod topbarem
+- **Default rozsah: posledních 7 dní** (11.4.–17.4.2026), řazeno sestupně (nejnovější nahoře)
 - Filtr: **Od / Do** (date picker), granularita se odvíjí automaticky (≤45 dní = dny, >45 dní = měsíce)
 - **Bez lokálního provozovna selectu** – tabulka reaguje na globální `selectedProvozovna`:
   - `all` → multi-venue tabulka (sloupce = jednotlivé provozovny, sticky Celkem vpravo)
@@ -101,17 +111,19 @@ interface AppState {
 
 ### 3. Vývoj tržeb (SVG multi-line chart)
 - **Toggle podniků**: barevné pills, klik přidá/odebere linii z grafu (min. 1 vždy)
-- **Přepínač Roky / Měsíce** (default: Roky)
-- **Přepínač délky období** (jen Roky): 3 roky / 5 let / 10 let / Vše
-- Roky mód: X = roky od `chartFromYear` do 2026, každá provozovna = jedna barevná linie od nuly
-- Měsíce mód: X = Led–Pro 2026, linie per provozovna
-- Pod grafem: **tabulka "Přehled po rocích"** (v téže kartě) – N řádků per provozovna, sticky první sloupec
+- **Tři módy** (segment přepínač, default: Roky):
+  - `roky` – X = roky od `chartFromYear` do 2026, linie = roční součet per provozovna; délka: 3/5/10/Vše
+  - `rok-mesice` – select roku (2006–2026), X = Led–Pro zvoleného roku, linie = měsíční tržby
+  - `mesic-roky` – select měsíce (Leden–Prosinec), X = roky od vzniku nejstaršího podniku, linie = daný měsíc per rok
+- State: `chartMode`, `chartYear`, `chartMonth`, `chartPeriod`, `chartFromYear` (useMemo), `mesicRokyFromYear` (useMemo)
+- Pod grafem: **tabulka "Přehled po rocích/měsících"** (v téže kartě) – reaguje na stejný mód, hodnoty `fCzk` (celá čísla)
 
 ### 4. Historický přehled tržeb po měsících (RocniSrovnaniTable)
 - Každý podnik = skupina řádků (jeden per rok, od nejaktuálnějšího po nejstarší)
 - Sloupce = měsíce (Led–Pro), buňka = měsíční tržba + % vs. stejný měsíc předchozího roku
 - Dva sticky sloupce: název podniku (`rowSpan=N`) + rok (2026/2025/...)
-- **Toggle sbalení** v buňce s názvem podniku: sbaleno = jen 2026 + 2025, rozbaleno = vše
+- **Defaultně sbaleno**: `useState(new Set(provs.map(p => p.id)))` – každý podnik zobrazí jen 2026+2025
+- **Toggle sbalení** v buňce s názvem podniku: rozbaleno = vše od roku vzniku
   - Toggle se zobrazí jen pokud má podnik > 2 roky dat
 - Vizuální oddělení: 2026 řádek = zlatavé pozadí + silná border-top
 
@@ -200,4 +212,5 @@ Wireframe vznikl jako interní demo pro vedení firmy Con Gusto.
 Primární kontakt: Petr Dohnal (vedení).
 Referenční datum: **2026-04-17** (čtvrtek), týden 13.4.–19.4.2026.
 Piazza otevřena 2006 (potvrzeno majitelem).
-v3 session: kompletní redesign sekce Tržby + UX cleanup napříč aplikací.
+v3 session 1: kompletní redesign sekce Tržby + UX cleanup napříč aplikací.
+v3 session 2: UX polish – badge velikost, desetinná čárka v %, predikce týden/měsíc, tři grafy módy, default 7 dní detail, historický přehled sbalený.

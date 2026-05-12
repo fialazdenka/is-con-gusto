@@ -275,13 +275,15 @@ export default function TrzbyView({ state, update }: Props) {
   const { selectedProvozovna } = state;
 
   // Detail table local state
-  const [tableFrom, setTableFrom] = useState('2026-03-18');
+  const [tableFrom, setTableFrom] = useState('2026-04-11');
   const [tableTo,   setTableTo]   = useState('2026-04-17');
 
-  // Graf vývoje – multi-select podniků + přepínač Roky/Měsíce + délka období
+  // Graf vývoje – multi-select podniků + přepínač módů + parametry
   const [chartIds,    setChartIds]    = useState<Set<string>>(new Set(['cg-brno', 'piazza', 'monte']));
-  const [chartMode,   setChartMode]   = useState<'roky' | 'mesice'>('roky');
+  const [chartMode,   setChartMode]   = useState<'roky' | 'rok-mesice' | 'mesic-roky'>('roky');
   const [chartPeriod, setChartPeriod] = useState<'3' | '5' | '10' | 'vse'>('vse');
+  const [chartYear,   setChartYear]   = useState(2025); // pro mód rok-mesice
+  const [chartMonth,  setChartMonth]  = useState(1);    // pro mód mesic-roky (1=leden)
 
   const toggleChart = (id: string) => setChartIds(prev => {
     const n = new Set(prev);
@@ -291,7 +293,7 @@ export default function TrzbyView({ state, update }: Props) {
   });
   const chartProvs = ACTIVE_PROVS.filter(p => chartIds.has(p.id) && (BASE_DAY[p.id] ?? 0) > 0);
 
-  // Počáteční rok grafu – závisí na zvoleném období
+  // Počáteční rok grafu – jen pro mód roky
   const chartFromYear = useMemo(() => {
     if (chartMode !== 'roky') return 2026;
     if (chartPeriod === 'vse') {
@@ -301,6 +303,13 @@ export default function TrzbyView({ state, update }: Props) {
     }
     return 2026 - parseInt(chartPeriod) + 1;
   }, [chartMode, chartPeriod, chartProvs]);
+
+  // Počáteční rok pro mód mesic-roky (nejstarší founding mezi vybranými)
+  const mesicRokyFromYear = useMemo(() => {
+    return chartProvs.length
+      ? Math.min(...chartProvs.map((p) => FOUNDING_YEAR[p.id] ?? 2022))
+      : 2018;
+  }, [chartProvs]);
 
   // Single-venue mód → řídí globální výběr v topbaru
   const isSingleVenue = selectedProvozovna !== 'all';
@@ -323,7 +332,7 @@ export default function TrzbyView({ state, update }: Props) {
   // Řádky tabulky
   const tableRows = useMemo(() => {
     if (!tableFrom || !tableTo || tableFrom > tableTo || dayDiff < 0 || dayDiff > 730) return [];
-    return buildRows(tableFrom, tableTo, isMonthly);
+    return buildRows(tableFrom, tableTo, isMonthly).reverse();
   }, [tableFrom, tableTo, isMonthly, dayDiff]);
 
   // ── KPI data ─────────────────────────────────────────────────
@@ -336,21 +345,27 @@ export default function TrzbyView({ state, update }: Props) {
   const vceraComp = getPrevForPeriod(selectedProvozovna, 'vcera');
   const vceraChng = pctChange(vcera.celkem, vceraComp.celkem);
 
-  const tyden     = getTotalForPeriod(selectedProvozovna, 'tyden');
-  const tydenComp = getPrevForPeriod(selectedProvozovna, 'tyden');
-  const tydenChng = pctChange(tyden.celkem, tydenComp.celkem);
+  const tyden         = getTotalForPeriod(selectedProvozovna, 'tyden');
+  const tydenComp     = getPrevForPeriod(selectedProvozovna, 'tyden'); // celý minulý týden (7 dní)
+  const TYDEN_DNI     = 5;  // Po–Čtv (dnů proběhlých k 17.4.)
+  const TYDEN_DNI_CEL = 7;  // celý týden Po–Ne
+  // % badge: srovnání stejného počtu dní (5 dní loni vs. 5 dní letos)
+  const tydenCompSameDni = Math.round(tydenComp.celkem * TYDEN_DNI / TYDEN_DNI_CEL);
+  const tydenChng     = pctChange(tyden.celkem, tydenCompSameDni);
+  // Predikce do konce týdne: průměr/den × 7
+  const tydenPredikce = Math.round((tyden.celkem / TYDEN_DNI) * TYDEN_DNI_CEL);
 
   const mesic = getMesicVsLY(selectedProvozovna);
 
-  // Měsíc – srovnání se stejným počtem dní loni (ne celý měsíc LY)
   const pocetDni        = mesic.cur2026?.pocetDni ?? 17;
-  const ly2025SamePeriod = mesic.ly2025 ? mesic.ly2025.prumerDen * pocetDni : 0;
-  const mesicSameChng   = mesic.cur2026 && ly2025SamePeriod > 0
-    ? pctChange(mesic.cur2026.sumaDoDnes, ly2025SamePeriod) : 0;
-  // Predikce = co máme + zbývající dny dubna × průměr/den
-  const zbyvaUkonce = 30 - pocetDni;
+  // vs. = celý duben 2025 (ne jen stejné období)
+  const ly2025FullMonth = mesic.ly2025?.sumaCelyMesic ?? (mesic.ly2025 ? mesic.ly2025.prumerDen * 30 : 0);
+  const mesicSameChng   = mesic.cur2026 && ly2025FullMonth > 0
+    ? pctChange(mesic.cur2026.sumaDoDnes, ly2025FullMonth) : 0;
+  // Predikce = průměrná denní tržba × počet dní v měsíci
+  const totalDniMesic = 30; // duben má 30 dní
   const mesicPredikce = mesic.cur2026
-    ? mesic.cur2026.sumaDoDnes + mesic.cur2026.prumerDen * zbyvaUkonce : 0;
+    ? Math.round((mesic.cur2026.sumaDoDnes / pocetDni) * totalDniMesic) : 0;
 
   // Otevřené / uzavřené účty (dnešní den)
   const ucty = UCTY_MOCK[selectedProvozovna] ?? UCTY_MOCK['all'];
@@ -392,11 +407,13 @@ export default function TrzbyView({ state, update }: Props) {
             <div className="col-12 col-sm-6 col-xl-3">
               <KpiBox
                 period="Tento týden"
-                sub="13.4. – 17.4.2026"
+                sub={`13.4. – 17.4.2026 · ${TYDEN_DNI} dní`}
                 value={tyden.celkem}
-                compLabel="vs. minulý týden (6.4.–12.4.)"
+                compLabel="vs. minulý týden (6.4.–12.4., celý)"
                 compValue={tydenComp.celkem}
                 chng={tydenChng}
+                prediction={tydenPredikce}
+                predictionLabel="Predikce do konce týdne"
               />
             </div>
 
@@ -407,11 +424,11 @@ export default function TrzbyView({ state, update }: Props) {
                   period="Duben 2026"
                   sub={`1.4. – 17.4. · ${pocetDni} dní`}
                   value={mesic.cur2026.sumaDoDnes}
-                  compLabel={`vs. 1.4.–17.4.${mesic.ly2025.rok} (stejné období)`}
-                  compValue={ly2025SamePeriod}
+                  compLabel={`vs. duben ${mesic.ly2025.rok} (celý měsíc)`}
+                  compValue={ly2025FullMonth}
                   chng={mesicSameChng}
                   prediction={mesicPredikce}
-                  predictionLabel={`Predikce do konce dubna (+${zbyvaUkonce} dní)`}
+                  predictionLabel="Predikce za celý duben"
                 />
               </div>
             )}
@@ -498,7 +515,7 @@ export default function TrzbyView({ state, update }: Props) {
                         {d7Chng != null ? (
                           <span className={`badge ${d7Up ? 'bg-success-subtle text-success' : 'bg-danger-subtle text-danger'}`} style={{ fontSize: 11 }}>
                             <iconify-icon icon={d7Up ? 'solar:arrow-up-bold' : 'solar:arrow-down-bold'} />
-                            {' '}{d7Up ? '+' : ''}{d7Chng.toFixed(1)} %
+                            {' '}{d7Up ? '+' : ''}{d7Chng.toFixed(1).replace('.', ',')} %
                           </span>
                         ) : (
                           <span className="text-muted fs-12">—</span>
@@ -599,14 +616,17 @@ export default function TrzbyView({ state, update }: Props) {
               <small className="text-muted fw-normal">
                 {chartMode === 'roky'
                   ? `Roční přehled · ${chartFromYear}–2026 · *duben 2026`
-                  : 'Měsíční přehled · rok 2026'}
+                  : chartMode === 'rok-mesice'
+                  ? `Měsíční přehled · rok ${chartYear}`
+                  : `${['Leden','Únor','Březen','Duben','Květen','Červen','Červenec','Srpen','Září','Říjen','Listopad','Prosinec'][chartMonth-1]} · ${mesicRokyFromYear}–2026`}
               </small>
             </div>
             <div className="d-flex align-items-center gap-2 flex-wrap">
-              {/* Roky / Měsíce */}
+              {/* Mód přepínač */}
               <div className="lk-segment">
-                <button className={`lk-seg-btn${chartMode === 'roky'   ? ' active' : ''}`} onClick={() => setChartMode('roky')}>Roky</button>
-                <button className={`lk-seg-btn${chartMode === 'mesice' ? ' active' : ''}`} onClick={() => setChartMode('mesice')}>Měsíce</button>
+                <button className={`lk-seg-btn${chartMode === 'roky'       ? ' active' : ''}`} onClick={() => setChartMode('roky')}>Roky</button>
+                <button className={`lk-seg-btn${chartMode === 'rok-mesice' ? ' active' : ''}`} onClick={() => setChartMode('rok-mesice')}>Rok › měsíce</button>
+                <button className={`lk-seg-btn${chartMode === 'mesic-roky' ? ' active' : ''}`} onClick={() => setChartMode('mesic-roky')}>Měsíc › roky</button>
               </div>
               {/* Délka období – jen v Roky módu */}
               {chartMode === 'roky' && (
@@ -620,6 +640,24 @@ export default function TrzbyView({ state, update }: Props) {
                     </button>
                   ))}
                 </div>
+              )}
+              {/* Výběr roku – pro mód rok-mesice */}
+              {chartMode === 'rok-mesice' && (
+                <select className="form-select form-select-sm" style={{ width: 'auto' }}
+                  value={chartYear} onChange={(e) => setChartYear(parseInt(e.target.value))}>
+                  {Array.from({ length: 2026 - 2006 + 1 }, (_, i) => 2026 - i).map((y) => (
+                    <option key={y} value={y}>{y}</option>
+                  ))}
+                </select>
+              )}
+              {/* Výběr měsíce – pro mód mesic-roky */}
+              {chartMode === 'mesic-roky' && (
+                <select className="form-select form-select-sm" style={{ width: 'auto' }}
+                  value={chartMonth} onChange={(e) => setChartMonth(parseInt(e.target.value))}>
+                  {['Leden','Únor','Březen','Duben','Květen','Červen','Červenec','Srpen','Září','Říjen','Listopad','Prosinec'].map((m, i) => (
+                    <option key={i+1} value={i+1}>{m}</option>
+                  ))}
+                </select>
               )}
             </div>
           </div>
@@ -643,19 +681,19 @@ export default function TrzbyView({ state, update }: Props) {
         <div className="card-body pb-2">
           <div className="lk-custom">
             <div className="lk-custom-label">CUSTOM: SVG multi-line chart → ApexCharts v produkci</div>
-            <VyvojChart provs={chartProvs} mode={chartMode} fromYear={chartFromYear} />
+            <VyvojChart provs={chartProvs} mode={chartMode} fromYear={chartFromYear} year={chartYear} month={chartMonth} mesicRokyFromYear={mesicRokyFromYear} />
           </div>
         </div>
 
         {/* Tabulka – součást stejné karty jako graf */}
         <div className="border-top px-3 py-2 d-flex align-items-center gap-2">
-          <span className="text-uppercase fw-semibold text-muted fs-11">Přehled po rocích</span>
-          <span className="text-muted fs-11">
-            · {chartMode === 'roky' ? `${chartFromYear}–2026` : '2026'} · *duben = leden–duben
+          <span className="text-uppercase fw-semibold text-muted fs-11">
+            {chartMode === 'roky' ? 'Přehled po rocích' : chartMode === 'rok-mesice' ? `Přehled po měsících · ${chartYear}` : `Přehled po rocích · ${['Leden','Únor','Březen','Duben','Květen','Červen','Červenec','Srpen','Září','Říjen','Listopad','Prosinec'][chartMonth-1]}`}
           </span>
+          {chartMode === 'roky' && <span className="text-muted fs-11">· {chartFromYear}–2026 · *duben = leden–duben</span>}
         </div>
         <div className="trzby-detail-wrap">
-          <RocniVyvojTable provs={chartProvs} fromYear={chartFromYear} />
+          <RocniVyvojTable provs={chartProvs} mode={chartMode} fromYear={chartFromYear} year={chartYear} month={chartMonth} mesicRokyFromYear={mesicRokyFromYear} />
         </div>
       </div>
 
@@ -746,7 +784,7 @@ function KpiBox({
         <span className="trzby-box-period">{period}</span>
         <span className={`badge ${up ? 'bg-success-subtle text-success' : 'bg-danger-subtle text-danger'} trzby-box-badge`}>
           <iconify-icon icon={up ? 'solar:arrow-up-bold' : 'solar:arrow-down-bold'} />
-          {' '}{up ? '+' : ''}{chng.toFixed(1)} %
+          {' '}{up ? '+' : ''}{chng.toFixed(1).replace('.', ',')} %
         </span>
       </div>
 
@@ -783,21 +821,33 @@ const IH = CH - MT - MB;
 
 type ChartProv = typeof ACTIVE_PROVS[0];
 
-function VyvojChart({ provs, mode, fromYear }: { provs: ChartProv[]; mode: 'roky' | 'mesice'; fromYear: number }) {
+function VyvojChart({ provs, mode, fromYear, year, month, mesicRokyFromYear }: {
+  provs: ChartProv[];
+  mode: 'roky' | 'rok-mesice' | 'mesic-roky';
+  fromYear: number;
+  year: number;
+  month: number;
+  mesicRokyFromYear: number;
+}) {
   const [tooltipIdx, setTooltipIdx] = useState<number | null>(null);
 
-  // X-osa: roky (od fromYear) nebo měsíce 2026
-  const xLabels: string[] = mode === 'mesice'
-    ? MONTH_LABELS
-    : Array.from({ length: 2026 - fromYear + 1 }, (_, i) => String(fromYear + i));
+  // X-osa závisí na módu
+  const xLabels: string[] =
+    mode === 'roky'
+      ? Array.from({ length: 2026 - fromYear + 1 }, (_, i) => String(fromYear + i))
+      : mode === 'rok-mesice'
+      ? MONTH_LABELS
+      : Array.from({ length: 2026 - mesicRokyFromYear + 1 }, (_, i) => String(mesicRokyFromYear + i));
 
   const N = xLabels.length;
 
   // Data per provozovna per x-bod
   const data: number[][] = provs.map((p) =>
-    mode === 'mesice'
-      ? genYearData(2026, p.id)
-      : xLabels.map((y) => genAnnualRevenue(parseInt(y), p.id))
+    mode === 'roky'
+      ? xLabels.map((y) => genAnnualRevenue(parseInt(y), p.id))
+      : mode === 'rok-mesice'
+      ? Array.from({ length: 12 }, (_, i) => genMonthRevenue(year, i + 1, p.id))
+      : xLabels.map((y) => genMonthRevenue(parseInt(y), month, p.id))
   );
 
   const allVals  = data.flatMap((d) => d).filter((v) => v > 0);
@@ -887,10 +937,16 @@ function VyvojChart({ provs, mode, fromYear }: { provs: ChartProv[]; mode: 'roky
           </text>
         ))}
 
-        {/* 2026 = částečný rok */}
+        {/* 2026 = částečný rok (jen v ročním módu) */}
         {mode === 'roky' && N > 0 && (
           <text x={xPx(N-1)} y={MT+IH+34} textAnchor="middle" fontSize="8" fill="#9097a7">
             *led–dub
+          </text>
+        )}
+        {/* Duben 2026 = částečný měsíc (jen v rok-mesice pro rok 2026) */}
+        {mode === 'rok-mesice' && year === 2026 && (
+          <text x={xPx(3)} y={MT+IH+34} textAnchor="middle" fontSize="8" fill="#9097a7">
+            *17 dní
           </text>
         )}
 
@@ -904,7 +960,11 @@ function VyvojChart({ provs, mode, fromYear }: { provs: ChartProv[]; mode: 'roky
         return (
           <div style={{ position: 'absolute', left: `clamp(10px, ${xPct}%, calc(100% - 220px))`, top: 0, background: '#313b5e', color: 'white', borderRadius: 8, padding: '9px 13px', fontSize: 11, pointerEvents: 'none', zIndex: 10, minWidth: 190, boxShadow: '0 4px 20px rgba(0,0,0,0.2)' }}>
             <div style={{ fontWeight: 700, marginBottom: 6, fontSize: 12 }}>
-              {xLabels[tooltipIdx]}{mode === 'roky' && tooltipIdx === N-1 ? ' *' : ''}
+              {mode === 'rok-mesice'
+                ? `${xLabels[tooltipIdx]} ${year}`
+                : mode === 'mesic-roky'
+                ? `${MONTH_LABELS[month-1]} ${xLabels[tooltipIdx]}`
+                : `${xLabels[tooltipIdx]}${tooltipIdx === N-1 ? ' *' : ''}`}
             </div>
             {provs.map((prov, pi) => {
               const v = data[pi][tooltipIdx];
@@ -926,23 +986,54 @@ function VyvojChart({ provs, mode, fromYear }: { provs: ChartProv[]; mode: 'roky
 // SOURCE: Larkon _tables.scss + Bootstrap
 // CUSTOM: NO – sticky first column, annual data
 
-function RocniVyvojTable({ provs, fromYear }: { provs: ChartProv[]; fromYear: number }) {
+const MONTH_FULL = ['Leden','Únor','Březen','Duben','Květen','Červen','Červenec','Srpen','Září','Říjen','Listopad','Prosinec'];
+
+function RocniVyvojTable({ provs, mode, fromYear, year, month, mesicRokyFromYear }: {
+  provs: ChartProv[];
+  mode: 'roky' | 'rok-mesice' | 'mesic-roky';
+  fromYear: number;
+  year: number;
+  month: number;
+  mesicRokyFromYear: number;
+}) {
   if (!provs.length) {
     return <div className="p-4 text-center text-muted fs-13">Vyberte provozovny v grafu výše.</div>;
   }
 
-  const years = Array.from({ length: 2026 - fromYear + 1 }, (_, i) => fromYear + i);
+  // Sloupce a hodnoty závisí na módu
+  const cols: { key: string; label: string; sub?: string }[] =
+    mode === 'roky'
+      ? Array.from({ length: 2026 - fromYear + 1 }, (_, i) => {
+          const y = fromYear + i;
+          return { key: String(y), label: String(y), sub: y === 2026 ? '*led–dub' : undefined };
+        })
+      : mode === 'rok-mesice'
+      ? MONTH_LABELS.map((lbl, i) => ({
+          key: String(i + 1),
+          label: lbl,
+          sub: year === 2026 && i === 3 ? '*17 dní' : undefined,
+        }))
+      : Array.from({ length: 2026 - mesicRokyFromYear + 1 }, (_, i) => {
+          const y = mesicRokyFromYear + i;
+          return { key: String(y), label: String(y), sub: y === 2026 ? '*17 dní' : undefined };
+        });
+
+  function getValue(prov: ChartProv, colKey: string): number {
+    if (mode === 'roky')       return genAnnualRevenue(parseInt(colKey), prov.id);
+    if (mode === 'rok-mesice') return genMonthRevenue(year, parseInt(colKey), prov.id);
+    return genMonthRevenue(parseInt(colKey), month, prov.id);
+  }
 
   return (
     <table className="trzby-detail-table">
       <thead>
         <tr>
           <th className="trzby-col-date trzby-sticky-l" style={{ minWidth: 130, maxWidth: 160 }}>Provozovna</th>
-          {years.map((y) => (
-            <th key={y} className="trzby-col-prov" style={{ minWidth: 90, textAlign: 'right' }}>
-              <span style={{ display: 'block', lineHeight: 1.2 }}>{y}</span>
-              {y === 2026 && (
-                <span style={{ display: 'block', fontSize: 9, fontWeight: 400, color: 'var(--bs-secondary-color)' }}>*led–dub</span>
+          {cols.map((col) => (
+            <th key={col.key} className="trzby-col-prov" style={{ minWidth: 90, textAlign: 'right' }}>
+              <span style={{ display: 'block', lineHeight: 1.2 }}>{col.label}</span>
+              {col.sub && (
+                <span style={{ display: 'block', fontSize: 9, fontWeight: 400, color: 'var(--bs-secondary-color)' }}>{col.sub}</span>
               )}
             </th>
           ))}
@@ -962,12 +1053,12 @@ function RocniVyvojTable({ provs, fromYear }: { provs: ChartProv[]; fromYear: nu
                 </div>
                 <div className="text-muted" style={{ fontSize: 10, paddingLeft: 11 }}>od {fy}</div>
               </td>
-              {years.map((y) => {
-                const v = genAnnualRevenue(y, prov.id);
+              {cols.map((col) => {
+                const v = getValue(prov, col.key);
                 return (
-                  <td key={y} className="trzby-col-prov text-end">
+                  <td key={col.key} className="trzby-col-prov text-end">
                     {v > 0
-                      ? <span className="font-monospace fw-semibold fs-12">{fCzkShort(v)}</span>
+                      ? <span className="font-monospace fw-semibold fs-12">{fCzk(v)}</span>
                       : <span className="text-muted fs-12">—</span>}
                   </td>
                 );
@@ -979,11 +1070,11 @@ function RocniVyvojTable({ provs, fromYear }: { provs: ChartProv[]; fromYear: nu
       <tfoot>
         <tr>
           <td className="trzby-col-date trzby-sticky-l fw-bold fs-12">Celkem</td>
-          {years.map((y) => {
-            const sum = provs.reduce((s, p) => s + genAnnualRevenue(y, p.id), 0);
+          {cols.map((col) => {
+            const sum = provs.reduce((s, p) => s + getValue(p, col.key), 0);
             return (
-              <td key={y} className="trzby-col-prov text-end font-monospace fw-bold fs-12">
-                {sum > 0 ? fCzkShort(sum) : <span className="text-muted">—</span>}
+              <td key={col.key} className="trzby-col-prov text-end font-monospace fw-bold fs-12">
+                {sum > 0 ? fCzk(sum) : <span className="text-muted">—</span>}
               </td>
             );
           })}
@@ -1000,8 +1091,8 @@ function RocniVyvojTable({ provs, fromYear }: { provs: ChartProv[]; fromYear: nu
 
 function RocniSrovnaniTable() {
   const provs = ACTIVE_PROVS.filter((p) => BASE_DAY[p.id] > 0);
-  // Sbalené podniky – defaultně vše rozbaleno
-  const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
+  // Sbalené podniky – defaultně vše sbaleno
+  const [collapsed, setCollapsed] = useState<Set<string>>(new Set(provs.map((p) => p.id)));
   const toggle = (id: string) => setCollapsed(prev => {
     const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n;
   });
@@ -1092,7 +1183,7 @@ function RocniSrovnaniTable() {
                           {vCur > 0 ? (
                             <>
                               <div className={`font-monospace fs-12${isNewest ? ' fw-semibold' : ''}`}>
-                                {fCzkShort(vCur)}
+                                {fCzk(vCur)}
                               </div>
                               {chng != null && (
                                 <div>
