@@ -1,4 +1,41 @@
 /* ============================================================
+   ACUMIN PRO – firemní font Con Gusto
+   ============================================================ */
+
+@font-face {
+  font-family: 'Acumin Pro';
+  src: url('/fonts/AcuminPro-Book.otf') format('opentype');
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'Acumin Pro';
+  src: url('/fonts/AcuminPro-Semibold.otf') format('opentype');
+  font-weight: 600;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'Acumin Pro';
+  src: url('/fonts/AcuminPro-Bold.otf') format('opentype');
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+}
+
+body,
+.card, .card-title, .card-header,
+.sidebar, .topbar,
+.table, .form-control, .form-select,
+.btn, .badge,
+h1, h2, h3, h4, h5, h6 {
+  font-family: 'Acumin Pro', system-ui, sans-serif !important;
+}
+
+/* ============================================================
    CUSTOM.CSS – vše zde je mimo Larkon/Bootstrap
    Tento soubor obsahuje VÝHRADNĚ custom přidání/přepisy.
    Larkon CSS přichází z larkon/larkon.scss (nezasahujeme).
