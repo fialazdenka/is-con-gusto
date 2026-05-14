@@ -18,12 +18,14 @@ import type { FutureRevMode } from '../platbyData';
 import {
   FAKTURY_PLATBY,
   OSTATNI_PLATBY,
-  getZustatek,
+  BANKOVNI_UCTY,
   getCekajiciKarty,
   getOdhadZbytek,
   getBankovniUcet,
+  getPravniEntita,
+  ENTITA_LABEL,
 } from '../platbyData';
-import { fCzk } from '../data';
+import { PROVOZOVNY, fCzk } from '../data';
 
 interface Props {
   provozovna: ProvozovnaId;
@@ -34,6 +36,8 @@ interface Props {
   futureRevMode: FutureRevMode;
   onFutureRevChange: (m: FutureRevMode) => void;
   onPotvrdit: () => void;
+  selectedUctyIds: Set<string>;
+  onToggleUcet: (provId: string) => void;
 }
 
 export default function BalancePanel({
@@ -45,8 +49,13 @@ export default function BalancePanel({
   futureRevMode,
   onFutureRevChange,
   onPotvrdit,
+  selectedUctyIds,
+  onToggleUcet,
 }: Props) {
-  const zustatek = getZustatek(provozovna);
+  // Zůstatek = součet vybraných účtů
+  const zustatek = BANKOVNI_UCTY
+    .filter((u) => selectedUctyIds.has(u.provozovna))
+    .reduce((s, u) => s + u.zustatek, 0);
 
   const vybrFaktury = FAKTURY_PLATBY.filter(
     (f) => selectedFaIds.has(f.id) && (provozovna === 'all' || f.provozovna === provozovna)
@@ -77,8 +86,55 @@ export default function BalancePanel({
   const pocetVybrano = vybrFaktury.length + vybrOstatni.length;
   const ucet         = provozovna !== 'all' ? getBankovniUcet(provozovna) : undefined;
 
+  // Kontrola neshody právních entit: faktury vs. platební účty
+  const entityFaktur   = new Set(vybrFaktury.map((f) => getPravniEntita(f.provozovna)));
+  const entityUctu     = new Set([...selectedUctyIds].map((id) => getPravniEntita(id)));
+  const entityKonflikty = [...entityFaktur].filter((e) => !entityUctu.has(e));
+
   return (
     <div style={{ position: 'sticky', top: 24, display: 'flex', flexDirection: 'column', gap: 16 }}>
+
+      {/* ── Výběr platebních účtů ────────────────────────── */}
+      <div className="card">
+        <div className="card-header">
+          <h5 className="card-title mb-0">Platební účty</h5>
+          <small className="text-muted fw-normal">Vyberte, ze kterých účtů platíte</small>
+        </div>
+        <div className="card-body py-2 px-3">
+          {BANKOVNI_UCTY.map((ucetRow) => {
+            const prov = PROVOZOVNY.find((p) => p.id === ucetRow.provozovna);
+            if (!prov) return null;
+            const checked = selectedUctyIds.has(ucetRow.provozovna);
+            return (
+              <label
+                key={ucetRow.provozovna}
+                className="d-flex align-items-center gap-2 py-2 platby-ucet-row"
+                style={{ cursor: 'pointer', borderBottom: '1px solid var(--bs-border-color)' }}
+              >
+                <input
+                  type="checkbox"
+                  className="form-check-input flex-shrink-0 mt-0"
+                  checked={checked}
+                  onChange={() => onToggleUcet(ucetRow.provozovna)}
+                />
+                <span className="rounded-circle flex-shrink-0"
+                  style={{ width: 8, height: 8, background: prov.color, display: 'inline-block' }} />
+                <span className="fw-semibold fs-12 flex-grow-1">{prov.shortName}</span>
+                <div className="text-end">
+                  <div className="font-monospace fs-12 fw-bold">{fCzk(ucetRow.zustatek)}</div>
+                  <div className="text-muted fs-11">{ucetRow.cisloUctu}</div>
+                </div>
+              </label>
+            );
+          })}
+          {selectedUctyIds.size > 1 && (
+            <div className="d-flex justify-content-between align-items-center pt-2">
+              <span className="text-muted fs-12">Celkem vybrané účty</span>
+              <span className="font-monospace fw-bold fs-13">{fCzk(zustatek)}</span>
+            </div>
+          )}
+        </div>
+      </div>
 
       {/* ── Kalkulátor ── SOURCE: Larkon .card ─────────── */}
       <div className="card" style={{ borderTop: `4px solid ${dostatek ? '#198754' : '#dc3545'}` }}>
@@ -95,7 +151,63 @@ export default function BalancePanel({
           )}
         </div>
 
+        {/* Upozornění na neshodné právní entity */}
+        {entityKonflikty.length > 0 && (
+          <div className="alert alert-warning d-flex align-items-start gap-2 mx-3 mt-3 mb-0 py-2 px-3">
+            <iconify-icon icon="solar:danger-triangle-bold-duotone" style={{ fontSize: 16, flexShrink: 0, marginTop: 2 }} />
+            <div className="fs-12">
+              <strong>Upozornění – rozdílné s.r.o.</strong>
+              <div className="mt-1">
+                Vybrané faktury patří {entityKonflikty.map((e) => <strong key={e}>{ENTITA_LABEL[e]}</strong>).reduce((a, b) => <>{a}, {b}</>)},
+                {' '}ale platíte z účtu jiné právní entity. Zkontrolujte před odesláním.
+              </div>
+            </div>
+          </div>
+        )}
+
         <div className="card-body pt-3">
+          {/* Toggle budoucích tržeb – SOURCE: CUSTOM segment, gastro logika */}
+          <div className="mb-3">
+            <div className="text-uppercase fw-semibold text-muted fs-11 mb-2">Zahrnout budoucí tržby</div>
+            <div className="d-flex gap-1 flex-wrap">
+              {(
+                [
+                  { value: 'off'          as FutureRevMode, label: 'Jen zůstatek',   desc: 'Aktuální stav účtu',                color: '#6c757d' },
+                  { value: 'budouci'      as FutureRevMode, label: '+ Karty v cestě', desc: 'Zůstatek + kartové platby',        color: '#0dcaf0' },
+                  { value: 'budouci-plus' as FutureRevMode, label: '+ Odhad tržeb',  desc: 'Zůstatek + karty + odhad týdne',  color: '#7c3aed' },
+                ] as const
+              ).map((opt) => (
+                <button
+                  key={opt.value}
+                  title={opt.desc}
+                  onClick={() => onFutureRevChange(opt.value)}
+                  style={{
+                    flex: '1 1 auto',
+                    padding: '5px 8px',
+                    borderRadius: 'var(--bs-border-radius)',
+                    border: `1px solid ${futureRevMode === opt.value ? opt.color : 'var(--bs-border-color)'}`,
+                    background: futureRevMode === opt.value ? opt.color + '18' : 'transparent',
+                    cursor: 'pointer',
+                    fontSize: 11,
+                    fontWeight: futureRevMode === opt.value ? 700 : 500,
+                    color: futureRevMode === opt.value ? opt.color : 'var(--bs-secondary-color)',
+                    textAlign: 'center',
+                    transition: 'all 0.12s',
+                    whiteSpace: 'nowrap',
+                  }}
+                >
+                  {opt.label}
+                </button>
+              ))}
+            </div>
+            {futureRevMode === 'budouci-plus' && (
+              <div className="mt-1 fs-11 text-muted" style={{ lineHeight: 1.4 }}>
+                Odhad = průměr stejného týdne min. roku + 3 předchozí týdny
+              </div>
+            )}
+          </div>
+          <div className="border-top mb-2" />
+
           {/* Řádky kalkulace */}
           <BalRow label="Zůstatek na účtu"       value={zustatek}       color="#0dcaf0" bold />
           <BalRow label={`Faktury (${vybrFaktury.length})`} value={-sumaFaktury} color={sumaFaktury > 0 ? '#dc3545' : '#6c757d'} />
@@ -151,59 +263,6 @@ export default function BalancePanel({
         </div>
       </div>
 
-      {/* ── Toggle budoucích tržeb ──────────────────────────────
-          COMPONENT: Future Revenue Selector
-          SOURCE: Larkon card + CUSTOM radio-like buttons (gastro logika)
-          CUSTOM: YES – doménová logika zahrnutí budoucích tržeb */}
-      <div className="card">
-        <div className="card-body py-3">
-          <div className="text-uppercase fw-semibold text-muted fs-11 mb-3">
-            Zahrnout budoucí tržby
-          </div>
-          <div className="lk-custom">
-            <div className="lk-custom-label">CUSTOM: gastro cashflow logika – budoucí tržby</div>
-            <div className="d-flex flex-column gap-2 pt-1">
-              {(
-                [
-                  { value: 'off' as FutureRevMode,           label: 'Pouze zůstatek',    desc: 'Jen aktuální stav účtu',                      color: '#6c757d' },
-                  { value: 'budouci' as FutureRevMode,       label: 'Budoucí přijaté platby',     desc: 'Zůstatek + kartové platby v cestě',            color: '#0dcaf0' },
-                  { value: 'budouci-plus' as FutureRevMode,  label: 'Budoucí přijaté platby+',    desc: 'Zůstatek + karty + odhad zbytku týdne',       color: '#7c3aed' },
-                ] as const
-              ).map((opt) => (
-                <button
-                  key={opt.value}
-                  onClick={() => onFutureRevChange(opt.value)}
-                  style={{
-                    display: 'flex', alignItems: 'center', gap: 10,
-                    padding: '8px 12px',
-                    borderRadius: 'var(--bs-border-radius)',
-                    border: `1px solid ${futureRevMode === opt.value ? opt.color : 'var(--bs-border-color)'}`,
-                    background: futureRevMode === opt.value ? opt.color + '12' : 'white',
-                    cursor: 'pointer', textAlign: 'left', transition: 'all 0.14s',
-                  }}
-                >
-                  <span style={{ width: 14, height: 14, borderRadius: '50%', border: `2px solid ${opt.color}`, background: futureRevMode === opt.value ? opt.color : 'transparent', flexShrink: 0 }} />
-                  <div>
-                    <div style={{ fontSize: 12, fontWeight: 600, color: futureRevMode === opt.value ? opt.color : 'var(--bs-body-color)' }}>
-                      {opt.label}
-                    </div>
-                    <div style={{ fontSize: 11, color: '#adb5bd', marginTop: 1 }}>{opt.desc}</div>
-                  </div>
-                  {futureRevMode === opt.value && (
-                    <span style={{ marginLeft: 'auto', color: opt.color, fontWeight: 700, fontSize: 12 }}>✓</span>
-                  )}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          {futureRevMode === 'budouci-plus' && (
-            <div className="mt-2 p-2 rounded fs-11" style={{ background: '#f5f3ff', color: '#5b21b6', lineHeight: 1.5 }}>
-              Odhad = průměr stejného týdne minulého roku + 3 předchozí týdny aktuálního roku
-            </div>
-          )}
-        </div>
-      </div>
     </div>
   );
 }

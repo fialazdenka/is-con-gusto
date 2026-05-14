@@ -87,6 +87,25 @@ export interface UcetZustatek {
   cekajiciKarty: number; // kartové platby v cestě (nezapsané na účtu)
 }
 
+export type PravniEntita = 'con-gusto' | 'u-capa' | 'korek';
+
+export const PRAVNI_ENTITA: Record<string, PravniEntita> = {
+  'u-capa':        'u-capa',
+  'korek-wines':   'korek',
+  'korek-winebar': 'korek',
+  // vše ostatní = 'con-gusto' (výchozí)
+};
+
+export const ENTITA_LABEL: Record<PravniEntita, string> = {
+  'con-gusto': 'Con Gusto s.r.o.',
+  'u-capa':    'Pivnice U Čápa s.r.o.',
+  'korek':     'KOREK s.r.o.',
+};
+
+export function getPravniEntita(provozovnaId: string): PravniEntita {
+  return PRAVNI_ENTITA[provozovnaId] ?? 'con-gusto';
+}
+
 export interface BankovniUcet {
   provozovna: string;
   cisloUctu: string;

@@ -146,6 +146,20 @@ body {
   --bs-topbar-height: 100px;
 }
 
+/* Logo-box: Larkon používá line-height: 100px pro centrování,
+   což se pere s flex layoutem uvnitř. Přepíšeme na flex. */
+.logo-box {
+  display: flex !important;
+  align-items: center !important;
+  height: var(--bs-topbar-height) !important;
+  line-height: normal !important;
+}
+.logo-box .logo-dark {
+  display: flex;
+  align-items: center;
+  height: 100%;
+}
+
 .page-content {
   height: calc(100% - var(--bs-topbar-height));
   overflow-y: auto;
@@ -338,22 +352,38 @@ body {
   display: flex;
   flex-direction: column;
   height: 100%;
-  justify-content: center;
 }
 
 .topbar-row-main {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  min-height: 54px;
+  flex: 1;
+  gap: 8px;
+}
+
+/* Larkon nastavuje .topbar-item { height: $topbar-height } = 100px,
+   což v dvouřádkovém layoutu přetéká přes row 1 a způsobuje ořez.
+   Override: výška auto, centrování přes flex rodiče. */
+.topbar-rows .topbar-item {
+  height: auto;
+  align-self: center;
 }
 
 .topbar-row-filters {
   display: flex;
   align-items: center;
   gap: 6px;
-  min-height: 40px;
-  border-top: 1px solid var(--bs-border-color);
+  height: 40px;
+  flex-shrink: 0;
+  border-top: 2px solid var(--prov-color, var(--bs-border-color));
+  transition: border-color 0.3s ease;
+}
+
+/* Barevná tečka u selectu provozovny – indikátor aktivní provozovny */
+.topbar-prov-select {
+  border-left: 3px solid var(--prov-color, var(--bs-border-color)) !important;
+  transition: border-color 0.3s ease;
 }
 
 .topbar-divider {
@@ -376,6 +406,52 @@ body {
 .topbar-row-filters .lk-seg-btn {
   padding: 3px 10px;
   font-size: 11.5px;
+}
+
+/* Sjednocené chování card-header napříč aplikací:
+   - sticky při scrollování (zůstane nahoře dokud karta neodjede)
+   - flex-wrap pro zalamování při úzkém okně */
+.card-header {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  background: var(--bs-card-bg, #fff);
+  border-radius: var(--bs-border-radius) var(--bs-border-radius) 0 0;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+}
+.card-header.d-flex {
+  flex-wrap: wrap !important;
+  gap: 8px !important;
+  align-items: center !important;
+}
+.card-header > .d-flex:first-child {
+  flex-wrap: wrap !important;
+  gap: 8px !important;
+}
+
+/* Drobečková navigace v topbaru */
+.topbar-breadcrumb .breadcrumb {
+  font-size: 12px;
+  gap: 2px;
+}
+.topbar-breadcrumb .breadcrumb-item + .breadcrumb-item::before {
+  content: '›';
+  color: var(--bs-secondary-color);
+}
+.topbar-breadcrumb-link {
+  font-size: 12px;
+  color: var(--bs-secondary-color);
+  text-decoration: none;
+  font-weight: 500;
+  line-height: 1;
+}
+.topbar-breadcrumb-link:hover {
+  color: var(--bs-primary);
+  text-decoration: none;
+}
+.topbar-breadcrumb .breadcrumb-item.active {
+  color: var(--bs-body-color);
+  font-weight: 600;
 }
 
 /* ─── 12. Mobilní backdrop + responzivní media query ─────────
@@ -1012,6 +1088,15 @@ tfoot .trzby-sticky-r {
 /* ============================================================
    PLATBY – operační finance dashboard (v3)
    ============================================================ */
+
+/* Řádek platebního účtu v BalancePanel */
+.platby-ucet-row:last-child {
+  border-bottom: none !important;
+}
+.platby-ucet-row:hover {
+  background: var(--bs-light);
+  border-radius: var(--bs-border-radius);
+}
 
 /* Bank sync status bar */
 .platby-sync-bar {

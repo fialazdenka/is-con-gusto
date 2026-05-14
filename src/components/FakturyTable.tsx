@@ -43,6 +43,7 @@ interface Props {
   localStavy?: Record<string, FakturaStavPlatby>;
   localPrirazeni?: Record<string, string>;
   onRowClick?: (id: string) => void;
+  showExtraCols?: boolean; // false = skryje Typ dokladu, Kategorie, Přiřazeno (pro Platby)
 }
 
 // Larkon Bootstrap badge mapping
@@ -56,7 +57,7 @@ const STAV_META: Record<FakturaStavPlatby, { cls: string; label: string }> = {
   zaplacena:            { cls: 'bg-success-subtle text-success',     label: 'Zaplacená' },
   'v-bance':            { cls: 'bg-info-subtle text-info',           label: 'V bance' },
   'ceka-na-sparovani':  { cls: 'platby-stav-sparovani',              label: 'Čeká na spárování' },
-  'chyba-platby':       { cls: 'platby-stav-chyba',                  label: 'Chyba platby' },
+  'chyba-platby':       { cls: 'platby-stav-chyba',                  label: 'Platba neproběhla' },
 };
 
 const KAT_META: Record<FakturaKategorie, { color: string }> = {
@@ -82,6 +83,7 @@ export default function FakturyTable({
   localStavy = {},
   localPrirazeni = {},
   onRowClick,
+  showExtraCols = true,
 }: Props) {
   const vsechny = getFakturyForProvozovna(provozovna);
 
@@ -152,13 +154,13 @@ export default function FakturyTable({
               </th>
               <th>Číslo</th>
               <th>Dodavatel</th>
-              <th>Typ dokladu</th>
-              <th>Kategorie</th>
+              {showExtraCols && <th>Typ dokladu</th>}
+              {showExtraCols && <th>Kategorie</th>}
               {provozovna === 'all' && <th>Provoz</th>}
               <th className="text-end">Částka</th>
               <th>Splatnost</th>
               <th>Odeslat do</th>
-              <th>Přiřazeno</th>
+              {showExtraCols && <th>Přiřazeno</th>}
               <th>Stav</th>
             </tr>
           </thead>
@@ -207,25 +209,21 @@ export default function FakturyTable({
                     <div className="fw-semibold">{f.dodavatel}</div>
                     {f.poznamka && <div className="text-muted fs-12">{f.poznamka}</div>}
                   </td>
-                  <td>
-                    <span className={`badge ${f.typDokladu === 'vydana' ? 'bg-purple-subtle text-purple' : 'bg-primary-subtle text-primary'}`}
-                      style={f.typDokladu === 'vydana' ? { background: '#8b5cf61a', color: '#8b5cf6' } : {}}>
-                      {f.typDokladu === 'vydana' ? 'Vydaná' : 'Přijatá'}
-                    </span>
-                  </td>
-                  <td>
-                    {/* Dynamic color badge – kategorie (custom color) */}
-                    <span
-                      className="badge"
-                      style={{
-                        background: KAT_META[f.kategorie].color + '1a',
-                        color: KAT_META[f.kategorie].color,
-                        fontWeight: 600,
-                      }}
-                    >
-                      {KATEGORIE_LABELS[f.kategorie]}
-                    </span>
-                  </td>
+                  {showExtraCols && (
+                    <td>
+                      <span className={`badge ${f.typDokladu === 'vydana' ? 'bg-purple-subtle text-purple' : 'bg-primary-subtle text-primary'}`}
+                        style={f.typDokladu === 'vydana' ? { background: '#8b5cf61a', color: '#8b5cf6' } : {}}>
+                        {f.typDokladu === 'vydana' ? 'Vydaná' : 'Přijatá'}
+                      </span>
+                    </td>
+                  )}
+                  {showExtraCols && (
+                    <td>
+                      <span className="badge" style={{ background: KAT_META[f.kategorie].color + '1a', color: KAT_META[f.kategorie].color, fontWeight: 600 }}>
+                        {KATEGORIE_LABELS[f.kategorie]}
+                      </span>
+                    </td>
+                  )}
                   {provozovna === 'all' && (
                     <td>
                       <div className="d-flex align-items-center gap-2">
@@ -252,21 +250,21 @@ export default function FakturyTable({
                       <div className="text-warning fs-11 fw-bold">Dnes!</div>
                     )}
                   </td>
-                  <td>
-                    {prirazenaOsoba ? (
-                      <div className="d-flex align-items-center gap-2">
-                        <div
-                          className="rounded-circle d-flex align-items-center justify-content-center flex-shrink-0 fw-bold text-white"
-                          style={{ width: 24, height: 24, fontSize: 9, background: '#c9911a' }}
-                        >
-                          {prirazenaOsoba.avatar}
+                  {showExtraCols && (
+                    <td>
+                      {prirazenaOsoba ? (
+                        <div className="d-flex align-items-center gap-2">
+                          <div className="rounded-circle d-flex align-items-center justify-content-center flex-shrink-0 fw-bold text-white"
+                            style={{ width: 24, height: 24, fontSize: 9, background: 'var(--prov-color, #c9911a)' }}>
+                            {prirazenaOsoba.avatar}
+                          </div>
+                          <span className="fs-12 text-nowrap">{prirazenaOsoba.jmeno.split(' ')[0]}</span>
                         </div>
-                        <span className="fs-12 text-nowrap">{prirazenaOsoba.jmeno.split(' ')[0]}</span>
-                      </div>
-                    ) : (
-                      <span className="text-muted fs-12">—</span>
-                    )}
-                  </td>
+                      ) : (
+                        <span className="text-muted fs-12">—</span>
+                      )}
+                    </td>
+                  )}
                   <td>
                     {/* SOURCE: Larkon .badge.bg-{color}-subtle.text-{color} */}
                     <span className={`badge ${cls}`}>{label}</span>

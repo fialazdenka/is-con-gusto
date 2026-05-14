@@ -26,7 +26,9 @@ export interface Provozovna {
   address: string;
   manager: string;
   phone: string;
-  status: 'active' | 'inactive';
+  status: 'active' | 'planned' | 'inactive';
+  parentId?: string;   // pro sub-sekce provozovny (Piazza ristorante/caffe/garden)
+  note?: string;       // interní poznámka (IT, budoucí brand, atp.)
 }
 
 export interface DenniTrzba {

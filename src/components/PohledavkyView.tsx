@@ -161,7 +161,7 @@ export default function PohledavkyView({ state, update }: Props) {
             value: fCzk(celkemAktivni),
             sub: `${pocetAktivnich} aktivních faktur`,
             icon: 'solar:bill-list-bold-duotone',
-            color: '#c9911a',
+            color: 'var(--prov-color, #c9911a)',
           },
           {
             label: 'Po splatnosti',
@@ -436,14 +436,14 @@ export default function PohledavkyView({ state, update }: Props) {
                           <div className={`rounded-circle d-flex align-items-center justify-content-center`}
                             style={{
                               width: 22, height: 22,
-                              background: step.done ? '#c9911a' : '#e9ecef',
-                              border: `2px solid ${step.done ? '#c9911a' : '#dee2e6'}`,
+                              background: step.done ? 'var(--prov-color, #c9911a)' : '#e9ecef',
+                              border: `2px solid ${step.done ? 'var(--prov-color, #c9911a)' : '#dee2e6'}`,
                               flexShrink: 0,
                             }}>
                             {step.done && <iconify-icon icon="solar:check-bold" style={{ fontSize: 11, color: '#fff' }} />}
                           </div>
                           {i < timelineSteps.length - 1 && (
-                            <div style={{ width: 2, height: 24, background: step.done ? '#c9911a' : '#e9ecef' }} />
+                            <div style={{ width: 2, height: 24, background: step.done ? 'var(--prov-color, #c9911a)' : '#e9ecef' }} />
                           )}
                         </div>
                         <div className="pb-3 flex-grow-1">

@@ -54,7 +54,7 @@ const STAV_META: Record<FakturaStavPlatby, { cls: string; label: string }> = {
   zaplacena:            { cls: 'bg-success-subtle text-success',     label: 'Zaplacená' },
   'v-bance':            { cls: 'bg-info-subtle text-info',           label: 'V bance' },
   'ceka-na-sparovani':  { cls: 'platby-stav-sparovani',              label: 'Čeká na spárování' },
-  'chyba-platby':       { cls: 'platby-stav-chyba',                  label: 'Chyba platby' },
+  'chyba-platby':       { cls: 'platby-stav-chyba',                  label: 'Platba neproběhla' },
 };
 
 const ROLE_LABEL: Record<string, string> = {
@@ -217,7 +217,7 @@ export default function FakturaDetailDrawer({
                 {/* Avatar */}
                 <div
                   className="rounded-circle d-flex align-items-center justify-content-center flex-shrink-0 fw-bold fs-12 text-white"
-                  style={{ width: 36, height: 36, background: '#c9911a' }}
+                  style={{ width: 36, height: 36, background: 'var(--prov-color, #c9911a)' }}
                 >
                   {prirazenaOsoba.avatar}
                 </div>

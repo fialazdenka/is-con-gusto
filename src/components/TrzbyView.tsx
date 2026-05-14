@@ -217,23 +217,23 @@ function smoothPath(pts: { x: number; y: number }[]): string {
 }
 
 // Mock data otevřených / uzavřených účtů (aktuální den)
-const UCTY_MOCK: Record<string, { otevrene: number; uzavrene: number }> = {
-  'all':                   { otevrene: 12, uzavrene: 47 },
-  'cg-brno':               { otevrene: 5,  uzavrene: 18 },
-  'piazza':                { otevrene: 4,  uzavrene: 12 },
-  'monte':                 { otevrene: 3,  uzavrene:  9 },
-  'u-capa':                { otevrene: 6,  uzavrene: 22 },
-  'korek-winebar':         { otevrene: 2,  uzavrene:  8 },
-  'u-kohoutu':             { otevrene: 4,  uzavrene: 16 },
-  'nad-hladinkou':         { otevrene: 3,  uzavrene: 14 },
-  'flank':                 { otevrene: 5,  uzavrene: 19 },
-  'cg-catering':           { otevrene: 0,  uzavrene:  3 },
-  'tackarna-londyn':       { otevrene: 8,  uzavrene: 31 },
-  'tackarna-turanka':      { otevrene: 6,  uzavrene: 24 },
-  'tackarna-svedske-valy': { otevrene: 7,  uzavrene: 27 },
-  'teatr':                 { otevrene: 3,  uzavrene: 11 },
-  'korek-wines':           { otevrene: 2,  uzavrene:  7 },
-  'jime-brno':             { otevrene: 4,  uzavrene: 16 },
+const UCTY_MOCK: Record<string, { otevrene: number; uzavrene: number; isLive: boolean }> = {
+  'all':                   { otevrene: 12, uzavrene: 47, isLive: true  },
+  'cg-brno':               { otevrene: 5,  uzavrene: 18, isLive: true  },
+  'piazza':                { otevrene: 4,  uzavrene: 12, isLive: true  },
+  'monte':                 { otevrene: 0,  uzavrene:  9, isLive: false }, // zavřeno
+  'u-capa':                { otevrene: 6,  uzavrene: 22, isLive: true  },
+  'korek-winebar':         { otevrene: 2,  uzavrene:  8, isLive: true  },
+  'u-kohoutu':             { otevrene: 0,  uzavrene: 16, isLive: false }, // zavřeno
+  'nad-hladinkou':         { otevrene: 0,  uzavrene: 14, isLive: false }, // zavřeno
+  'flank':                 { otevrene: 5,  uzavrene: 19, isLive: true  },
+  'cg-catering':           { otevrene: 0,  uzavrene:  3, isLive: false }, // catering hotov
+  'tackarna-londyn':       { otevrene: 8,  uzavrene: 31, isLive: true  },
+  'tackarna-turanka':      { otevrene: 6,  uzavrene: 24, isLive: true  },
+  'tackarna-svedske-valy': { otevrene: 0,  uzavrene: 27, isLive: false }, // zavřeno
+  'teatr':                 { otevrene: 3,  uzavrene: 11, isLive: true  },
+  'korek-wines':           { otevrene: 2,  uzavrene:  7, isLive: true  },
+  'jime-brno':             { otevrene: 0,  uzavrene: 16, isLive: false }, // obědy – zavřeno odpoledne
 };
 
 // Roky vzniku provozoven (mock data)
@@ -270,6 +270,18 @@ interface Props {
   state: AppState;
   update: (p: Partial<AppState>) => void;
 }
+
+// Předdefinované filtry pro Tržby detail (referenční datum: 2026-04-17)
+const DATE_PRESETS: { label: string; from: string; to: string }[] = [
+  { label: 'Dnes',           from: '2026-04-17', to: '2026-04-17' },
+  { label: 'Včera',          from: '2026-04-16', to: '2026-04-16' },
+  { label: 'Aktuální týden', from: '2026-04-13', to: '2026-04-17' },
+  { label: 'Minulý týden',   from: '2026-04-06', to: '2026-04-12' },
+  { label: 'Aktuální měsíc', from: '2026-04-01', to: '2026-04-17' },
+  { label: 'Minulý měsíc',   from: '2026-03-01', to: '2026-03-31' },
+  { label: 'Aktuální rok',   from: '2026-01-01', to: '2026-04-17' },
+  { label: 'Minulý rok',     from: '2025-01-01', to: '2025-12-31' },
+];
 
 export default function TrzbyView({ state, update }: Props) {
   const { selectedProvozovna } = state;
@@ -375,8 +387,8 @@ export default function TrzbyView({ state, update }: Props) {
   return (
     <>
       {/* ═══ SEKCE 1: KPI přehled – boxíky ══════════════════════ */}
-      <div className="card mb-3" style={{ borderTop: '3px solid #c9911a' }}>
-        <div className="card-header">
+      <div className="card mb-3" style={{ borderTop: '3px solid var(--prov-color, #c9911a)' }}>
+        <div className="card-header trzby-detail-header-sticky">
           <h5 className="card-title mb-0">Přehled tržeb</h5>
         </div>
         <div className="card-body">
@@ -400,6 +412,7 @@ export default function TrzbyView({ state, update }: Props) {
                 compLabel="vs. středa 9.4.2026"
                 compValue={vceraComp.celkem}
                 chng={vceraChng}
+                isLive
               />
             </div>
 
@@ -451,6 +464,22 @@ export default function TrzbyView({ state, update }: Props) {
               )}
             </h5>
             <div className="d-flex align-items-center gap-2 flex-wrap">
+              {/* Přednastavené filtry */}
+              <select
+                className="form-select form-select-sm"
+                style={{ width: 'auto' }}
+                value={DATE_PRESETS.find((p) => p.from === tableFrom && p.to === tableTo)?.label ?? ''}
+                onChange={(e) => {
+                  const preset = DATE_PRESETS.find((p) => p.label === e.target.value);
+                  if (preset) { setTableFrom(preset.from); setTableTo(preset.to); }
+                }}
+              >
+                <option value="" disabled>Rychlý výběr…</option>
+                {DATE_PRESETS.map((p) => (
+                  <option key={p.label} value={p.label}>{p.label}</option>
+                ))}
+              </select>
+              <div className="topbar-divider" />
               <div className="d-flex align-items-center gap-1">
                 <span className="text-muted fs-12">Od</span>
                 <input type="date" className="form-control form-control-sm" style={{ width: 140 }}
@@ -499,6 +528,8 @@ export default function TrzbyView({ state, update }: Props) {
                   const d7Chng = d7 ? Math.round(((split.c - d7.c) / Math.max(d7.c, 1)) * 1000) / 10 : null;
                   const d7Up   = d7Chng != null && d7Chng >= 0;
 
+                  const isToday = row.datum === '2026-04-17';
+                  const provLive = isToday && (UCTY_MOCK[singleProv.id]?.isLive ?? false);
                   return (
                     <tr key={row.datum}>
                       <td className="trzby-col-date trzby-sticky-l fw-semibold">{row.label}</td>
@@ -509,7 +540,10 @@ export default function TrzbyView({ state, update }: Props) {
                         {fCzk(split.b)}
                       </td>
                       <td className="trzby-col-prov text-end font-monospace fw-semibold">
-                        {fCzk(split.c)}
+                        <span className="d-inline-flex align-items-center justify-content-end gap-1">
+                          {provLive && <span className="trzby-live-dot flex-shrink-0" style={{ width: 5, height: 5 }} />}
+                          {fCzk(split.c)}
+                        </span>
                       </td>
                       <td className="trzby-col-prov trzby-sticky-r text-end">
                         {d7Chng != null ? (
@@ -565,19 +599,31 @@ export default function TrzbyView({ state, update }: Props) {
               <tbody>
                 {tableRows.map((row) => {
                   const total = tableCols.reduce((s, p) => s + (row.byProv[p.id] ?? 0), 0);
+                  const isToday = row.datum === '2026-04-17';
+                  // Alespoň jeden podnik z výběru ještě běží → live tečka u Celkem
+                  const anyLive = isToday && tableCols.some((p) => UCTY_MOCK[p.id]?.isLive);
                   return (
                     <tr key={row.datum}>
                       <td className="trzby-col-date trzby-sticky-l fw-semibold">{row.label}</td>
                       {tableCols.map((p) => {
                         const val = row.byProv[p.id] ?? 0;
+                        const provLive = isToday && (UCTY_MOCK[p.id]?.isLive ?? false);
                         return (
                           <td key={p.id} className="trzby-col-prov text-end font-monospace">
-                            {val > 0 ? fCzk(val) : <span className="text-muted">—</span>}
+                            {val > 0
+                              ? <span className="d-inline-flex align-items-center justify-content-end gap-1">
+                                  {provLive && <span className="trzby-live-dot flex-shrink-0" style={{ width: 5, height: 5 }} />}
+                                  {fCzk(val)}
+                                </span>
+                              : <span className="text-muted">—</span>}
                           </td>
                         );
                       })}
                       <td className="trzby-col-total trzby-sticky-r font-monospace fw-bold">
-                        {fCzk(total)}
+                        <span className="d-inline-flex align-items-center justify-content-end gap-1">
+                          {anyLive && <span className="trzby-live-dot flex-shrink-0" style={{ width: 5, height: 5 }} />}
+                          {fCzk(total)}
+                        </span>
                       </td>
                     </tr>
                   );
@@ -608,7 +654,7 @@ export default function TrzbyView({ state, update }: Props) {
 
       {/* ═══ SEKCE 3: Graf vývoje ════════════════════════════════ */}
       <div className="card mb-3">
-        <div className="card-header">
+        <div className="card-header trzby-detail-header-sticky">
           {/* Řádek 1: název + přepínače */}
           <div className="d-flex align-items-center justify-content-between flex-wrap gap-2 mb-2">
             <div>
@@ -699,12 +745,12 @@ export default function TrzbyView({ state, update }: Props) {
 
       {/* ═══ SEKCE 4: Roční srovnávací tabulka ══════════════════ */}
       <div className="card mb-4">
-        <div className="card-header d-flex align-items-center justify-content-between gap-2 flex-wrap">
-          <div>
+        <div className="card-header trzby-detail-header-sticky d-flex align-items-start justify-content-between gap-2 flex-wrap">
+          <div style={{ minWidth: 0 }}>
             <h5 className="card-title mb-0">Historický přehled tržeb po měsících</h5>
             <small className="text-muted fw-normal">Každý podnik od roku vzniku · sloupce = měsíce · % = meziroční změna</small>
           </div>
-          <div className="d-flex align-items-center gap-2">
+          <div className="d-flex align-items-center gap-2 flex-wrap flex-shrink-0">
             <span className="badge bg-success-subtle text-success fs-11">↑ meziroční růst</span>
             <span className="badge bg-danger-subtle text-danger fs-11">↓ meziroční pokles</span>
           </div>
@@ -731,6 +777,10 @@ function DnesKpiBox({ value, otevrene, uzavrene }: {
   otevrene: number;
   uzavrene: number;
 }) {
+  const total = otevrene + uzavrene || 1;
+  // Hodnota otevřených (~35 % dne, účty v provozu) a uzavřených (zbytek)
+  const hodnotaOtevrene = Math.round(value * (otevrene / total) * 0.65);
+  const hodnotaUzavrene = value - hodnotaOtevrene;
   return (
     <div className="trzby-box h-100">
       <div className="trzby-box-head">
@@ -743,19 +793,21 @@ function DnesKpiBox({ value, otevrene, uzavrene }: {
       <div className="trzby-box-value font-monospace">{fCzk(value)}</div>
       <div className="trzby-box-sub">17.4.2026 · čtvrtek</div>
       <div className="trzby-box-divider" />
-      <div className="trzby-box-comp trzby-box-comp--row">
+      <div className="trzby-box-comp">
         <span className="d-flex align-items-center gap-1">
           <span style={{ width: 7, height: 7, borderRadius: '50%', background: '#22c55e', display: 'inline-block', flexShrink: 0 }} />
           Otevřené účty
         </span>
-        <span className="fw-bold" style={{ color: '#16a34a' }}>{otevrene}</span>
+        <span className="trzby-box-comp-amount font-monospace" style={{ color: '#16a34a' }}>{fCzk(hodnotaOtevrene)}</span>
+        <span className="text-muted" style={{ fontSize: 11 }}>{otevrene} účtů v provozu</span>
       </div>
-      <div className="trzby-box-comp trzby-box-comp--row">
+      <div className="trzby-box-comp" style={{ marginTop: 4 }}>
         <span className="d-flex align-items-center gap-1">
           <span style={{ width: 7, height: 7, borderRadius: '50%', background: '#94a3b8', display: 'inline-block', flexShrink: 0 }} />
           Uzavřené účty
         </span>
-        <span className="fw-bold text-muted">{uzavrene}</span>
+        <span className="trzby-box-comp-amount font-monospace text-muted">{fCzk(hodnotaUzavrene)}</span>
+        <span className="text-muted" style={{ fontSize: 11 }}>{uzavrene} účtů uzavřeno</span>
       </div>
     </div>
   );
@@ -765,7 +817,7 @@ function DnesKpiBox({ value, otevrene, uzavrene }: {
 // CUSTOM: YES
 
 function KpiBox({
-  period, sub, value, compLabel, compValue, chng, prediction, predictionLabel,
+  period, sub, value, compLabel, compValue, chng, prediction, predictionLabel, isLive,
 }: {
   period: string;
   sub: string;
@@ -775,13 +827,17 @@ function KpiBox({
   chng: number;
   prediction?: number;
   predictionLabel?: string;
+  isLive?: boolean;
 }) {
   const up = chng >= 0;
   return (
     <div className="trzby-box h-100">
 
       <div className="trzby-box-head">
-        <span className="trzby-box-period">{period}</span>
+        <span className="trzby-box-period d-flex align-items-center gap-1">
+          {isLive && <span className="trzby-live-dot" style={{ width: 7, height: 7 }} />}
+          {period}
+        </span>
         <span className={`badge ${up ? 'bg-success-subtle text-success' : 'bg-danger-subtle text-danger'} trzby-box-badge`}>
           <iconify-icon icon={up ? 'solar:arrow-up-bold' : 'solar:arrow-down-bold'} />
           {' '}{up ? '+' : ''}{chng.toFixed(1).replace('.', ',')} %
@@ -792,11 +848,6 @@ function KpiBox({
       <div className="trzby-box-sub">{sub}</div>
       <div className="trzby-box-divider" />
 
-      <div className="trzby-box-comp">
-        <span>{compLabel}</span>
-        <span className="trzby-box-comp-amount font-monospace">{fCzk(compValue)}</span>
-      </div>
-
       {prediction != null && (
         <div className="trzby-box-pred">
           <span>{predictionLabel ?? 'Predikce'}</span>
@@ -805,6 +856,11 @@ function KpiBox({
           </span>
         </div>
       )}
+
+      <div className="trzby-box-comp">
+        <span>{compLabel}</span>
+        <span className="trzby-box-comp-amount font-monospace">{fCzk(compValue)}</span>
+      </div>
 
     </div>
   );
@@ -1158,7 +1214,7 @@ function RocniSrovnaniTable() {
                         <div className="text-muted" style={{ fontSize: 10, paddingLeft: 11 }}>
                           od {fy}
                           {isCollapsed && canCollapse && (
-                            <span className="ms-1" style={{ color: '#c9911a' }}>· {allYears.length} let</span>
+                            <span className="ms-1" style={{ color: 'var(--prov-color, #c9911a)' }}>· {allYears.length} let</span>
                           )}
                         </div>
                       </td>

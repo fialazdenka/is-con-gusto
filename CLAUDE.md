@@ -9,7 +9,7 @@ React 18 + Vite 4 + TypeScript 5, plain CSS, žádné UI kity, žádný backend.
 |---|---|---|---|
 | v1 | initial commit | — | Základní wireframe |
 | v2 | `IS-Con-Gusto-v2` | `/IS-Con-Gusto-v2/` | Finance moduly, schvalování, cashflow |
-| v3 | `IS-Con-Gusto-v3` | `/IS-Con-Gusto-v3/` | Redesign Tržby, historické grafy, multi-venue |
+| v3 | `IS-Con-Gusto-v3` | `/IS-Con-Gusto-v3/` | Redesign Tržby, Platby, brand systém, dashboard |
 
 ## Spuštění
 
@@ -22,149 +22,190 @@ npm run build   # TypeScript check + Vite build (vždy ověř po změnách)
 
 ```
 src/
-  App.tsx               # root, drží celý AppState, předává state + update dolů
-  types.ts              # všechny sdílené typy
-  data.ts               # mock data + helpery (fCzk s tečkou, FOUNDING_YEAR, genMonthRevenue...)
-  platbyData.ts         # faktury, platby, účty, SCHVALOVACI_OSOBY
+  App.tsx               # root, drží AppState, nastavuje --prov-color CSS proměnnou
+  types.ts              # všechny sdílené typy (Provozovna rozšířena o status/parentId/note)
+  data.ts               # mock data + helpery (fCzk, FOUNDING_YEAR, genMonthRevenue...)
+  platbyData.ts         # faktury, platby, BANKOVNI_UCTY, PRAVNI_ENTITA, audit data
   pohledavkyData.ts     # pohledávky, aging, STAV_META_POH
   cashflowData.ts       # týdenní cashflow, KPI, kategorie, transakce, prognóza
   components/
     AppShell.tsx         # shell: sidebar + topbar + routing + mobilní overlay
     Sidebar.tsx          # navigace – Přehled / Finance / Systém / Dev
-    Topbar.tsx           # vždy dvouřádkový: název sekce | grouped provozovna select + period (jen dashboard)
-    DashboardView.tsx    # hlavní dashboard
-    TrzbyView.tsx        # analytická sekce v3 – KPI boxy, detail tabulka, vývoj graf, historický přehled
-    TrzbyWidget.tsx      # SVG stacked bar chart (kuchyň + bar) + trend line, jen chart
-    FakturyView.tsx      # správa a schvalování faktur (Finance > Faktury)
-    FakturyTable.tsx     # tabulka faktur (sdílená s PlatbyView)
-    FakturaDetailDrawer.tsx # offcanvas drawer pro schválení / detail faktury
-    PlatbyView.tsx       # výběr a odeslání plateb do banky (Finance > Platby)
-    PohledavkyView.tsx   # vydané faktury, sledování úhrad, upomínky (Finance > Pohledávky)
-    CashflowView.tsx     # přehled peněžních toků – řídí ho globální selectedProvozovna
-    KPIStrip.tsx         # 4× stat karta s CSS sparkline (dashboard)
+    Topbar.tsx           # dynamická výška (62px dashboard / 100px ostatní), breadcrumb, prov-color
+    DashboardView.tsx    # dashboard: Tržby KPI + Platby KPI + grafy + přehledy
+    TrzbyView.tsx        # analytická sekce – KPI boxy, detail, vývoj graf, historický přehled
+    TrzbyWidget.tsx      # SVG stacked bar chart (kuchyň + bar) + trend line
+    FakturyView.tsx      # správa a schvalování faktur
+    FakturyTable.tsx     # tabulka faktur (showExtraCols prop pro Platby kontext)
+    FakturaDetailDrawer.tsx # offcanvas drawer schválení / detail faktury
+    PlatbyView.tsx       # platební dashboard: multi-účty, právní entity, stavový filtr
+    PlatbyDetailPanel.tsx # offcanvas drawer: platební detail + audit timeline
+    PlatbyKPIStrip.tsx   # 4× KPI karta platby (zůstatek/schváleno/po-splatnosti/splatné)
+    PohledavkyView.tsx   # vydané faktury, sledování úhrad, upomínky
+    CashflowView.tsx     # přehled peněžních toků
+    KPIStrip.tsx         # 4× KPI karta tržby (Dnes/Včera/Týden/Měsíc) pro dashboard
     AlertStrip.tsx       # upozornění nad dashboardem
     ProvozonySummary.tsx # tabulka provozoven na dashboardu
     CashflowPreview.tsx  # preview cashflow na dashboardu
     PohledavkyWidget.tsx # widget pohledávek na dashboardu
-    BalancePanel.tsx     # sticky cashflow kalkulátor (PlatbyView)
-    DalsiPlatbyPanel.tsx # ostatní platby mimo faktury (PlatbyView)
+    BalancePanel.tsx     # sticky panel: multi-účty + zahrnout budoucí tržby + kalkulátor
+    DalsiPlatbyPanel.tsx # ostatní platby mimo faktury
     PotvrditModal.tsx    # potvrzovací modal platby
     ProvozovnaDrawer.tsx # offcanvas detail provozovny
-    ComponentReference.tsx # dev mapa komponent (sidebar > Dev)
+    ProvozovnyView.tsx   # admin sekce: přehled/plánované/práva, brand barvy
+    ComponentReference.tsx # dev mapa komponent
     PlaceholderView.tsx  # stub pro neimplementované sekce
 ```
 
 ## Klíčové typy
 
 ```typescript
-type ProvozovnaId = 'all' | string; // 15+ aktivních provozoven
+type ProvozovnaId = 'all' | string;
 type SidebarSection = 'dashboard' | 'trzby' | 'zavierky' | 'provozovny'
                     | 'cashflow' | 'faktury' | 'pohledavky' | 'platby'
                     | 'reporty' | 'nastaveni' | 'komponenty';
 
+interface Provozovna {
+  id: string; name: string; shortName: string; color: string;
+  address: string; manager: string; phone: string;
+  status: 'active' | 'planned' | 'inactive';
+  parentId?: string;  // Piazza sub-sekce (ristorante/caffe/garden)
+  note?: string;      // IT poznámka (budoucí brand, plánované atp.)
+}
+
 interface AppState {
   selectedSection: SidebarSection;
-  selectedProvozovna: ProvozovnaId;  // globální filtr – řídí VŠECHNY sekce
-  dataMode: 'live' | 'zavierka';    // NENÍ uživatelsky nastavitelný (odstraněn toggle)
-  period: Period;                    // používá jen Dashboard
+  selectedProvozovna: ProvozovnaId;
+  dataMode: 'live' | 'zavierka';
+  period: Period;
   drawerOpen: boolean;
   drawerProvozovnaId: string | null;
   sidebarCollapsed: boolean;
 }
 ```
 
-## Topbar (v3)
+## Brand barvy provozoven – `--prov-color` systém
 
-- **Vždy dvouřádkový** – `--bs-topbar-height: 100px` fixně
-- Řádek 1: hamburger + název sekce + search + notifikace + user
-- Řádek 2 (vždy): grouped `<select>` provozovny + period pills (jen Dashboard)
-- **Grouped provozovna select**: optgroup Restaurace / Pivnice / Táckárny / KOREK / Ostatní + "Všechny provozovny"
-- Odstraněno: Live/Závěrka toggle (byl v topbaru v2)
-- Period pills se zobrazují POUZE pro sekci `dashboard`
+- `App.tsx` nastavuje `--prov-color` na `:root` při každé změně `selectedProvozovna`
+- Default (Všechny provozovny) = Con Gusto gold `#c9911a`
+- Barva se automaticky propisuje do: card border-top, topbar row-filters border, provozovna select border, SVG grafy, KPI ikony, workflow kroky, avatary, pohledávky
+- **Brand hex kódy** (z brand manuálů):
+  - CG Brno `#cdaa69` · Piazza `#143746` · Monte `#ad0d24` · U Čápa `#0C5E44`
+  - KOREK WB `#648CE8` · U Kohoutů `#E64843` · Nad Hladinkou `#203A9A`
+  - Flank `#3E111B` · CG Catering `#4b0041` · Táck. LN `#a4e055`
+  - Táck. TU `#40cf6d` · Táck. ŠV `#d9f5bf` · Teátr `#e56445`
+  - KOREK W `#FFD9AB` · Jíme Brno `#0a0a5a` · Pijeme víno `#ffd2eb`
+  - Plánované: Lango `#fcdeba` · Supper Lunch `#ff3700`
+  - Piazza sub-sekce: Ristorante `#C87D69` · Caffe `#CDAA87` · Garden `#B9876E`
+- Sémantické barvy (prahy výkonu, margin bar) zůstávají zlaté – nejsou `--prov-color`
 
-## TrzbyView (v3) – čtyři sekce
+## Topbar
+
+- **Řádek 1 (vždy)**: hamburger → název sekce (h4) → `|` → provozovna grouped select → search → bell → user
+- **Řádek 2 (jen mimo dashboard)**: Bootstrap `.breadcrumb` – cesta zpět, `Con Gusto › ← Finance`
+  - ← šipka před rodičovskou sekcí (Finance / Provoz / Dev)
+  - Dashboard nemá row 2 → topbar = 62px (useEffect nastavuje `--bs-topbar-height`)
+  - Ostatní sekce = 100px
+- **Period pills odstraněny** – dashboard KPIStrip zobrazuje Dnes/Včera/Týden/Měsíc přímo
+- `.logo-box` fix: `display: flex; height: var(--bs-topbar-height)` místo `line-height`
+- `.topbar-rows .topbar-item { height: auto }` – Larkon override (původně `height: 100px`)
+
+## Dashboard
+
+Dvě řady KPI + grafy + přehledy:
+
+1. **Tržby KPI** (KPIStrip) – Dnes / Včera / Tento týden / Duben 2026
+   - Stejná data a logika jako TrzbyView KPI boxíky
+   - Live tečka u Dnes a Včera, % změny, predikce v patičce
+2. **Platby KPI** (PlatbyKPIStrip) – Zůstatek / Schváleno / Po splatnosti / Splatné
+3. TrzbyWidget (8col) + CashflowPreview (4col)
+4. ProvozonySummary (7col) + PohledavkyWidget (5col)
+- TrzbyTable odstraněna (nahrazena TrzbyView)
+- Sekce labels s odkazem „Detailní přehled →" / „Správa plateb →"
+
+## TrzbyView – čtyři sekce
 
 ### 1. KPI přehled (boxíky)
-- 4 boxíky `col-12 col-sm-6 col-xl-3`, vždy čitelné i na úzkém monitoru
-- **Badge** v pravém horním rohu: `.trzby-box-badge { font-size: 18px }`, LIVE tečka 12px
-- **%** formátováno česky: `.toFixed(1).replace('.', ',')`
-- **Dnes**: LIVE badge (pulzující tečka 12px) + počet otevřených/uzavřených účtů (mock `UCTY_MOCK`)
-- **Včera**: tržba + % vs. konkrétní den min. týden (např. "vs. středa 9.4.2026")
-- **Tento týden**:
-  - Hodnota = součet dní co proběhly v týdnu (Po–dnešek, `TYDEN_DNI = 5`)
-  - % badge = srovnání stejného počtu dní minulého týdne (`tydenComp * TYDEN_DNI / 7`)
-  - vs. = celý minulý týden (6.4.–12.4., 7 dní) jako absolutní číslo
-  - Predikce = `(suma / TYDEN_DNI) × 7`
-- **Duben 2026**:
-  - Hodnota = tržba za 17 dní
-  - % badge + vs. = celý duben 2025 (`sumaCelyMesic` z LY dat)
-  - Predikce = `(suma / 17) × 30` (průměrný den × počet dní v měsíci)
+- Badge 18px, LIVE tečka 12px, % česky (`.toFixed(1).replace('.', ',')`)
+- **Dnes**: hodnota otevřených/uzavřených účtů v Kč + počet účtů níž; LIVE badge
+- **Včera**: LIVE tečka u periody + % badge (obojí viditelné zároveň); `isLive` prop
+- **Tento týden**: predikce nahoře (před vs.), `TYDEN_DNI=5`, % vs. stejný počet dní
+- **Duben 2026**: predikce = `(suma/17)×30`, vs. = celý duben 2025 (`sumaCelyMesic`)
+- `UCTY_MOCK` má `isLive: boolean` per provozovna (Monte/Jíme/Hladinková/U Kohoutů = false)
 
-### 2. Tržby detail (sticky header)
-- Card header sticky: `position: sticky; top: 0` – drží se při scrollu pod topbarem
-- **Default rozsah: posledních 7 dní** (11.4.–17.4.2026), řazeno sestupně (nejnovější nahoře)
-- Filtr: **Od / Do** (date picker), granularita se odvíjí automaticky (≤45 dní = dny, >45 dní = měsíce)
-- **Bez lokálního provozovna selectu** – tabulka reaguje na globální `selectedProvozovna`:
-  - `all` → multi-venue tabulka (sloupce = jednotlivé provozovny, sticky Celkem vpravo)
-  - konkrétní podnik → single-venue detail (Kuchyň / Bar / Celkem / vs. D-7)
-- Sticky: datum vlevo, Celkem vpravo, provozovny scrollují uprostřed
+### 2. Tržby detail
+- **Dropdown přednastavených filtrů**: Dnes/Včera/Aktuální týden/Min. týden/Měsíc/Min. měsíc/Rok/Min. rok
+- Default: posledních 7 dní, řazeno sestupně (nejnovější nahoře)
+- LIVE tečka (5px) u částky každé provozovny zvlášť v dnešním řádku (dle `UCTY_MOCK.isLive`)
+- Multi-venue: tečka per sloupec dle live stavu; Single-venue: tečka u Celkem
 
-### 3. Vývoj tržeb (SVG multi-line chart)
-- **Toggle podniků**: barevné pills, klik přidá/odebere linii z grafu (min. 1 vždy)
-- **Tři módy** (segment přepínač, default: Roky):
-  - `roky` – X = roky od `chartFromYear` do 2026, linie = roční součet per provozovna; délka: 3/5/10/Vše
-  - `rok-mesice` – select roku (2006–2026), X = Led–Pro zvoleného roku, linie = měsíční tržby
-  - `mesic-roky` – select měsíce (Leden–Prosinec), X = roky od vzniku nejstaršího podniku, linie = daný měsíc per rok
-- State: `chartMode`, `chartYear`, `chartMonth`, `chartPeriod`, `chartFromYear` (useMemo), `mesicRokyFromYear` (useMemo)
-- Pod grafem: **tabulka "Přehled po rocích/měsících"** (v téže kartě) – reaguje na stejný mód, hodnoty `fCzk` (celá čísla)
+### 3. Vývoj tržeb – tři módy
+- `roky` / `rok-mesice` (select roku) / `mesic-roky` (select měsíce)
+- Tabulka pod grafem reaguje na stejný mód, zobrazuje `fCzk` (celá čísla)
 
-### 4. Historický přehled tržeb po měsících (RocniSrovnaniTable)
-- Každý podnik = skupina řádků (jeden per rok, od nejaktuálnějšího po nejstarší)
-- Sloupce = měsíce (Led–Pro), buňka = měsíční tržba + % vs. stejný měsíc předchozího roku
-- Dva sticky sloupce: název podniku (`rowSpan=N`) + rok (2026/2025/...)
-- **Defaultně sbaleno**: `useState(new Set(provs.map(p => p.id)))` – každý podnik zobrazí jen 2026+2025
-- **Toggle sbalení** v buňce s názvem podniku: rozbaleno = vše od roku vzniku
-  - Toggle se zobrazí jen pokud má podnik > 2 roky dat
-- Vizuální oddělení: 2026 řádek = zlatavé pozadí + silná border-top
+### 4. Historický přehled
+- Defaultně sbaleno, header s `flex-wrap` pro zalamování badges
 
-## Data (v3 změny)
+## Platby (PlatbyView)
 
-### src/data.ts
-- `fCzk()`: tečka jako oddělovač tisíců (`1.201.800 Kč`), ne mezera – viz `replace(/[  ]/g, '.')`
-- `fCzkShort()`: `1.2 M Kč` / `890 tis. Kč`
-- `PROVOZOVNY`: 15 aktivních + 3 plánované
-- `FOUNDING_YEAR` (v TrzbyView): rok vzniku per provozovna; Piazza = 2006, CG Brno = 2018 atd.
-- `genMonthRevenue(year, month, provId)`: měsíční tržba pro libovolný rok zpátky (yFactor = `Math.pow(0.95, 2025-year)`)
-- `genYearData(year, provId)`: 12 měsíčních hodnot (volá genMonthRevenue)
-- `genAnnualRevenue(year, provId)`: součet 12 měsíců (pro historický přehled)
-- `SEASONAL[12]`: sezónní faktory (únor nejnižší 0.75, prosinec nejvyšší 1.18)
+### Struktura
+- **LEFT**: FakturyTable (`showExtraCols=false` – bez Typ dokladu/Kategorie/Přiřazeno) + DalsiPlatbyPanel
+- **RIGHT**: Platební účty panel + BalancePanel (kalkulátor) – obojí sticky
 
-### Místní data v TrzbyView.tsx
-- `BASE_SPLIT`: kuchyň/bar split průměrů per provozovna
-- `BASE_DAY`: celkový denní průměr (odvozeno ze splitů)
-- `DAILY_TARGET`: denní cíl = BASE_DAY × 1.05 (pro Výkon sloupec)
-- `UCTY_MOCK`: otevřené/uzavřené účty per provozovna (pro Dnes box)
-- `PROV_GROUPS`: skupiny pro výběr (Restaurace / Pivnice / Táckárny / KOREK / Ostatní)
+### Filtry
+- **Splatné do**: pouze Do datum (Od odstraněno – systém filtruje od `2020-01-01`)
+- **Status select**: Schválená (default) / Nová neschválená
 
-## Odstraněno v v3
+### Platební účty (BalancePanel)
+- Seznam BANKOVNI_UCTY s checkboxy: barva · zkratka · číslo účtu · zůstatek
+- Multi-select: kombinovaný zůstatek ze zaškrtnutých účtů
+- Min. 1 účet vždy vybrán
 
-- Lokální provozovna selecty z: FakturyView, PohledavkyView, CashflowView (tabs)
-- Live/Závěrka toggle z topbaru
-- Period pills pro sekci Tržby v topbaru
-- Výkon vs. cíl sloupec z Tržby detail (single-venue pohled)
-- Samostatná karta "Přehled vybraných podniků" → sloučena do grafu
+### Právní entity (PRAVNI_ENTITA v platbyData.ts)
+- `con-gusto`: vše kromě U Čápa a KOREK
+- `u-capa`: Pivnice U Čápa s.r.o.
+- `korek`: KOREK Wines + KOREK Winebar s.r.o.
+- Při neshodu faktura↔účet → žlutý warning v BalancePanel (neblokující)
 
-## Custom CSS (src/styles/custom.css) – v3 přidáno
+### Platební stavy (FakturaStavPlatby)
+- `nova` · `ke-schvaleni` · `schvalena` · `zamitnuta` · `zastavena`
+- `v-bance` · `ceka-na-sparovani` · **`chyba-platby`** = „Platba neproběhla" (jediná chyba)
+- `odeslana` · `zaplacena`
 
-- `.trzby-box` / `.trzby-box-*`: KPI boxíky (flex column, responsive)
-- `.trzby-live-dot`: pulzující tečka u LIVE badge (`@keyframes trzby-pulse`)
-- `.trzby-detail-header-sticky`: sticky card header pro Tržby detail
-- `.trzby-detail-wrap` / `.trzby-detail-table`: scrollovatelná tabulka se sticky sloupci
-- `.trzby-sticky-l` / `.trzby-sticky-r`: sticky levý/pravý sloupec
-- `.trzby-chart-toggle`: toggle pills výběru podniků v grafu
-- `.trzby-rs-*`: styly pro historický přehled (venue-h/c, year-h/c, cur/prev/last, toggle)
-- `--bs-topbar-height: 100px` fixně (topbar vždy dvouřádkový)
-- `.table > :not(caption) > * > *`: svislé linky mezi sloupci ve všech tabulkách
+### PlatbyDetailPanel
+- Offcanvas drawer: detail faktury + bankovní účet provozovny + audit timeline + workflow akce
+
+## Provozovny (ProvozovnyView)
+
+Admin sekce (sidebar → Provoz → Provozovny), 3 záložky:
+- **Přehled**: skupiny Restaurace/Pivnice/Táckárny/KOREK/Ostatní, brand barva jako badge, Piazza sub-sekce odsazeny (↳)
+- **Plánované**: Lango/Supper Lunch/Táck. ABB/Flank 2 s poznámkami
+- **Práva**: placeholder pro IT
+
+## Globální CSS (custom.css)
+
+### Card headers (globální)
+```css
+.card-header { position: sticky; top: 0; z-index: 20; background: var(--bs-card-bg, #fff); }
+.card-header.d-flex { flex-wrap: wrap !important; gap: 8px !important; }
+```
+
+### --prov-color napojení
+```css
+.topbar-row-filters { border-top: 2px solid var(--prov-color, var(--bs-border-color)); }
+.topbar-prov-select { border-left: 3px solid var(--prov-color, ...); }
+```
+
+### Platby CSS
+- `.platby-stav-sparovani` / `.platby-stav-chyba`: custom badge styly
+- `.platby-alert-chyba`: dark red alert pro „Platba neproběhla"
+- `.platby-bulk-toolbar`: floating dark toolbar při výběru
+- `.platby-audit-timeline` / `.platby-audit-item` / `.platby-audit-dot`: audit časová osa
+- `.platby-ucet-row`: řádky platebních účtů
+
+### Font
+- Acumin Pro (Book 400 / Semibold 600 / Bold 700) z `/public/fonts/`
+- `@font-face` + globální override `body, .card, .table, .btn, .badge, h1-h6`
 
 ## Routing (AppShell.tsx)
 
@@ -176,35 +217,9 @@ interface AppState {
 | `pohledavky` | PohledavkyView |
 | `cashflow` | CashflowView |
 | `platby` | PlatbyView |
+| `provozovny` | ProvozovnyView |
 | `komponenty` | ComponentReference |
 | ostatní | PlaceholderView |
-
-## Konvence kódu
-
-- Každá komponenta má header komentář: `// COMPONENT / SOURCE / CUSTOM`
-- `CUSTOM: YES` = SVG chart, workflow, gastro logika
-- `CUSTOM: NO` = čistý Larkon/Bootstrap pattern
-- `CUSTOM: PARTIAL` = layout Larkon, část logiky custom
-- `.lk-custom` div = vizuální marker prototype prvků (v produkci smazat)
-- Žádné externí UI kity, chart knihovny, routing kity
-- Globální stav: App.tsx → AppState + `update(partial)` pattern
-- Lokální view state: `useState` přímo ve view komponentě
-- Finanční částky: `white-space: nowrap` vždy; formát s tečkami (`1.201.800 Kč`)
-
-## Responzivní design
-
-- Bootstrap breakpoint `md` (768px): hlavní mobilní breakpoint
-  - Sidebar: overlay, offcanvas drawery: `min(520px, 100vw)`
-  - KPI boxíky: `col-12 col-sm-6 col-xl-3` (4→2→1 sloupce)
-  - Topbar filter row: horizontální scroll
-- Tabulky: `.trzby-detail-wrap` s `overflow-x: auto`, sticky sloupce
-- `.d-mobile-none`: skrytí tabulkových sloupců na mobilu
-
-## Co ještě není hotové (placeholder views)
-
-- Denní závěrky (`zavierky`)
-- Provozovny detail (`provozovny`)
-- Reporty, Nastavení
 
 ## Kontext projektu
 
@@ -212,5 +227,12 @@ Wireframe vznikl jako interní demo pro vedení firmy Con Gusto.
 Primární kontakt: Petr Dohnal (vedení).
 Referenční datum: **2026-04-17** (čtvrtek), týden 13.4.–19.4.2026.
 Piazza otevřena 2006 (potvrzeno majitelem).
-v3 session 1: kompletní redesign sekce Tržby + UX cleanup napříč aplikací.
-v3 session 2: UX polish – badge velikost, desetinná čárka v %, predikce týden/měsíc, tři grafy módy, default 7 dní detail, historický přehled sbalený.
+
+### Session log
+- **v3 s1**: Redesign Tržby, historické grafy, multi-venue chart, breadcrumb nav
+- **v3 s2**: UX polish Tržby (badge, predikce, grafy módy, detail řazení)
+- **v3 s3**: Platby dashboard (stavy, audit, multi-účty, právní entity, smart alerts)
+- **v3 s4**: Brand systém (--prov-color, brand hex kódy, ProvozovnyView, Acumin Pro)
+- **v3 s5**: Topbar redesign (breadcrumb, prov-color accent, dynamická výška, sticky headers)
+- **v3 s6**: Tržby UX (LIVE tečky per-venue, date presety, DnesKpiBox hodnoty)
+- **v3 s7**: Dashboard aktualizace (nové KPIStrip Dnes/Včera/Týden/Měsíc, PlatbyKPIStrip)

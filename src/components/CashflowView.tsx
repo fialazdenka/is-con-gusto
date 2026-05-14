@@ -106,7 +106,7 @@ function CashflowChart({ data }: { data: CashflowTyden[] }) {
         <text key={`xl-${i}`}
           x={PAD.l + i * colW + colW / 2} y={H - 6}
           textAnchor="middle" fontSize="11"
-          fill={d.current ? '#c9911a' : d.projected ? '#bdc4ce' : '#9097a7'}
+          fill={d.current ? 'var(--prov-color, #c9911a)' : d.projected ? '#bdc4ce' : '#9097a7'}
           fontWeight={d.current ? 600 : 400}>
           {d.label}{d.projected ? ' *' : ''}
         </text>
@@ -170,7 +170,7 @@ export default function CashflowView({ state, update: _update }: Props) {
           { label: 'Příjmy – duben',  value: fCzk(kpi.prijmy),   sub: 'tržby + pohledávky',     icon: 'solar:arrow-up-bold-duotone',         color: '#14b8a6' },
           { label: 'Výdaje – duben',  value: fCzk(kpi.vydaje),   sub: 'faktury + mzdy + nájem', icon: 'solar:arrow-down-bold-duotone',        color: '#ef4444' },
           { label: 'Čistý cashflow',  value: fCzk(kpi.cistyCC),  sub: 'příjmy − výdaje',        icon: 'solar:chart-2-bold-duotone',           color: kpi.cistyCC >= 0 ? '#14b8a6' : '#ef4444' },
-          { label: 'Zůstatek na účtech', value: fCzk(kpi.zustatek), sub: 'aktuální stav',       icon: 'solar:dollar-minimalistic-bold-duotone',color: '#c9911a' },
+          { label: 'Zůstatek na účtech', value: fCzk(kpi.zustatek), sub: 'aktuální stav',       icon: 'solar:dollar-minimalistic-bold-duotone',color: 'var(--prov-color, #c9911a)' },
         ].map((k) => (
           <div key={k.label} className="col-sm-6 col-xl-3">
             <div className="card h-100">

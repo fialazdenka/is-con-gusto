@@ -8,8 +8,8 @@ import type { FutureRevMode, FakturaStavPlatby } from '../platbyData';
 import {
   FAKTURY_PLATBY, OSTATNI_PLATBY,
   getFakturyForProvozovna, getZustatek, getCekajiciKarty, getOdhadZbytek,
-  isPoSplatnosti, getBankSync, getBankovniUcet,
-  TYDEN_OD, TYDEN_DO, PROCESSING_DAYS_DEFAULT, KATEGORIE_LABELS,
+  isPoSplatnosti,
+  TYDEN_DO, PROCESSING_DAYS_DEFAULT, BANKOVNI_UCTY,
 } from '../platbyData';
 import FakturyTable from './FakturyTable';
 import DalsiPlatbyPanel from './DalsiPlatbyPanel';
@@ -34,9 +34,22 @@ export default function PlatbyView({ state, update }: Props) {
 
   void PROCESSING_DAYS_DEFAULT;
 
-  const [periodOd,       setPeriodOd]       = useState(TYDEN_OD);
-  const [periodDo,       setPeriodDo]       = useState(TYDEN_DO);
+  const periodOd = '2020-01-01'; // Od vždy od počátku – nic neutece
+  const [periodDo, setPeriodDo] = useState(TYDEN_DO);
+  const [stavFilter, setStavFilter] = useState<'schvalena' | 'neschvalena'>('schvalena');
   const [selectedFaIds,  setSelectedFaIds]  = useState<Set<string>>(new Set());
+  // Vybrané platební účty – default: jen aktuálně vybraná provozovna (nebo první 3)
+  const [selectedUctyIds, setSelectedUctyIds] = useState<Set<string>>(() =>
+    selectedProvozovna === 'all'
+      ? new Set(BANKOVNI_UCTY.map((u) => u.provozovna))
+      : new Set([selectedProvozovna])
+  );
+  const toggleUcet = (provId: string) => setSelectedUctyIds((prev) => {
+    const n = new Set(prev);
+    if (n.has(provId) && n.size > 1) n.delete(provId); // min. 1 účet vždy
+    else n.add(provId);
+    return n;
+  });
   const [selectedOstIds, setSelectedOstIds] = useState<Set<string>>(new Set());
   const [futureRevMode,  setFutureRevMode]  = useState<FutureRevMode>('off');
   const [potvrzeni,      setPotvrzeni]      = useState<Potvrzeni>('idle');
@@ -82,8 +95,6 @@ export default function PlatbyView({ state, update }: Props) {
   const chybaPlatby    = vsechnyFaktury.filter((f) => (localStavy[f.id] ?? f.stav) === 'chyba-platby');
   const neschvalene    = vsechnyFaktury.filter((f) => f.stav === 'nova' || f.stav === 'ke-schvaleni');
 
-  const sync = getBankSync(selectedProvozovna);
-  const ucet = selectedProvozovna !== 'all' ? getBankovniUcet(selectedProvozovna) : undefined;
   const pocetVybrano = selectedFaIds.size + selectedOstIds.size;
 
   const detailFaktura = detailId
@@ -95,47 +106,8 @@ export default function PlatbyView({ state, update }: Props) {
     ? { ...detailFaktura, stav: (localStavy[detailFaktura.id] ?? detailFaktura.stav) as FakturaStavPlatby }
     : null;
 
-  function syncLabel(dt: string) {
-    if (!dt) return 'Nikdy';
-    const t = new Date(dt);
-    const now = new Date('2026-04-17T15:00:00');
-    const diffMin = Math.round((now.getTime() - t.getTime()) / 60000);
-    if (diffMin < 1) return 'Právě teď';
-    if (diffMin < 60) return `Před ${diffMin} min`;
-    return `Před ${Math.round(diffMin / 60)} hod`;
-  }
-
   return (
     <>
-      {/* ── Bank sync status bar ─────────────────────────────── */}
-      <div className="platby-sync-bar mb-3">
-        <div className="d-flex align-items-center gap-3 flex-wrap">
-          <div className="d-flex align-items-center gap-2">
-            <span className={`platby-sync-dot platby-sync-dot--${sync.stav}`} />
-            <span className="fs-12 fw-semibold">
-              {sync.stav === 'ok'    && 'Bankovní spojení OK'}
-              {sync.stav === 'ceka'  && (sync.zprava ?? 'Synchronizace probíhá…')}
-              {sync.stav === 'chyba' && 'Bankovní API nedostupné'}
-            </span>
-          </div>
-          {sync.posledniSync && (
-            <span className="text-muted fs-12">
-              Aktualizováno: {syncLabel(sync.posledniSync)}
-            </span>
-          )}
-          {ucet && (
-            <span className="text-muted fs-12 ms-auto font-monospace">
-              {ucet.nazev} · {ucet.cisloUctu}
-            </span>
-          )}
-          {selectedProvozovna === 'all' && (
-            <span className="badge bg-warning-subtle text-warning ms-auto fs-11">
-              Hromadný export plateb není dostupný – vyberte konkrétní provozovnu
-            </span>
-          )}
-        </div>
-      </div>
-
       {/* ── Success alert ────────────────────────────────────── */}
       {potvrzeni === 'sent' && (
         <div className="alert alert-success d-flex align-items-center gap-2 mb-3">
@@ -154,8 +126,8 @@ export default function PlatbyView({ state, update }: Props) {
             <div className="alert platby-alert-chyba d-flex align-items-center gap-2 mb-0">
               <iconify-icon icon="solar:danger-circle-bold-duotone" className="fs-5 flex-shrink-0" />
               <span className="flex-grow-1">
-                <strong>{chybaPlatby.length} {chybaPlatby.length === 1 ? 'platba selhala' : 'platby selhaly'}</strong>
-                {' '}– platby vráceny bankou, nutná okamžitá akce
+                <strong>{chybaPlatby.length === 1 ? 'Platba neproběhla' : `${chybaPlatby.length}× Platba neproběhla`}</strong>
+                {' '}– nutná okamžitá akce
               </span>
               <button className="btn btn-sm btn-danger text-nowrap" onClick={() => setDetailId(chybaPlatby[0].id)}>
                 Zobrazit →
@@ -206,18 +178,21 @@ export default function PlatbyView({ state, update }: Props) {
         <div className="card-body py-2">
           <div className="d-flex align-items-center gap-3 flex-wrap">
             <div className="d-flex align-items-center gap-2">
-              <span className="text-muted fs-13">Období:</span>
-              <input type="date" className="form-control form-control-sm" value={periodOd}
-                onChange={(e) => setPeriodOd(e.target.value)} style={{ width: 140 }} />
-              <span className="text-muted">–</span>
+              <span className="text-muted fs-13">Splatné do:</span>
               <input type="date" className="form-control form-control-sm" value={periodDo}
                 onChange={(e) => setPeriodDo(e.target.value)} style={{ width: 140 }} />
             </div>
-            <select className="form-select form-select-sm" style={{ width: 'auto' }} defaultValue="all">
-              <option value="all">Všechny kategorie</option>
-              {(Object.keys(KATEGORIE_LABELS) as Array<keyof typeof KATEGORIE_LABELS>).map((k) => (
-                <option key={k} value={k}>{KATEGORIE_LABELS[k]}</option>
-              ))}
+            <select
+              className="form-select form-select-sm"
+              style={{ width: 'auto' }}
+              value={stavFilter}
+              onChange={(e) => {
+                setStavFilter(e.target.value as typeof stavFilter);
+                setSelectedFaIds(new Set()); // reset výběru při změně filtru
+              }}
+            >
+              <option value="schvalena">Schválená</option>
+              <option value="neschvalena">Nová / neschválená</option>
             </select>
             <button className="btn btn-light btn-sm ms-auto" onClick={() => update({ selectedSection: 'faktury' })}>
               ← Správa faktur
@@ -234,8 +209,9 @@ export default function PlatbyView({ state, update }: Props) {
             periodOd={periodOd}
             periodDo={periodDo}
             kategorieFilter="all"
-            stavFilter="platby-aktivni"
+            stavFilter={stavFilter}
             typDokladu="all"
+            showExtraCols={false}
             selectedIds={selectedFaIds}
             onToggle={toggleFa}
             onToggleAll={toggleAllFa}
@@ -261,6 +237,8 @@ export default function PlatbyView({ state, update }: Props) {
             futureRevMode={futureRevMode}
             onFutureRevChange={setFutureRevMode}
             onPotvrdit={() => setPotvrzeni('confirm')}
+            selectedUctyIds={selectedUctyIds}
+            onToggleUcet={toggleUcet}
           />
         </div>
       </div>

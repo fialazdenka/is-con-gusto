@@ -40,7 +40,7 @@ export default function PohledavkyWidget({ provozovna, onNavigate }: Props) {
       {/* Header */}
       <div className="card-header d-flex align-items-center justify-content-between">
         <h5 className="card-title mb-0 d-flex align-items-center gap-2">
-          <iconify-icon icon="solar:bill-list-bold-duotone" style={{ fontSize: 20, color: '#c9911a' }} />
+          <iconify-icon icon="solar:bill-list-bold-duotone" style={{ fontSize: 20, color: 'var(--prov-color, #c9911a)' }} />
           Pohledávky
         </h5>
         <button className="btn btn-link btn-sm text-muted p-0 fs-12" onClick={onNavigate}>
@@ -52,7 +52,7 @@ export default function PohledavkyWidget({ provozovna, onNavigate }: Props) {
         {/* 3 metriky */}
         <div className="row g-0 border-bottom">
           {[
-            { label: 'Celkem aktivní',   value: fCzk(celkemAktivni),      count: aktivni.length,       color: '#c9911a' },
+            { label: 'Celkem aktivní',   value: fCzk(celkemAktivni),      count: aktivni.length,       color: 'var(--prov-color, #c9911a)' },
             { label: 'Po splatnosti',    value: fCzk(celkemPoSplatnosti),  count: poSplatnosti.length,  color: '#ef4444' },
             { label: 'Očekáváno',        value: fCzk(celkemOcekavane),     count: ocekavane.length,     color: '#1c84ee' },
           ].map((m, i) => (
@@ -68,11 +68,11 @@ export default function PohledavkyWidget({ provozovna, onNavigate }: Props) {
         {neodeslane.length > 0 && (
           <div className="px-3 py-2 border-bottom d-flex align-items-center gap-2"
             style={{ background: '#fdf3dc' }}>
-            <iconify-icon icon="solar:letter-bold-duotone" style={{ fontSize: 14, color: '#c9911a', flexShrink: 0 }} />
-            <span className="fs-12" style={{ color: '#c9911a' }}>
+            <iconify-icon icon="solar:letter-bold-duotone" style={{ fontSize: 14, color: 'var(--prov-color, #c9911a)', flexShrink: 0 }} />
+            <span className="fs-12" style={{ color: 'var(--prov-color, #c9911a)' }}>
               <strong>{neodeslane.length} faktur</strong> ještě nebylo odesláno klientovi
             </span>
-            <button className="btn btn-link btn-sm p-0 ms-auto fs-11 fw-semibold" style={{ color: '#c9911a' }}
+            <button className="btn btn-link btn-sm p-0 ms-auto fs-11 fw-semibold" style={{ color: 'var(--prov-color, #c9911a)' }}
               onClick={onNavigate}>
               Odeslat →
             </button>

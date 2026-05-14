@@ -81,7 +81,7 @@ export default function TrzbyWidget({ provozovna, period = 'tyden', onDrillDown:
   });
 
   return (
-    <div className="card mb-0" style={{ borderTop: '3px solid #c9911a' }}>
+    <div className="card mb-0" style={{ borderTop: '3px solid var(--prov-color, #c9911a)' }}>
 
       {/* ── Header ── SOURCE: Larkon .card-header ──────────────── */}
       <div className="card-header">
@@ -207,14 +207,14 @@ export default function TrzbyWidget({ provozovna, period = 'tyden', onDrillDown:
                   <polyline
                     points={trendPoints.map((p) => `${p.cx},${p.y}`).join(' ')}
                     fill="none"
-                    stroke="#c9911a"
+                    stroke="var(--prov-color, #c9911a)"
                     strokeWidth="1.8"
                     strokeDasharray="5 3"
                     opacity="0.65"
                   />
                   {trendPoints.map((p, i) => (
                     <circle key={i} cx={p.cx} cy={p.y} r={tooltip?.i === i ? 4.5 : 3}
-                      fill="#c9911a" opacity={tooltip?.i === i ? 1 : 0.55}
+                      fill="var(--prov-color, #c9911a)" opacity={tooltip?.i === i ? 1 : 0.55}
                       style={{ transition: 'r 0.1s' }}
                     />
                   ))}
@@ -271,7 +271,7 @@ export default function TrzbyWidget({ provozovna, period = 'tyden', onDrillDown:
                 <span className="text-muted fs-12">Bar</span>
               </div>
               <div className="d-flex align-items-center gap-1">
-                <span style={{ width: 10, height: 2, background: '#c9911a', display: 'inline-block', marginBottom: 1 }} />
+                <span style={{ width: 10, height: 2, background: 'var(--prov-color, #c9911a)', display: 'inline-block', marginBottom: 1 }} />
                 <span className="text-muted fs-12">Trend celkem</span>
               </div>
               <div className="d-flex align-items-center gap-3 ms-auto">

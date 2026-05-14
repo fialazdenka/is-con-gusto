@@ -19,6 +19,7 @@
 //   CUSTOM: .lk-segment     → segment control (není v Larkon)
 //   CUSTOM: .topbar-divider → oddělovač mezi segmenty
 
+import { useEffect } from 'react';
 import type { AppState, ProvozovnaId, Period, SidebarSection } from '../types';
 import { PROVOZOVNY } from '../data';
 
@@ -40,6 +41,18 @@ const SECTION_LABELS: Record<SidebarSection, string> = {
   reporty:    'Reporty',
   nastaveni:  'Nastavení',
   komponenty: 'Mapa komponent',
+};
+
+// Drobečková navigace – rodič sekce + label pro navigaci zpět
+const BREADCRUMB_PARENT: Partial<Record<SidebarSection, { label: string; section: SidebarSection }>> = {
+  faktury:    { label: 'Finance', section: 'dashboard' },
+  platby:     { label: 'Finance', section: 'dashboard' },
+  pohledavky: { label: 'Finance', section: 'dashboard' },
+  cashflow:   { label: 'Finance', section: 'dashboard' },
+  zavierky:   { label: 'Provoz',  section: 'dashboard' },
+  provozovny: { label: 'Provoz',  section: 'dashboard' },
+  reporty:    { label: 'Přehledy', section: 'dashboard' },
+  komponenty: { label: 'Dev',     section: 'dashboard' },
 };
 
 const PERIOD_OPTS: { value: Period; label: string }[] = [
@@ -65,13 +78,21 @@ const ACTIVE = PROVOZOVNY.filter((p) => p.status === 'active');
 export default function Topbar({ state, update, onMenuToggle }: Props) {
   const { selectedSection, selectedProvozovna, period } = state;
   const isDashboard = selectedSection === 'dashboard';
+  const parent      = BREADCRUMB_PARENT[selectedSection];
+
+  useEffect(() => {
+    document.documentElement.style.setProperty(
+      '--bs-topbar-height',
+      isDashboard ? '62px' : '100px'
+    );
+  }, [isDashboard]);
 
   return (
     <header className="topbar">
       <div className="container-fluid h-100">
         <div className="topbar-rows">
 
-          {/* ── Řádek 1: navigace ───────────────────────────── */}
+          {/* ── Řádek 1: hamburger + název + provozovna + akce ── */}
           <div className="topbar-row-main">
 
             {/* Levá strana */}
@@ -86,6 +107,21 @@ export default function Topbar({ state, update, onMenuToggle }: Props) {
                   {SECTION_LABELS[selectedSection]}
                 </h4>
               </div>
+              <div className="topbar-divider d-none d-sm-block" />
+              <select
+                className="form-select form-select-sm topbar-prov-select d-none d-sm-block"
+                value={selectedProvozovna}
+                onChange={(e) => update({ selectedProvozovna: e.target.value as ProvozovnaId })}
+              >
+                <option value="all">Všechny provozovny</option>
+                {PROV_GROUPS.map((g) => (
+                  <optgroup key={g.label} label={g.label}>
+                    {ACTIVE.filter((p) => g.ids.includes(p.id)).map((p) => (
+                      <option key={p.id} value={p.id}>{p.name}</option>
+                    ))}
+                  </optgroup>
+                ))}
+              </select>
             </div>
 
             {/* Pravá strana */}
@@ -120,44 +156,30 @@ export default function Topbar({ state, update, onMenuToggle }: Props) {
             </div>
           </div>
 
-          {/* ── Řádek 2: filtry – vždy viditelné ────────────── */}
-          <div className="topbar-row-filters">
-
-            {/* Výběr provozovny – grouped jako v Tržby detail */}
-            <select
-              className="form-select form-select-sm topbar-prov-select"
-              value={selectedProvozovna}
-              onChange={(e) => update({ selectedProvozovna: e.target.value as ProvozovnaId })}
-            >
-              <option value="all">Všechny provozovny</option>
-              {PROV_GROUPS.map((g) => (
-                <optgroup key={g.label} label={g.label}>
-                  {ACTIVE.filter((p) => g.ids.includes(p.id)).map((p) => (
-                    <option key={p.id} value={p.id}>{p.name}</option>
-                  ))}
-                </optgroup>
-              ))}
-            </select>
-
-            {/* Period pills – jen na dashboardu */}
-            {isDashboard && (
-              <>
-                <div className="topbar-divider" />
-                <div className="lk-segment">
-                  {PERIOD_OPTS.map((o) => (
-                    <button
-                      key={o.value}
-                      className={`lk-seg-btn${period === o.value ? ' active' : ''}`}
-                      onClick={() => update({ period: o.value })}
-                    >
-                      {o.label}
+          {/* ── Řádek 2: breadcrumb (cesta zpět) – jen mimo dashboard ── */}
+          {!isDashboard && (
+            <div className="topbar-row-filters">
+              <nav aria-label="breadcrumb" className="topbar-breadcrumb">
+                <ol className="breadcrumb mb-0">
+                  <li className="breadcrumb-item">
+                    <button className="btn btn-link p-0 topbar-breadcrumb-link"
+                      onClick={() => update({ selectedSection: 'dashboard' })}>
+                      Con Gusto
                     </button>
-                  ))}
-                </div>
-              </>
-            )}
-
-          </div>
+                  </li>
+                  {parent && (
+                    <li className="breadcrumb-item">
+                      <button className="btn btn-link p-0 topbar-breadcrumb-link d-flex align-items-center gap-1"
+                        onClick={() => update({ selectedSection: parent.section })}>
+                        <iconify-icon icon="solar:alt-arrow-left-bold" style={{ fontSize: 11 }} />
+                        {parent.label}
+                      </button>
+                    </li>
+                  )}
+                </ol>
+              </nav>
+            </div>
+          )}
 
         </div>
       </div>

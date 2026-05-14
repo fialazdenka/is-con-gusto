@@ -26,7 +26,7 @@ const STAV_META: Record<FakturaStavPlatby, { cls: string; label: string; icon: s
   zaplacena:           { cls: 'bg-success-subtle text-success',     label: 'Zaplacená',             icon: 'solar:check-square-bold-duotone' },
   'v-bance':           { cls: 'bg-info-subtle text-info',           label: 'V bance',               icon: 'solar:bank-bold-duotone' },
   'ceka-na-sparovani': { cls: 'platby-stav-sparovani',              label: 'Čeká na spárování',     icon: 'solar:refresh-circle-bold-duotone' },
-  'chyba-platby':      { cls: 'platby-stav-chyba',                  label: 'Chyba platby',          icon: 'solar:danger-circle-bold-duotone' },
+  'chyba-platby':      { cls: 'platby-stav-chyba',                  label: 'Platba neproběhla',          icon: 'solar:danger-circle-bold-duotone' },
 };
 
 const AUDIT_IKONY: Record<string, string> = {
@@ -95,7 +95,7 @@ export default function PlatbyDetailPanel({ faktura, onClose, onOdeslatDoBanky, 
             <div className="alert alert-danger m-3 mb-0 d-flex align-items-center gap-2">
               <iconify-icon icon="solar:danger-triangle-bold-duotone" style={{ fontSize: 20, flexShrink: 0 }} />
               <div>
-                <div className="fw-bold">Chyba platby – vyžaduje akci</div>
+                <div className="fw-bold">Platba neproběhla – vyžaduje akci</div>
                 <div className="fs-12 mt-1">{faktura.poznamka}</div>
               </div>
             </div>

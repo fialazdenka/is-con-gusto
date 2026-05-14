@@ -1,172 +1,124 @@
-// COMPONENT: KPI Strip – 4× Stat Card
-// SOURCE: Larkon resources/views/dashboards/index.blade.php
-//         – card overflow-hidden + card-body row + card-footer pattern
-// CUSTOM: YES – SVG sparkline bar chart → v produkci ApexCharts sparkline (type="bar", height=28)
-//
-// Larkon class mapping:
-//   .card.overflow-hidden.h-100      → stat card container
-//   .card-body                       → card body
-//   .d-flex.align-items-start.gap-3  → icon + hodnota vedle sebe
-//   .avatar-sm.flex-shrink-0         → icon obal
-//   iconify-icon.text-{color}        → ikona sekce
-//   p.text-muted.fs-12               → popisek (label)
-//   h3.text-dark.text-nowrap         → hodnota (částka/procento)
-//   .card-footer.py-2.bg-light.bg-opacity-50 → trend footer
-//   .text-success / .text-danger     → trend barva
-//   CUSTOM: .lk-custom div           → obal SVG sparkline (nahradit ApexCharts)
-//   CUSTOM: CSS flex bar chart       → 7 sloupečků, výška normalizovaná na max hodnotu
+// COMPONENT: KPI Strip – Dashboard tržby (Dnes / Včera / Týden / Měsíc)
+// SOURCE: Larkon _card.scss + _avatar.scss stat card pattern
+// CUSTOM: YES – data z TrzbyView logiky (getTotalForPeriod, getMesicVsLY)
 
 import {
-  DAYS_7,
-  getTotalTrzby,
-  getPrevTotalTrzby,
   getTotalForPeriod,
   getPrevForPeriod,
-  getPeriodShortLabel,
   getMesicVsLY,
   fCzk,
   pctChange,
 } from '../data';
-import type { ProvozovnaId, Period } from '../types';
+import type { ProvozovnaId } from '../types';
+
+const TYDEN_DNI = 5; // Po–Čtv (dnů proběhlých k 17.4.)
 
 interface Props {
   provozovna: ProvozovnaId;
-  period?: Period;
+  period?: string; // nepoužíváme, zachováváme kompatibilitu
 }
 
-export default function KPIStrip({ provozovna, period = 'tyden' }: Props) {
-  const cur  = getTotalForPeriod(provozovna, period);
-  const prev = getPrevForPeriod(provozovna, period);
-
-  const celkemChange = pctChange(cur.celkem, prev.celkem);
-  const kuchynChange = pctChange(cur.kuchyn, prev.kuchyn);
-  const barChange    = pctChange(cur.bar,    prev.bar);
-  const mesic        = getMesicVsLY(provozovna);
-  const mesicVsLY    = mesic.chng;
-  const nDays        = period === 'dnes' || period === 'vcera' ? 1
-                     : period === 'tyden' || period === 'minuly-tyden' ? 7
-                     : period === 'minuly-mesic' ? 31 : 112;
-  const avgDen       = Math.round(cur.celkem / nDays);
-  const periodLabel  = getPeriodShortLabel(period);
-
-  const sparkCelkem = [72, 65, 85, 79, 90, 100, 96];
-  const sparkKuchyn = [70, 62, 84, 78, 89, 100, 95];
-  const sparkBar    = [68, 63, 86, 77, 92, 100, 94];
+export default function KPIStrip({ provozovna }: Props) {
+  const dnes       = getTotalForPeriod(provozovna, 'dnes');
+  const vcera      = getTotalForPeriod(provozovna, 'vcera');
+  const vceraComp  = getPrevForPeriod(provozovna, 'vcera');
+  const vceraChng  = pctChange(vcera.celkem, vceraComp.celkem);
+  const tyden      = getTotalForPeriod(provozovna, 'tyden');
+  const tydenComp  = getPrevForPeriod(provozovna, 'tyden');
+  const tydenCompSameDni = Math.round(tydenComp.celkem * TYDEN_DNI / 7);
+  const tydenChng  = pctChange(tyden.celkem, tydenCompSameDni);
+  const tydenPred  = Math.round((tyden.celkem / TYDEN_DNI) * 7);
+  const mesic      = getMesicVsLY(provozovna);
+  const pocetDni   = mesic.cur2026?.pocetDni ?? 17;
+  const ly2025Full = mesic.ly2025?.sumaCelyMesic ?? (mesic.ly2025 ? mesic.ly2025.prumerDen * 30 : 0);
+  const mesicChng  = mesic.cur2026 && ly2025Full > 0 ? pctChange(mesic.cur2026.sumaDoDnes, ly2025Full) : 0;
+  const mesicPred  = mesic.cur2026 ? Math.round((mesic.cur2026.sumaDoDnes / pocetDni) * 30) : 0;
 
   return (
-    <div className="row g-4 mb-4">
-      <div className="col-md-3">
-        <StatCard
-          label={`Celkové tržby – ${periodLabel}`}
-          value={fCzk(cur.celkem)}
-          change={celkemChange}
-          meta="vs. předchozí období"
-          spark={sparkCelkem}
-          iconClass="solar:chart-2-bold-duotone"
-          colorClass="primary"
-        />
-      </div>
-      <div className="col-md-3">
-        <StatCard
-          label={`Kuchyň – ${periodLabel}`}
-          value={fCzk(cur.kuchyn)}
-          change={kuchynChange}
-          meta="vs. předchozí období"
-          spark={sparkKuchyn}
-          iconClass="solar:chef-hat-bold-duotone"
-          colorClass="info"
-        />
-      </div>
-      <div className="col-md-3">
-        <StatCard
-          label={`Bar – ${periodLabel}`}
-          value={fCzk(cur.bar)}
-          change={barChange}
-          meta="vs. předchozí období"
-          spark={sparkBar}
-          iconClass="solar:wineglass-bold-duotone"
-          colorClass="success"
-        />
-      </div>
-      <div className="col-md-3">
-        <StatCard
-          label="Měsíc vs. LY"
-          value={`${mesicVsLY >= 0 ? '+' : ''}${mesicVsLY.toFixed(1)} %`}
-          change={mesicVsLY}
-          meta={`Průměr/den: ${fCzk(avgDen)}`}
-          spark={[76, 80, 84, 82, 86, 90, 88]}
-          iconClass="solar:graph-up-bold-duotone"
-          colorClass="warning"
-        />
-      </div>
-    </div>
-  );
-}
+    <div className="row g-3 mb-3">
 
-interface StatCardProps {
-  label: string;
-  value: string;
-  change: number;
-  meta: string;
-  spark: number[];
-  iconClass: string;
-  colorClass: string;
-}
-
-function StatCard({ label, value, change, meta, spark, iconClass, colorClass }: StatCardProps) {
-  const up = change >= 0;
-  const changeStr = `${up ? '+' : ''}${change.toFixed(1)} %`;
-  const maxS = Math.max(...spark);
-
-  return (
-    // SOURCE: Larkon card overflow-hidden stat pattern
-    <div className="card overflow-hidden h-100">
-      <div className="card-body">
-        <div className="d-flex align-items-start gap-3">
-          {/* Icon box – SOURCE: Larkon .avatar-sm.bg-soft-{color} */}
-          <div className="avatar-sm flex-shrink-0 d-flex align-items-center justify-content-center">
-            <iconify-icon
-              icon={iconClass}
-              className={`text-${colorClass}`}
-              style={{ fontSize: 26 }}
-            />
+      {/* Dnes */}
+      <div className="col-sm-6 col-xl-3">
+        <div className="card overflow-hidden h-100" style={{ borderTop: '3px solid var(--prov-color, #c9911a)' }}>
+          <div className="card-body pb-2">
+            <div className="d-flex align-items-start justify-content-between mb-1">
+              <p className="text-muted mb-0 fs-12 text-uppercase fw-semibold">Dnes</p>
+              <span className="badge bg-success-subtle text-success d-flex align-items-center gap-1 fs-11">
+                <span style={{ width: 6, height: 6, borderRadius: '50%', background: '#16a34a', display: 'inline-block', animation: 'trzby-pulse 1.8s ease-in-out infinite' }} />
+                Live
+              </span>
+            </div>
+            <h3 className="text-dark mb-0 font-monospace text-nowrap">{fCzk(dnes.celkem)}</h3>
+            <p className="text-muted fs-11 mb-0 mt-1">17.4.2026 · čtvrtek</p>
           </div>
-          {/* Value + label */}
-          <div className="flex-grow-1 text-end" style={{ minWidth: 0 }}>
-            <p className="text-muted mb-0 fs-12" style={{ lineHeight: 1.3 }}>{label}</p>
-            <h3 className="text-dark mt-1 mb-0 text-nowrap">{value}</h3>
-          </div>
-        </div>
-
-        {/* Sparkline – CUSTOM: v produkci ApexCharts sparkline bar chart */}
-        <div className="lk-custom mt-3">
-          <div className="lk-custom-label">CUSTOM: ApexCharts sparkline</div>
-          <div style={{ display: 'flex', alignItems: 'flex-end', gap: 2, height: 28 }}>
-            {spark.map((v, i) => (
-              <div
-                key={i}
-                style={{
-                  flex: 1,
-                  height: `${Math.round((v / maxS) * 100)}%`,
-                  background: `var(--bs-${colorClass})`,
-                  opacity: i === spark.length - 1 ? 1 : 0.5,
-                  borderRadius: '2px 2px 0 0',
-                  minHeight: 2,
-                }}
-              />
-            ))}
+          <div className="card-footer py-2 bg-light bg-opacity-50">
+            <span className="text-muted fs-12">Průběžná hodnota</span>
           </div>
         </div>
       </div>
 
-      {/* Footer – SOURCE: Larkon .card-footer.py-2.bg-light.bg-opacity-50 */}
-      <div className="card-footer py-2 bg-light bg-opacity-50">
-        <div className={`fw-semibold fs-13 ${up ? 'text-success' : 'text-danger'}`}>
-          <iconify-icon icon={up ? 'solar:arrow-up-bold' : 'solar:arrow-down-bold'} />
-          {' '}{changeStr}
+      {/* Včera */}
+      <div className="col-sm-6 col-xl-3">
+        <div className="card overflow-hidden h-100">
+          <div className="card-body pb-2">
+            <div className="d-flex align-items-start justify-content-between mb-1">
+              <p className="text-muted mb-0 fs-12 text-uppercase fw-semibold d-flex align-items-center gap-1">
+                <span style={{ width: 6, height: 6, borderRadius: '50%', background: '#16a34a', display: 'inline-block', animation: 'trzby-pulse 1.8s ease-in-out infinite' }} />
+                Včera
+              </p>
+              <span className={`badge ${vceraChng >= 0 ? 'bg-success-subtle text-success' : 'bg-danger-subtle text-danger'} fs-11`}>
+                {vceraChng >= 0 ? '+' : ''}{vceraChng.toFixed(1).replace('.', ',')} %
+              </span>
+            </div>
+            <h3 className="text-dark mb-0 font-monospace text-nowrap">{fCzk(vcera.celkem)}</h3>
+            <p className="text-muted fs-11 mb-0 mt-1">vs. středa 9.4.2026</p>
+          </div>
+          <div className="card-footer py-2 bg-light bg-opacity-50">
+            <span className="text-muted fs-12">{fCzk(vceraComp.celkem)} minulý týden</span>
+          </div>
         </div>
-        <div className="text-muted fs-12 mt-1">{meta}</div>
       </div>
+
+      {/* Tento týden */}
+      <div className="col-sm-6 col-xl-3">
+        <div className="card overflow-hidden h-100">
+          <div className="card-body pb-2">
+            <div className="d-flex align-items-start justify-content-between mb-1">
+              <p className="text-muted mb-0 fs-12 text-uppercase fw-semibold">Tento týden</p>
+              <span className={`badge ${tydenChng >= 0 ? 'bg-success-subtle text-success' : 'bg-danger-subtle text-danger'} fs-11`}>
+                {tydenChng >= 0 ? '+' : ''}{tydenChng.toFixed(1).replace('.', ',')} %
+              </span>
+            </div>
+            <h3 className="text-dark mb-0 font-monospace text-nowrap">{fCzk(tyden.celkem)}</h3>
+            <p className="text-muted fs-11 mb-0 mt-1">13.4. – 17.4. · {TYDEN_DNI} dní</p>
+          </div>
+          <div className="card-footer py-2 bg-light bg-opacity-50">
+            <span className="text-muted fs-12">Predikce: </span>
+            <span className="fw-semibold fs-12 font-monospace" style={{ color: '#7c3aed' }}>~{fCzk(tydenPred)}</span>
+          </div>
+        </div>
+      </div>
+
+      {/* Duben 2026 */}
+      <div className="col-sm-6 col-xl-3">
+        <div className="card overflow-hidden h-100">
+          <div className="card-body pb-2">
+            <div className="d-flex align-items-start justify-content-between mb-1">
+              <p className="text-muted mb-0 fs-12 text-uppercase fw-semibold">Duben 2026</p>
+              <span className={`badge ${mesicChng >= 0 ? 'bg-success-subtle text-success' : 'bg-danger-subtle text-danger'} fs-11`}>
+                {mesicChng >= 0 ? '+' : ''}{mesicChng.toFixed(1).replace('.', ',')} %
+              </span>
+            </div>
+            <h3 className="text-dark mb-0 font-monospace text-nowrap">{mesic.cur2026 ? fCzk(mesic.cur2026.sumaDoDnes) : '—'}</h3>
+            <p className="text-muted fs-11 mb-0 mt-1">vs. duben 2025 (celý měsíc)</p>
+          </div>
+          <div className="card-footer py-2 bg-light bg-opacity-50">
+            <span className="text-muted fs-12">Predikce: </span>
+            <span className="fw-semibold fs-12 font-monospace" style={{ color: '#7c3aed' }}>~{fCzk(mesicPred)}</span>
+          </div>
+        </div>
+      </div>
+
     </div>
   );
 }

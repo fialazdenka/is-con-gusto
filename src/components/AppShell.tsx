@@ -22,6 +22,7 @@ import FakturyView from './FakturyView';
 import PohledavkyView from './PohledavkyView';
 import PlatbyView from './PlatbyView';
 import CashflowView from './CashflowView';
+import ProvozovnyView from './ProvozovnyView';
 
 interface Props {
   state: AppState;
@@ -87,6 +88,8 @@ export default function AppShell({ state, update }: Props) {
         return <CashflowView state={state} update={update} />;
       case 'platby':
         return <PlatbyView state={state} update={update} />;
+      case 'provozovny':
+        return <ProvozovnyView />;
       case 'komponenty':
         return <ComponentReference />;
       default:
