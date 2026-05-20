@@ -22,9 +22,10 @@
 
 import { useState, useCallback } from 'react';
 import type { AppState, ProvozovnaId } from '../types';
-import type { TypDokladu, FakturaStavPlatby, FakturaKategorie } from '../platbyData';
+import type { TypDokladu, FakturaStavPlatby, FakturaKategorie, MatchingStav, FakturaForma } from '../platbyData';
 import {
   getFakturyForProvozovna,
+  getMatchingData,
   isPoSplatnosti,
   isSplatneVObdobi,
   TYDEN_OD,
@@ -33,10 +34,46 @@ import {
   KATEGORIE_LABELS,
   SCHVALOVACI_OSOBY,
 } from '../platbyData';
+
+export type SortCol = 'cislo' | 'dodavatel' | 'castka' | 'splatnost' | 'odeslatDo' | 'stav' | null;
+
+const STAV_CHIPS: { value: FakturaStavPlatby; label: string }[] = [
+  { value: 'nova',          label: 'Nová' },
+  { value: 'ke-schvaleni',  label: 'Ke schválení' },
+  { value: 'schvalena',     label: 'Schválená' },
+  { value: 'zamitnuta',     label: 'Zamítnutá' },
+  { value: 'zastavena',     label: 'Zastavená' },
+  { value: 'zaplacena',     label: 'Zaplacená' },
+];
+
+const FORMA_CHIPS: { value: FakturaForma; label: string; icon: string }[] = [
+  { value: 'zalohova', label: 'Zálohová', icon: 'solar:wallet-money-bold-duotone' },
+  { value: 'dobropis', label: 'Dobropis', icon: 'solar:undo-left-round-bold-duotone' },
+  { value: 'offset',   label: 'Offset',   icon: 'solar:transfer-horizontal-bold-duotone' },
+];
+
+const MATCHING_CHIPS: { value: MatchingStav; label: string }[] = [
+  { value: 'sparovana',          label: 'Spárováno' },
+  { value: 'nesedi-dl',          label: 'Nesedí DL' },
+  { value: 'duplikat',           label: 'Duplicita' },
+  { value: 'castecne-sparovana', label: 'Část. spárováno' },
+  { value: 'ceka-na-sparovani',  label: 'Čeká na párování' },
+  { value: 'bez-dl',             label: 'Bez DL' },
+];
+
+export interface SessionAuditEntry {
+  cas: string;
+  kdo: string;
+  akce: string;
+  icon: string;
+  color: string;
+  typ?: 'schvaleni' | 'editace' | 'parovani' | 'komunikace' | 'stav' | 'priloha' | 'zadani' | 'prirazeni';
+}
 import { PROVOZOVNY } from '../data';
 import PlatbyKPIStrip from './PlatbyKPIStrip';
 import FakturyTable from './FakturyTable';
-import FakturaDetailDrawer from './FakturaDetailDrawer';
+import FakturySidePanel from './FakturySidePanel';
+import type { KomentarEntry } from './FakturySidePanel';
 
 interface Props {
   state: AppState;
@@ -49,9 +86,28 @@ export default function FakturyView({ state, update }: Props) {
   const [periodOd,        setPeriodOd]        = useState(TYDEN_OD);
   const [periodDo,        setPeriodDo]        = useState(TYDEN_DO);
   const [kategorieFilter,    setKategorieFilter]    = useState('all');
-  const [stavFilter,         setStavFilter]         = useState('all');
+  const [stavFilters,        setStavFilters]        = useState<Set<FakturaStavPlatby>>(new Set());
+  const [matchingFilters,    setMatchingFilters]    = useState<Set<MatchingStav>>(new Set());
+  const [formaFilters,       setFormaFilters]       = useState<Set<FakturaForma>>(new Set());
+  const [presetFilters,      setPresetFilters]      = useState<Set<'po-splatnosti' | 'tydni'>>(new Set());
+  const [castkaOd,           setCastkaOd]           = useState('');
+  const [castkaDo,           setCastkaDo]           = useState('');
+  const [sortBy,             setSortBy]             = useState<SortCol>('splatnost');
+  const [sortDir,            setSortDir]            = useState<'asc' | 'desc'>('asc');
   const [typDokladu,         setTypDokladu]         = useState<TypDokladu | 'all'>('all');
+  const [search,             setSearch]             = useState('');
   const [selectedIds,        setSelectedIds]        = useState<Set<string>>(new Set());
+
+  function toggleSet<T>(s: Set<T>, v: T): Set<T> {
+    const n = new Set(s); n.has(v) ? n.delete(v) : n.add(v); return n;
+  }
+  function handleSort(col: SortCol) {
+    if (sortBy === col) {
+      setSortDir((d) => d === 'asc' ? 'desc' : 'asc');
+    } else {
+      setSortBy(col); setSortDir('asc');
+    }
+  }
 
   // Nová faktura – modal state
   const [showNovaFaktura, setShowNovaFaktura] = useState(false);
@@ -77,6 +133,12 @@ export default function FakturyView({ state, update }: Props) {
   const [localPrirazeni,     setLocalPrirazeni]    = useState<Record<string, string>>({});
   const [localSchvalil,      setLocalSchvalil]     = useState<Record<string, string>>({});
   const [localDatumSchvaleni, setLocalDatumSchvaleni] = useState<Record<string, string>>({});
+  const [localAudit,         setLocalAudit]        = useState<Record<string, SessionAuditEntry[]>>({});
+  const [localKomentare,     setLocalKomentare]    = useState<Record<string, KomentarEntry[]>>({});
+
+  function pushAudit(id: string, entry: SessionAuditEntry) {
+    setLocalAudit((prev) => ({ ...prev, [id]: [entry, ...(prev[id] ?? [])] }));
+  }
 
   const toggleFa = useCallback((id: string) => {
     setSelectedIds((prev) => {
@@ -110,10 +172,13 @@ export default function FakturyView({ state, update }: Props) {
   const AKTUALNI_UZIVATEL = SCHVALOVACI_OSOBY.find((o) => o.role === 'majitel')!;
   const dnesStr = new Date().toLocaleDateString('cs-CZ', { day: '2-digit', month: '2-digit', year: 'numeric' });
 
+  const now = () => new Date().toLocaleString('cs-CZ', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
+
   function handleSchvalit(id: string) {
     setLocalStavy((prev) => ({ ...prev, [id]: 'schvalena' }));
     setLocalSchvalil((prev) => ({ ...prev, [id]: AKTUALNI_UZIVATEL.jmeno }));
     setLocalDatumSchvaleni((prev) => ({ ...prev, [id]: dnesStr }));
+    pushAudit(id, { cas: now(), kdo: AKTUALNI_UZIVATEL.jmeno, akce: 'Faktura schválena k úhradě', icon: 'solar:check-circle-bold-duotone', color: '#198754', typ: 'schvaleni' });
     if (queueIndex >= 0 && queueIndex < schvalovaniQueue.length - 1) {
       setDrawerFakturaId(schvalovaniQueue[queueIndex + 1]);
     }
@@ -122,11 +187,26 @@ export default function FakturyView({ state, update }: Props) {
     setLocalStavy((prev) => ({ ...prev, [id]: 'zamitnuta' }));
     setLocalSchvalil((prev) => ({ ...prev, [id]: AKTUALNI_UZIVATEL.jmeno }));
     setLocalDatumSchvaleni((prev) => ({ ...prev, [id]: dnesStr }));
+    pushAudit(id, { cas: now(), kdo: AKTUALNI_UZIVATEL.jmeno, akce: 'Faktura zamítnuta', icon: 'solar:close-circle-bold-duotone', color: '#dc3545', typ: 'schvaleni' });
   }
   function handleOdlozit(id: string) {
+    const prevStav = localStavy[id];
     setLocalStavy((prev) => ({ ...prev, [id]: 'ke-schvaleni' }));
     setLocalSchvalil((prev) => { const n = { ...prev }; delete n[id]; return n; });
     setLocalDatumSchvaleni((prev) => { const n = { ...prev }; delete n[id]; return n; });
+    const akce = prevStav === 'zastavena' ? 'Obnoveno ke schválení' : prevStav === 'zamitnuta' ? 'Přehodnoceno – vráceno ke schválení' : 'Odloženo ke schválení';
+    pushAudit(id, { cas: now(), kdo: AKTUALNI_UZIVATEL.jmeno, akce, icon: 'solar:refresh-bold-duotone', color: '#0dcaf0', typ: 'stav' });
+  }
+
+  function handleRematch(id: string) {
+    pushAudit(id, {
+      cas: now(),
+      kdo: AKTUALNI_UZIVATEL.jmeno,
+      akce: 'Spuštěno manuální přepárování s DL',
+      icon: 'solar:refresh-circle-bold-duotone',
+      color: '#0dcaf0',
+      typ: 'parovani',
+    });
   }
 
   function handleBulkSchvalit() {
@@ -158,6 +238,13 @@ export default function FakturyView({ state, update }: Props) {
       isSplatneVObdobi(f.splatnost, periodOd, periodDo) &&
       !isPoSplatnosti(f.splatnost)
   ).length;
+  const nesediDLCnt  = allFaktury.filter((f) => getMatchingData(f.id)?.stav === 'nesedi-dl').length;
+  const duplikatCnt  = allFaktury.filter((f) => getMatchingData(f.id)?.stav === 'duplikat').length;
+  const cekaCnt      = allFaktury.filter((f) => getMatchingData(f.id)?.stav === 'ceka-na-sparovani').length;
+  // Automatizace (mock cron status — v produkci by jely background workery)
+  const CRON_INTERVAL_MIN = 15;
+  const cronLast = '14:32';
+  const cronNext = '14:47';
 
   void PROCESSING_DAYS_DEFAULT;
 
@@ -209,15 +296,26 @@ export default function FakturyView({ state, update }: Props) {
       </div>
 
       {/* Alert strips – SOURCE: Bootstrap .alert.alert-{danger|warning|info} */}
-      {(poSplatCnt > 0 || neschvaleneCnt > 0 || splatneVObdobi > 0) && (
+      {(poSplatCnt > 0 || neschvaleneCnt > 0 || splatneVObdobi > 0 || duplikatCnt > 0) && (
         <div className="d-flex flex-column gap-2 mb-4">
+          {duplikatCnt > 0 && (
+            <div className="alert alert-danger d-flex align-items-center gap-2 mb-0">
+              <iconify-icon icon="solar:copy-bold-duotone" className="fs-5 flex-shrink-0" />
+              <span className="flex-grow-1">
+                <strong>{duplikatCnt} {duplikatCnt === 1 ? 'duplicitní faktura' : duplikatCnt < 5 ? 'duplicitní faktury' : 'duplicitních faktur'}</strong> – riziko dvojí platby, vyžaduje okamžité prověření
+              </span>
+              <span className="alert-link fw-semibold text-nowrap ms-auto" style={{ cursor: 'pointer' }} onClick={() => setMatchingFilters(new Set(['duplikat']))}>
+                Zkontrolovat →
+              </span>
+            </div>
+          )}
           {poSplatCnt > 0 && (
             <div className="alert alert-danger d-flex align-items-center gap-2 mb-0">
               <iconify-icon icon="solar:danger-triangle-bold-duotone" className="fs-5 flex-shrink-0" />
               <span className="flex-grow-1">
                 <strong>{poSplatCnt} faktur po splatnosti</strong> – vyžadují okamžitou pozornost
               </span>
-              <span className="alert-link fw-semibold text-nowrap ms-auto" style={{ cursor: 'pointer' }} onClick={() => setStavFilter('po-splatnosti')}>
+              <span className="alert-link fw-semibold text-nowrap ms-auto" style={{ cursor: 'pointer' }} onClick={() => setPresetFilters(new Set(['po-splatnosti']))}>
                 Zobrazit →
               </span>
             </div>
@@ -228,7 +326,7 @@ export default function FakturyView({ state, update }: Props) {
               <span className="flex-grow-1">
                 <strong>{neschvaleneCnt} faktur čeká na schválení</strong> – nemohou být odeslány k platbě
               </span>
-              <span className="alert-link fw-semibold text-nowrap ms-auto" style={{ cursor: 'pointer' }} onClick={() => setStavFilter('neschvalena')}>
+              <span className="alert-link fw-semibold text-nowrap ms-auto" style={{ cursor: 'pointer' }} onClick={() => setStavFilters(new Set(['nova', 'ke-schvaleni']))}>
                 Schválit →
               </span>
             </div>
@@ -239,13 +337,70 @@ export default function FakturyView({ state, update }: Props) {
               <span className="flex-grow-1">
                 <strong>{splatneVObdobi} faktur splatných v tomto týdnu</strong>
               </span>
-              <span className="alert-link fw-semibold text-nowrap ms-auto" style={{ cursor: 'pointer' }} onClick={() => setStavFilter('tydni')}>
+              <span className="alert-link fw-semibold text-nowrap ms-auto" style={{ cursor: 'pointer' }} onClick={() => setPresetFilters(new Set(['tydni']))}>
                 Filtrovat →
               </span>
             </div>
           )}
         </div>
       )}
+
+      {/* Automatizace – cron status mini-card */}
+      <div
+        className="d-flex align-items-center gap-3 flex-wrap px-3 py-2 mb-3 rounded"
+        style={{ background: '#f8f9fa', border: '1px solid #e9ecef', fontSize: 12 }}
+      >
+        <div className="d-flex align-items-center gap-2">
+          <span
+            className="rounded-circle d-inline-block"
+            style={{ width: 8, height: 8, background: '#198754', boxShadow: '0 0 0 3px rgba(25,135,84,0.15)' }}
+          />
+          <span className="fw-semibold">Automatizace párování</span>
+          <span className="badge bg-success-subtle text-success" style={{ fontSize: 10 }}>Aktivní</span>
+        </div>
+
+        <div className="d-flex align-items-center gap-1 text-muted">
+          <iconify-icon icon="solar:refresh-circle-bold-duotone" style={{ fontSize: 13 }} />
+          <span>Interval:</span>
+          <span className="fw-semibold text-dark">{CRON_INTERVAL_MIN} min</span>
+        </div>
+
+        <div className="d-flex align-items-center gap-1 text-muted">
+          <iconify-icon icon="solar:clock-circle-bold-duotone" style={{ fontSize: 13 }} />
+          <span>Poslední běh:</span>
+          <span className="fw-semibold text-dark czk-num">{cronLast}</span>
+        </div>
+
+        <div className="d-flex align-items-center gap-1 text-muted">
+          <iconify-icon icon="solar:alarm-bold-duotone" style={{ fontSize: 13 }} />
+          <span>Příští:</span>
+          <span className="fw-semibold text-dark czk-num">{cronNext}</span>
+        </div>
+
+        <div className="d-flex align-items-center gap-3 ms-auto">
+          {cekaCnt > 0 && (
+            <div className="d-flex align-items-center gap-1">
+              <iconify-icon icon="solar:hourglass-bold-duotone" style={{ fontSize: 13, color: '#0dcaf0' }} />
+              <span className="text-muted">Ve frontě:</span>
+              <span className="fw-bold" style={{ color: '#0dcaf0' }}>{cekaCnt}</span>
+            </div>
+          )}
+          {nesediDLCnt > 0 && (
+            <div className="d-flex align-items-center gap-1">
+              <iconify-icon icon="solar:refresh-bold-duotone" style={{ fontSize: 13, color: '#ffc107' }} />
+              <span className="text-muted">K přepárování:</span>
+              <span className="fw-bold text-warning">{nesediDLCnt}</span>
+            </div>
+          )}
+          {duplikatCnt > 0 && (
+            <div className="d-flex align-items-center gap-1">
+              <iconify-icon icon="solar:copy-bold-duotone" style={{ fontSize: 13, color: '#dc3545' }} />
+              <span className="text-muted">Duplicity blokovány:</span>
+              <span className="fw-bold text-danger">{duplikatCnt}</span>
+            </div>
+          )}
+        </div>
+      </div>
 
       {/* KPI strip */}
       <PlatbyKPIStrip
@@ -277,95 +432,246 @@ export default function FakturyView({ state, update }: Props) {
         ))}
       </ul>
 
-      {/* Filter bar – SOURCE: Larkon .card > .card-body s form prvky */}
+      {/* Filter bar */}
       <div className="card mb-4">
-        <div className="card-body py-2">
-          <div className="d-flex align-items-center gap-2 flex-wrap">
-            <span className="text-muted fs-13">Filtr:</span>
+        <div className="card-body py-2 d-flex flex-column gap-2">
 
-            {/* SOURCE: Bootstrap .form-select.form-select-sm */}
-            <select
-              className="form-select form-select-sm"
-              style={{ width: 'auto' }}
-              value={kategorieFilter}
-              onChange={(e) => setKategorieFilter(e.target.value)}
-            >
+          {/* Řádek 1 — search, kategorie, částka, presety, reset */}
+          <div className="d-flex align-items-center gap-2 flex-wrap">
+            <div className="position-relative">
+              <iconify-icon icon="solar:magnifer-bold-duotone"
+                style={{ position: 'absolute', left: 8, top: '50%', transform: 'translateY(-50%)', fontSize: 14, color: '#9097a7' }} />
+              <input
+                type="text"
+                className="form-control form-control-sm"
+                placeholder="Hledat dodavatele…"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                style={{ paddingLeft: 28, width: 180 }}
+              />
+            </div>
+
+            <select className="form-select form-select-sm" style={{ width: 'auto' }}
+              value={kategorieFilter} onChange={(e) => setKategorieFilter(e.target.value)}>
               <option value="all">Všechny kategorie</option>
               {(Object.keys(KATEGORIE_LABELS) as Array<keyof typeof KATEGORIE_LABELS>).map((k) => (
                 <option key={k} value={k}>{KATEGORIE_LABELS[k]}</option>
               ))}
             </select>
 
-            <select
-              className="form-select form-select-sm"
-              style={{ width: 'auto' }}
-              value={stavFilter}
-              onChange={(e) => setStavFilter(e.target.value)}
-            >
-              <option value="all">Všechny stavy</option>
-              <option value="schvalena">Schválené</option>
-              <option value="neschvalena">Neschválené</option>
-              <option value="zamitnuta">Zamítnuté</option>
-              <option value="zastavena">Zastavené / Pozdržet</option>
-              <option value="po-splatnosti">Po splatnosti</option>
-              <option value="tydni">Splatné tento týden</option>
-            </select>
+            <div className="d-flex align-items-center gap-1">
+              <span className="text-muted fs-12">Částka:</span>
+              <input
+                type="number"
+                className="form-control form-control-sm czk-num"
+                placeholder="od"
+                value={castkaOd}
+                onChange={(e) => setCastkaOd(e.target.value)}
+                style={{ width: 90 }}
+              />
+              <span className="text-muted">–</span>
+              <input
+                type="number"
+                className="form-control form-control-sm czk-num"
+                placeholder="do"
+                value={castkaDo}
+                onChange={(e) => setCastkaDo(e.target.value)}
+                style={{ width: 90 }}
+              />
+              <span className="text-muted fs-12">Kč</span>
+            </div>
 
-            {/* Quick-filter badges – SOURCE: Larkon .badge.bg-{color}-subtle */}
-            <div className="d-flex gap-2 ms-1">
+            <div className="d-flex gap-1 ms-1 flex-wrap">
               {poSplatCnt > 0 && (
-                <button
-                  className={`badge border-0 ${stavFilter === 'po-splatnosti' ? 'bg-danger text-white' : 'bg-danger-subtle text-danger'}`}
-                  style={{ cursor: 'pointer' }}
-                  onClick={() => setStavFilter((s) => s === 'po-splatnosti' ? 'all' : 'po-splatnosti')}
-                >
+                <button className={`badge border-0 ${presetFilters.has('po-splatnosti') ? 'bg-danger text-white' : 'bg-danger-subtle text-danger'}`}
+                  style={{ cursor: 'pointer' }} onClick={() => setPresetFilters((p) => toggleSet(p, 'po-splatnosti'))}>
                   <iconify-icon icon="solar:danger-triangle-bold-duotone" className="me-1" />
                   Po splatnosti ({poSplatCnt})
                 </button>
               )}
-              {neschvaleneCnt > 0 && (
-                <button
-                  className={`badge border-0 ${stavFilter === 'neschvalena' ? 'bg-warning text-dark' : 'bg-warning-subtle text-warning'}`}
-                  style={{ cursor: 'pointer' }}
-                  onClick={() => setStavFilter((s) => s === 'neschvalena' ? 'all' : 'neschvalena')}
-                >
-                  <iconify-icon icon="solar:clock-circle-bold-duotone" className="me-1" />
-                  Ke schválení ({neschvaleneCnt})
-                </button>
-              )}
+              <button className={`badge border-0 ${presetFilters.has('tydni') ? 'bg-info text-white' : 'bg-info-subtle text-info'}`}
+                style={{ cursor: 'pointer' }} onClick={() => setPresetFilters((p) => toggleSet(p, 'tydni'))}>
+                <iconify-icon icon="solar:calendar-bold-duotone" className="me-1" />
+                Tento týden
+              </button>
             </div>
 
-            {(kategorieFilter !== 'all' || stavFilter !== 'all') && (
-              <button
-                className="btn btn-link btn-sm ms-auto text-muted"
-                onClick={() => { setKategorieFilter('all'); setStavFilter('all'); }}
-              >
+            {(kategorieFilter !== 'all' || stavFilters.size > 0 || matchingFilters.size > 0 || formaFilters.size > 0 || presetFilters.size > 0 || castkaOd !== '' || castkaDo !== '' || search !== '') && (
+              <button className="btn btn-link btn-sm ms-auto text-muted"
+                onClick={() => {
+                  setKategorieFilter('all');
+                  setStavFilters(new Set());
+                  setMatchingFilters(new Set());
+                  setFormaFilters(new Set());
+                  setPresetFilters(new Set());
+                  setCastkaOd('');
+                  setCastkaDo('');
+                  setSearch('');
+                }}>
                 Zrušit filtry ×
               </button>
             )}
           </div>
+
+          {/* Řádek 2 — Stav (multiselect chips) */}
+          <div className="d-flex align-items-center gap-2 flex-wrap">
+            <span className="text-muted fs-12" style={{ minWidth: 56 }}>Stav:</span>
+            {STAV_CHIPS.map((c) => {
+              const active = stavFilters.has(c.value);
+              return (
+                <button
+                  key={c.value}
+                  className={`badge border-0 ${active ? 'bg-dark text-white' : 'bg-secondary-subtle text-secondary'}`}
+                  style={{ cursor: 'pointer', fontSize: 11 }}
+                  onClick={() => setStavFilters((p) => toggleSet(p, c.value))}
+                >
+                  {active && <iconify-icon icon="solar:check-circle-bold" className="me-1" style={{ fontSize: 11 }} />}
+                  {c.label}
+                </button>
+              );
+            })}
+            {stavFilters.size > 0 && (
+              <button className="btn btn-link btn-sm text-muted p-0 ms-1" style={{ fontSize: 11 }}
+                onClick={() => setStavFilters(new Set())}>
+                vyčistit
+              </button>
+            )}
+          </div>
+
+          {/* Řádek 3 — Párování (multiselect chips) */}
+          <div className="d-flex align-items-center gap-2 flex-wrap">
+            <span className="text-muted fs-12" style={{ minWidth: 56 }}>Párování:</span>
+            {MATCHING_CHIPS.map((c) => {
+              const active = matchingFilters.has(c.value);
+              const isHot = c.value === 'duplikat' || c.value === 'nesedi-dl';
+              return (
+                <button
+                  key={c.value}
+                  className={`badge border-0 ${active
+                    ? (c.value === 'duplikat' ? 'bg-danger text-white' : c.value === 'nesedi-dl' ? 'bg-warning text-dark' : 'bg-dark text-white')
+                    : (isHot ? (c.value === 'duplikat' ? 'bg-danger-subtle text-danger' : 'bg-warning-subtle text-warning') : 'bg-secondary-subtle text-secondary')}`}
+                  style={{ cursor: 'pointer', fontSize: 11 }}
+                  onClick={() => setMatchingFilters((p) => toggleSet(p, c.value))}
+                >
+                  {active && <iconify-icon icon="solar:check-circle-bold" className="me-1" style={{ fontSize: 11 }} />}
+                  {c.label}
+                  {c.value === 'duplikat' && duplikatCnt > 0 && ` (${duplikatCnt})`}
+                  {c.value === 'nesedi-dl' && nesediDLCnt > 0 && ` (${nesediDLCnt})`}
+                </button>
+              );
+            })}
+            {matchingFilters.size > 0 && (
+              <button className="btn btn-link btn-sm text-muted p-0 ms-1" style={{ fontSize: 11 }}
+                onClick={() => setMatchingFilters(new Set())}>
+                vyčistit
+              </button>
+            )}
+          </div>
+
+          {/* Řádek 4 — Účetní forma (zálohová / dobropis / offset) */}
+          <div className="d-flex align-items-center gap-2 flex-wrap">
+            <span className="text-muted fs-12" style={{ minWidth: 56 }}>Forma:</span>
+            {FORMA_CHIPS.map((c) => {
+              const active = formaFilters.has(c.value);
+              const activeBg = c.value === 'dobropis' ? 'bg-danger text-white'
+                : c.value === 'zalohova' ? 'bg-info text-white'
+                : 'bg-dark text-white';
+              const inactiveBg = c.value === 'dobropis' ? 'bg-danger-subtle text-danger'
+                : c.value === 'zalohova' ? 'bg-info-subtle text-info'
+                : 'bg-secondary-subtle text-secondary';
+              return (
+                <button
+                  key={c.value}
+                  className={`badge border-0 ${active ? activeBg : inactiveBg}`}
+                  style={{ cursor: 'pointer', fontSize: 11 }}
+                  onClick={() => setFormaFilters((p) => toggleSet(p, c.value))}
+                >
+                  <iconify-icon icon={c.icon} className="me-1" style={{ fontSize: 11 }} />
+                  {c.label}
+                </button>
+              );
+            })}
+            {formaFilters.size > 0 && (
+              <button className="btn btn-link btn-sm text-muted p-0 ms-1" style={{ fontSize: 11 }}
+                onClick={() => setFormaFilters(new Set())}>
+                vyčistit
+              </button>
+            )}
+            <span className="text-muted fs-11 ms-2 fst-italic" style={{ fontSize: 10 }}>
+              Speciální účetní případy — architecture ready
+            </span>
+          </div>
+
         </div>
       </div>
 
-      {/* Tabulka faktur */}
-      <FakturyTable
-        provozovna={selectedProvozovna as ProvozovnaId}
-        periodOd={periodOd}
-        periodDo={periodDo}
-        kategorieFilter={kategorieFilter}
-        stavFilter={stavFilter}
-        typDokladu={typDokladu}
-        selectedIds={selectedIds}
-        onToggle={toggleFa}
-        onToggleAll={toggleAllFa}
-        processingDays={PROCESSING_DAYS_DEFAULT}
-        localStavy={localStavy}
-        localPrirazeni={localPrirazeni}
-        onRowClick={(id) => {
-          setDrawerFakturaId(id);
-          if (!schvalovaniQueue.includes(id)) setSchvalovaniQueue([]);
-        }}
-      />
+      {/* ── 2-sloupcový layout: seznam vlevo, side panel vpravo ── */}
+      <div className="row g-4 align-items-start">
+        <div className="col-xl-7 col-lg-8">
+          <FakturyTable
+            provozovna={selectedProvozovna as ProvozovnaId}
+            periodOd={periodOd}
+            periodDo={periodDo}
+            kategorieFilter={kategorieFilter}
+            stavFilters={stavFilters}
+            matchingFilters={matchingFilters}
+            formaFilters={formaFilters}
+            presetFilters={presetFilters}
+            castkaOd={castkaOd}
+            castkaDo={castkaDo}
+            sortBy={sortBy}
+            sortDir={sortDir}
+            onSortChange={handleSort}
+            typDokladu={typDokladu}
+            selectedIds={selectedIds}
+            onToggle={toggleFa}
+            onToggleAll={toggleAllFa}
+            processingDays={PROCESSING_DAYS_DEFAULT}
+            localStavy={localStavy}
+            localPrirazeni={localPrirazeni}
+            showExtraCols={false}
+            showMatching={true}
+            tableTitle="Přehled faktur"
+            showZaplacene={stavFilters.has('zaplacena')}
+            selectedRowId={drawerFakturaId}
+            search={search}
+            onRowClick={(id) => {
+              setDrawerFakturaId((prev) => prev === id ? null : id);
+              if (!schvalovaniQueue.includes(id)) setSchvalovaniQueue([]);
+            }}
+          />
+        </div>
+        <div className="col-xl-5 col-lg-4">
+          <FakturySidePanel
+            faktura={drawerFaktura}
+            effectiveStav={drawerFaktura ? (localStavy[drawerFaktura.id] ?? drawerFaktura.stav) : 'nova'}
+            localPoznamka={drawerFaktura ? (localPoznamky[drawerFaktura.id] ?? '') : ''}
+            localSchvalil={drawerFaktura ? (localSchvalil[drawerFaktura.id] ?? '') : ''}
+            localDatumSchvaleni={drawerFaktura ? (localDatumSchvaleni[drawerFaktura.id] ?? '') : ''}
+            localPrirazeni={drawerFaktura ? (localPrirazeni[drawerFaktura.id] ?? '') : ''}
+            onClose={() => setDrawerFakturaId(null)}
+            onSchvalit={handleSchvalit}
+            onZamitout={handleZamitout}
+            onOdlozit={handleOdlozit}
+            onPoznamkaChange={(id, val) => setLocalPoznamky((p) => ({ ...p, [id]: val }))}
+            sessionAudit={drawerFaktura ? (localAudit[drawerFaktura.id] ?? []) : []}
+            komentare={drawerFaktura ? (localKomentare[drawerFaktura.id] ?? []) : []}
+            onAddKomentar={(id, entry) => {
+              setLocalKomentare((p) => ({ ...p, [id]: [...(p[id] ?? []), entry] }));
+              const preview = entry.zprava.length > 60 ? entry.zprava.slice(0, 60) + '…' : entry.zprava;
+              pushAudit(id, {
+                cas: entry.cas,
+                kdo: entry.kdo,
+                akce: `Komentář: „${preview}"`,
+                icon: 'solar:chat-round-bold-duotone',
+                color: '#6c757d',
+                typ: 'komunikace',
+              });
+            }}
+            onRematch={handleRematch}
+          />
+        </div>
+      </div>
 
       {/* Sticky bulk akční bar
           CUSTOM: sticky bottom bar – není v Larkon, v produkci Bootstrap .sticky-bottom */}
@@ -568,7 +874,7 @@ export default function FakturyView({ state, update }: Props) {
                     onClick={() => setShowNovaFaktura(false)}
                   >
                     <iconify-icon icon="solar:diskette-bold-duotone" className="me-1" style={{ fontSize: 16 }} />
-                    Uložit fakturu
+                    Uložit a zkontrolovat
                   </button>
                 </div>
 
@@ -578,29 +884,6 @@ export default function FakturyView({ state, update }: Props) {
         </>
       )}
 
-      {/* Drawer – schválení faktury */}
-      {drawerFaktura && (
-        <FakturaDetailDrawer
-          faktura={drawerFaktura}
-          localStav={localStavy[drawerFaktura.id] ?? drawerFaktura.stav}
-          localPoznamka={localPoznamky[drawerFaktura.id] ?? ''}
-          localStredisko={localStrediska[drawerFaktura.id] ?? ''}
-          localPrirazeni={localPrirazeni[drawerFaktura.id] ?? ''}
-          localSchvalil={localSchvalil[drawerFaktura.id] ?? ''}
-          localDatumSchvaleni={localDatumSchvaleni[drawerFaktura.id] ?? ''}
-          queueIndex={queueIndex >= 0 ? queueIndex : 0}
-          queueTotal={schvalovaniQueue.length}
-          onClose={() => setDrawerFakturaId(null)}
-          onSchvalit={handleSchvalit}
-          onZamitout={handleZamitout}
-          onOdlozit={handleOdlozit}
-          onPoznamkaChange={(id, val) => setLocalPoznamky((p) => ({ ...p, [id]: val }))}
-          onStrediskoChange={(id, val) => setLocalStrediska((p) => ({ ...p, [id]: val }))}
-          onPrirazeniChange={(id, val) => setLocalPrirazeni((p) => ({ ...p, [id]: val }))}
-          onPrev={() => queueIndex > 0 && setDrawerFakturaId(schvalovaniQueue[queueIndex - 1])}
-          onNext={() => queueIndex < schvalovaniQueue.length - 1 && setDrawerFakturaId(schvalovaniQueue[queueIndex + 1])}
-        />
-      )}
     </>
   );
 }

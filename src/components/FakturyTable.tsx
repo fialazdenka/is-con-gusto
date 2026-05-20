@@ -16,25 +16,39 @@
 //   CUSTOM: localPrirazeni prop        → session-local přiřazení (v produkci backend)
 
 import type { ProvozovnaId } from '../types';
-import type { FakturaStavPlatby, FakturaKategorie, TypDokladu } from '../platbyData';
+import type { FakturaStavPlatby, FakturaKategorie, TypDokladu, MatchingStav, FakturaForma } from '../platbyData';
 import {
   getFakturyForProvozovna,
   getOdeslatDo,
   isPoSplatnosti,
   isUrgentni,
   isSplatneVObdobi,
+  getMatchingData,
+  getVS,
   KATEGORIE_LABELS,
   PROCESSING_DAYS_DEFAULT,
   SCHVALOVACI_OSOBY,
 } from '../platbyData';
 import { PROVOZOVNY, fCzk, fDate } from '../data';
 
+export type SortCol = 'cislo' | 'dodavatel' | 'castka' | 'splatnost' | 'odeslatDo' | 'stav' | null;
+
 interface Props {
   provozovna: ProvozovnaId;
   periodOd: string;
   periodDo: string;
   kategorieFilter: string;
-  stavFilter: string;
+  stavFilter?: string;                                  // legacy single-select (zachováno pro zpětnou kompatibilitu)
+  stavFilters?: Set<FakturaStavPlatby>;                 // nový multiselect
+  matchingFilter?: MatchingStav | 'all';                // legacy single-select
+  matchingFilters?: Set<MatchingStav>;                  // nový multiselect
+  formaFilters?: Set<FakturaForma>;                     // speciální účetní formy (zálohová / dobropis / offset)
+  presetFilters?: Set<'po-splatnosti' | 'tydni'>;       // preset filtry (po splatnosti, tento týden)
+  castkaOd?: string;
+  castkaDo?: string;
+  sortBy?: SortCol;
+  sortDir?: 'asc' | 'desc';
+  onSortChange?: (col: SortCol) => void;
   typDokladu: TypDokladu | 'all';
   selectedIds: Set<string>;
   onToggle: (id: string) => void;
@@ -43,8 +57,22 @@ interface Props {
   localStavy?: Record<string, FakturaStavPlatby>;
   localPrirazeni?: Record<string, string>;
   onRowClick?: (id: string) => void;
-  showExtraCols?: boolean; // false = skryje Typ dokladu, Kategorie, Přiřazeno (pro Platby)
+  showExtraCols?: boolean;
+  showMatching?: boolean;
+  showZaplacene?: boolean;
+  selectedRowId?: string | null;
+  search?: string;
+  tableTitle?: string;
 }
+
+const MATCHING_META: Record<MatchingStav, { cls: string; label: string; icon: string }> = {
+  'ceka-na-sparovani':  { cls: 'bg-info-subtle text-info',           label: 'Čeká',        icon: 'solar:refresh-circle-bold-duotone' },
+  sparovana:            { cls: 'bg-success-subtle text-success',     label: 'Spárováno',   icon: 'solar:check-circle-bold-duotone' },
+  'nesedi-dl':          { cls: 'bg-warning-subtle text-warning',     label: 'Nesedí DL',   icon: 'solar:danger-triangle-bold-duotone' },
+  'castecne-sparovana': { cls: 'bg-warning-subtle text-warning',     label: 'Část. spar.', icon: 'solar:pie-chart-bold-duotone' },
+  duplikat:             { cls: 'bg-danger-subtle text-danger',       label: 'Duplicita',   icon: 'solar:copy-bold-duotone' },
+  'bez-dl':             { cls: 'bg-secondary-subtle text-secondary', label: 'Bez DL',      icon: 'solar:document-bold-duotone' },
+};
 
 // Larkon Bootstrap badge mapping
 const STAV_META: Record<FakturaStavPlatby, { cls: string; label: string }> = {
@@ -58,6 +86,13 @@ const STAV_META: Record<FakturaStavPlatby, { cls: string; label: string }> = {
   'v-bance':            { cls: 'bg-info-subtle text-info',           label: 'V bance' },
   'ceka-na-sparovani':  { cls: 'platby-stav-sparovani',              label: 'Čeká na spárování' },
   'chyba-platby':       { cls: 'platby-stav-chyba',                  label: 'Platba neproběhla' },
+};
+
+const FORMA_META: Record<FakturaForma, { label: string; cls: string; icon: string }> = {
+  standard: { label: '',          cls: '',                                 icon: '' },
+  zalohova: { label: 'Zálohová',  cls: 'bg-info-subtle text-info',          icon: 'solar:wallet-money-bold-duotone' },
+  dobropis: { label: 'Dobropis',  cls: 'bg-danger-subtle text-danger',      icon: 'solar:undo-left-round-bold-duotone' },
+  offset:   { label: 'Offset',    cls: 'bg-secondary-subtle text-secondary', icon: 'solar:transfer-horizontal-bold-duotone' },
 };
 
 const KAT_META: Record<FakturaKategorie, { color: string }> = {
@@ -75,6 +110,16 @@ export default function FakturyTable({
   periodDo,
   kategorieFilter,
   stavFilter,
+  stavFilters,
+  matchingFilter = 'all',
+  matchingFilters,
+  formaFilters,
+  presetFilters,
+  castkaOd = '',
+  castkaDo = '',
+  sortBy = null,
+  sortDir = 'asc',
+  onSortChange,
   typDokladu,
   selectedIds,
   onToggle,
@@ -84,23 +129,84 @@ export default function FakturyTable({
   localPrirazeni = {},
   onRowClick,
   showExtraCols = true,
+  showMatching = false,
+  showZaplacene = false,
+  selectedRowId = null,
+  search = '',
+  tableTitle = 'Faktury k úhradě',
 }: Props) {
   const vsechny = getFakturyForProvozovna(provozovna);
 
-  const zobrazene = vsechny.filter((f) => {
-    if (f.stav === 'zaplacena' || f.stav === 'odeslana') return false;
-    if (stavFilter === 'platby-aktivni') return true;
-    if (stavFilter === 'zamitnuta') return f.stav === 'zamitnuta';
-    if (f.stav === 'zamitnuta') return false; // skryté ve výchozím pohledu
-    if (stavFilter === 'zastavena' && f.stav !== 'zastavena') return false;
+  const minCastka = castkaOd ? parseInt(castkaOd, 10) : null;
+  const maxCastka = castkaDo ? parseInt(castkaDo, 10) : null;
+
+  const filtered = vsechny.filter((f) => {
+    // Zaplacené / odeslané skrýt, pokud uživatel je explicitně nezvolil
+    if ((f.stav === 'zaplacena' || f.stav === 'odeslana') && !showZaplacene && !stavFilters?.has(f.stav)) return false;
+
     if (typDokladu !== 'all' && f.typDokladu !== typDokladu) return false;
     if (kategorieFilter !== 'all' && f.kategorie !== kategorieFilter) return false;
-    if (stavFilter === 'schvalena' && f.stav !== 'schvalena') return false;
-    if (stavFilter === 'neschvalena' && f.stav !== 'nova' && f.stav !== 'ke-schvaleni') return false;
-    if (stavFilter === 'po-splatnosti' && !isPoSplatnosti(f.splatnost)) return false;
-    if (stavFilter === 'tydni' && !isSplatneVObdobi(f.splatnost, periodOd, periodDo)) return false;
+
+    // ── Multiselect stav (nová cesta) ──
+    if (stavFilters && stavFilters.size > 0 && !stavFilters.has(f.stav)) return false;
+
+    // ── Legacy single-select stavFilter (pro zpětnou kompatibilitu) ──
+    if (stavFilter) {
+      if (stavFilter === 'zaplacena' && f.stav !== 'zaplacena') return false;
+      if (stavFilter === 'zamitnuta' && f.stav !== 'zamitnuta') return false;
+      if (f.stav === 'zamitnuta' && stavFilter !== 'zamitnuta' && stavFilter !== 'all') return false;
+      if (stavFilter === 'zastavena' && f.stav !== 'zastavena') return false;
+      if (stavFilter === 'schvalena' && f.stav !== 'schvalena') return false;
+      if (stavFilter === 'neschvalena' && f.stav !== 'nova' && f.stav !== 'ke-schvaleni') return false;
+      if (stavFilter === 'po-splatnosti' && !isPoSplatnosti(f.splatnost)) return false;
+      if (stavFilter === 'tydni' && !isSplatneVObdobi(f.splatnost, periodOd, periodDo)) return false;
+    }
+
+    // ── Preset filtry ──
+    if (presetFilters?.has('po-splatnosti') && !isPoSplatnosti(f.splatnost)) return false;
+    if (presetFilters?.has('tydni') && !isSplatneVObdobi(f.splatnost, periodOd, periodDo)) return false;
+
+    // ── Účetní forma (zálohová / dobropis / offset) ──
+    if (formaFilters && formaFilters.size > 0) {
+      const forma: FakturaForma = f.forma ?? 'standard';
+      if (!formaFilters.has(forma)) return false;
+    }
+
+    // ── Multiselect párování (nová cesta) ──
+    if (matchingFilters && matchingFilters.size > 0) {
+      const matching = getMatchingData(f.id);
+      if (!matching || !matchingFilters.has(matching.stav)) return false;
+    }
+
+    // ── Legacy single-select matchingFilter ──
+    if (matchingFilter !== 'all' && getMatchingData(f.id)?.stav !== matchingFilter) return false;
+
+    // ── Částka range ──
+    if (minCastka != null && f.castka < minCastka) return false;
+    if (maxCastka != null && f.castka > maxCastka) return false;
+
+    if (search && !f.dodavatel.toLowerCase().includes(search.toLowerCase())) return false;
     return true;
   });
+
+  // ── Řazení ──
+  const STAV_ORDER: Record<FakturaStavPlatby, number> = {
+    nova: 1, 'ke-schvaleni': 2, schvalena: 3, 'v-bance': 4, 'ceka-na-sparovani': 5,
+    'chyba-platby': 6, odeslana: 7, zaplacena: 8, zastavena: 9, zamitnuta: 10,
+  };
+  const zobrazene = sortBy ? [...filtered].sort((a, b) => {
+    const dir = sortDir === 'asc' ? 1 : -1;
+    let cmp = 0;
+    switch (sortBy) {
+      case 'cislo':      cmp = a.cislo.localeCompare(b.cislo); break;
+      case 'dodavatel':  cmp = a.dodavatel.localeCompare(b.dodavatel, 'cs'); break;
+      case 'castka':     cmp = a.castka - b.castka; break;
+      case 'splatnost':  cmp = a.splatnost.localeCompare(b.splatnost); break;
+      case 'odeslatDo':  cmp = getOdeslatDo(a.splatnost, processingDays).localeCompare(getOdeslatDo(b.splatnost, processingDays)); break;
+      case 'stav':       cmp = (STAV_ORDER[localStavy[a.id] ?? a.stav] ?? 99) - (STAV_ORDER[localStavy[b.id] ?? b.stav] ?? 99); break;
+    }
+    return cmp * dir;
+  }) : filtered;
 
   const vybiratelne = zobrazene.filter((f) => f.stav === 'schvalena');
   const vsechnyVybrany = vybiratelne.length > 0 && vybiratelne.every((f) => selectedIds.has(f.id));
@@ -116,9 +222,9 @@ export default function FakturyTable({
       {/* SOURCE: Larkon .card-header */}
       <div className="card-header d-flex align-items-center justify-content-between gap-3">
         <h5 className="card-title mb-0 flex-grow-1">
-          Faktury k úhradě
+          {tableTitle}
           <small className="text-muted fw-normal ms-2 fs-13">
-            {zobrazene.length} faktur · {vybiratelne.filter((f) => selectedIds.has(f.id)).length} vybráno
+            {zobrazene.length} {showMatching ? 'faktur' : `faktur · ${vybiratelne.filter((f) => selectedIds.has(f.id)).length} vybráno`}
           </small>
         </h5>
         <div className="d-flex gap-2">
@@ -152,16 +258,17 @@ export default function FakturyTable({
                   disabled={vybiratelne.length === 0}
                 />
               </th>
-              <th>Číslo</th>
-              <th>Dodavatel</th>
+              <SortableTh col="cislo"     label="Číslo"     sortBy={sortBy} sortDir={sortDir} onSort={onSortChange} />
+              <SortableTh col="dodavatel" label="Dodavatel" sortBy={sortBy} sortDir={sortDir} onSort={onSortChange} />
               {showExtraCols && <th>Typ dokladu</th>}
               {showExtraCols && <th>Kategorie</th>}
               {provozovna === 'all' && <th>Provoz</th>}
-              <th className="text-end">Částka</th>
-              <th>Splatnost</th>
-              <th>Odeslat do</th>
+              <SortableTh col="castka"    label="Částka"    sortBy={sortBy} sortDir={sortDir} onSort={onSortChange} className="text-end" />
+              <SortableTh col="splatnost" label="Splatnost" sortBy={sortBy} sortDir={sortDir} onSort={onSortChange} />
+              <SortableTh col="odeslatDo" label="Odeslat do" sortBy={sortBy} sortDir={sortDir} onSort={onSortChange} />
               {showExtraCols && <th>Přiřazeno</th>}
-              <th>Stav</th>
+              <SortableTh col="stav"      label="Stav"      sortBy={sortBy} sortDir={sortDir} onSort={onSortChange} />
+              {showMatching && <th>Párování</th>}
             </tr>
           </thead>
           <tbody>
@@ -182,9 +289,13 @@ export default function FakturyTable({
               const vybiratelna = effectiveStav === 'schvalena';
               const vybrana = selectedIds.has(f.id);
               const { cls, label } = STAV_META[effectiveStav] ?? STAV_META['nova'];
+              const matching = showMatching ? getMatchingData(f.id) : undefined;
+              const matchMeta = matching ? MATCHING_META[matching.stav] : null;
 
+              const isActiveRow = f.id === selectedRowId;
               let rowClass = '';
-              if (vybrana) rowClass = 'table-primary';
+              if (isActiveRow) rowClass = 'table-active';
+              else if (vybrana) rowClass = 'table-primary';
               else if (poSpl) rowClass = 'table-danger';
               else if (urgentni) rowClass = 'table-warning';
 
@@ -204,7 +315,18 @@ export default function FakturyTable({
                       onChange={() => vybiratelna && onToggle(f.id)}
                     />
                   </td>
-                  <td className="text-muted fs-12 czk-num">{f.cislo}</td>
+                  <td>
+                    <div className="d-flex align-items-center gap-1 flex-wrap">
+                      <span className="text-muted fs-12 czk-num">{f.cislo}</span>
+                      {f.forma && f.forma !== 'standard' && (
+                        <span className={`badge ${FORMA_META[f.forma].cls}`} style={{ fontSize: 9 }}>
+                          <iconify-icon icon={FORMA_META[f.forma].icon} className="me-1" style={{ fontSize: 10 }} />
+                          {FORMA_META[f.forma].label}
+                        </span>
+                      )}
+                    </div>
+                    <div className="text-muted fs-11 czk-num" style={{ color: '#adb5bd' }}>VS: {getVS(f)}</div>
+                  </td>
                   <td>
                     <div className="fw-semibold">{f.dodavatel}</div>
                     {f.poznamka && <div className="text-muted fs-12">{f.poznamka}</div>}
@@ -235,7 +357,7 @@ export default function FakturyTable({
                       </div>
                     </td>
                   )}
-                  <td className="text-end fw-bold czk-num">{fCzk(f.castka)}</td>
+                  <td className={`text-end fw-bold czk-num ${f.castka < 0 ? 'text-danger' : ''}`}>{fCzk(f.castka)}</td>
                   <td>
                     <span className={poSpl ? 'text-danger fw-bold' : 'text-muted'}>
                       {fDate(f.splatnost)}
@@ -266,9 +388,20 @@ export default function FakturyTable({
                     </td>
                   )}
                   <td>
-                    {/* SOURCE: Larkon .badge.bg-{color}-subtle.text-{color} */}
                     <span className={`badge ${cls}`}>{label}</span>
                   </td>
+                  {showMatching && (
+                    <td>
+                      {matchMeta ? (
+                        <span className={`badge ${matchMeta.cls}`}>
+                          <iconify-icon icon={matchMeta.icon} className="me-1" style={{ fontSize: 10 }} />
+                          {matchMeta.label}
+                        </span>
+                      ) : (
+                        <span className="text-muted fs-12">—</span>
+                      )}
+                    </td>
+                  )}
                 </tr>
               );
             })}
@@ -288,5 +421,38 @@ export default function FakturyTable({
         </div>
       </div>
     </div>
+  );
+}
+
+interface SortableThProps {
+  col: Exclude<SortCol, null>;
+  label: string;
+  sortBy: SortCol;
+  sortDir: 'asc' | 'desc';
+  onSort?: (col: SortCol) => void;
+  className?: string;
+}
+
+function SortableTh({ col, label, sortBy, sortDir, onSort, className = '' }: SortableThProps) {
+  const active = sortBy === col;
+  const clickable = !!onSort;
+  return (
+    <th
+      className={className}
+      style={{ cursor: clickable ? 'pointer' : 'default', userSelect: 'none' }}
+      onClick={() => clickable && onSort && onSort(col)}
+    >
+      <span className="d-inline-flex align-items-center gap-1">
+        {label}
+        {clickable && (
+          <iconify-icon
+            icon={active
+              ? (sortDir === 'asc' ? 'solar:alt-arrow-up-bold' : 'solar:alt-arrow-down-bold')
+              : 'solar:sort-vertical-bold-duotone'}
+            style={{ fontSize: 11, color: active ? '#1a1a1a' : '#adb5bd' }}
+          />
+        )}
+      </span>
+    </th>
   );
 }

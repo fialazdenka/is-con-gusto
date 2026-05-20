@@ -1,6 +1,7 @@
 import type { FakturaPlatby, FakturaKategorie } from '../platbyData';
 import { getPravniEntita, ENTITA_LABEL, getBankovniUcet } from '../platbyData';
 import { fCzk } from '../data';
+import { DPH_SAZBA, generateFakturaPolozky } from '../fakturaPolozkyUtils';
 
 interface Props {
   faktura: FakturaPlatby;
@@ -33,45 +34,7 @@ const ODBERATEL_INFO: Record<string, { ico: string; dic: string; adresa: string;
   'korek':     { ico: '07123890', dic: 'CZ07123890', adresa: 'Náměstí Svobody 18',   mesto: 'Brno, 602 00' },
 };
 
-// ── DPH sazby ─────────────────────────────────────────────────
-const DPH_SAZBA: Record<FakturaKategorie, number> = {
-  zbozi:   0.12,
-  energie: 0.21,
-  sluzby:  0.21,
-  najem:   0.21,
-  vyplaty: 0,
-  ostatni: 0.21,
-};
 
-// ── Line items per category ────────────────────────────────────
-type Polozka = { popis: string; podil: number };
-
-const POLOZKY: Record<FakturaKategorie, Polozka[]> = {
-  zbozi: [
-    { popis: 'Maso a drůbež',                podil: 0.38 },
-    { popis: 'Zelenina, ovoce a bylinky',    podil: 0.22 },
-    { popis: 'Suchý sortiment a koření',     podil: 0.22 },
-    { popis: 'Nápoje a doplňkový sortiment', podil: 0.18 },
-  ],
-  energie: [
-    { popis: 'Spotřeba elektrické energie',  podil: 0.78 },
-    { popis: 'Distribuční poplatek',         podil: 0.22 },
-  ],
-  najem: [
-    { popis: 'Nájem nebytových prostor',     podil: 0.85 },
-    { popis: 'Záloha na služby',             podil: 0.15 },
-  ],
-  sluzby: [
-    { popis: 'Poskytnuté služby dle smlouvy', podil: 0.88 },
-    { popis: 'Administrativní poplatek',      podil: 0.12 },
-  ],
-  vyplaty: [
-    { popis: 'Mzdové náklady',               podil: 1.0 },
-  ],
-  ostatni: [
-    { popis: 'Plnění dle smlouvy',           podil: 1.0 },
-  ],
-};
 
 function formatIban(iban: string): string {
   return iban.replace(/(.{4})/g, '$1 ').trim();
@@ -91,23 +54,11 @@ export default function InvoicePreview({ faktura }: Props) {
   const odberatel = ODBERATEL_INFO[entita] ?? ODBERATEL_INFO['con-gusto'];
   const dodInfo  = DODAVATEL_INFO[faktura.dodavatel];
   const ucet     = getBankovniUcet(faktura.provozovna);
-  const sazba    = DPH_SAZBA[faktura.kategorie] ?? 0.21;
-  const polozky  = POLOZKY[faktura.kategorie] ?? POLOZKY['ostatni'];
-  const vs       = vsFromCislo(faktura.cislo);
-
-  // Výpočet DPH z celkové částky (castka je vždy s DPH)
-  const zakladDph  = sazba > 0 ? Math.round(faktura.castka / (1 + sazba)) : faktura.castka;
-  const dphCastka  = faktura.castka - zakladDph;
-
-  // Rozdělení základu DPH na položky
-  const items = polozky.map((p, i) => {
-    const isLast = i === polozky.length - 1;
-    const itemBase = isLast
-      ? zakladDph - polozky.slice(0, i).reduce((s, pp) => s + Math.round(zakladDph * pp.podil), 0)
-      : Math.round(zakladDph * p.podil);
-    const itemTotal = Math.round(itemBase * (1 + sazba));
-    return { popis: p.popis, base: itemBase, total: itemTotal };
-  });
+  const sazba     = DPH_SAZBA[faktura.kategorie] ?? 0.21;
+  const vs        = vsFromCislo(faktura.cislo);
+  const items     = generateFakturaPolozky(faktura.castka, faktura.kategorie);
+  const zakladDph = sazba > 0 ? Math.round(faktura.castka / (1 + sazba)) : faktura.castka;
+  const dphCastka = faktura.castka - zakladDph;
 
   return (
     <div style={{

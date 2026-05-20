@@ -24,6 +24,14 @@ export type FakturaKategorie =
   | 'vyplaty'
   | 'ostatni';
 
+export type MatchingStav =
+  | 'ceka-na-sparovani'   // waiting for matching attempt
+  | 'sparovana'           // fully matched ✓
+  | 'nesedi-dl'           // mismatch between invoice and delivery note
+  | 'castecne-sparovana'  // partially matched
+  | 'duplikat'            // duplicate invoice detected
+  | 'bez-dl';             // no delivery note expected (services, rent, utilities)
+
 export type OstatniTyp =
   | 'trv-prikaz'
   | 'splatka-uveru'
@@ -34,6 +42,20 @@ export type OstatniTyp =
 export interface FutureRevMode { karty: boolean; odhad: boolean; }
 
 export type TypDokladu = 'prijata' | 'vydana';
+
+// Speciální účetní formy dokladu (budoucí rozšíření)
+//   standard  = běžná faktura
+//   zalohova  = zálohová / proforma — bude započtena při finální fakturaci
+//   dobropis  = vratka / dobropis — záporná částka, snižuje původní závazek
+//   offset    = vzájemný zápočet — kompenzace pohledávky a závazku se stejným partnerem
+export type FakturaForma = 'standard' | 'zalohova' | 'dobropis' | 'offset';
+
+export const FORMA_LABELS: Record<FakturaForma, string> = {
+  standard: 'Standardní',
+  zalohova: 'Zálohová',
+  dobropis: 'Dobropis',
+  offset:   'Offset',
+};
 
 export type SchvalovatelRole = 'fakturant' | 'schvalovatel' | 'majitel';
 
@@ -64,11 +86,19 @@ export interface FakturaPlatby {
   splatnost: string;      // účetní splatnost
   stav: FakturaStavPlatby;
   typDokladu: TypDokladu;
+  vs?: string;               // variabilní symbol
   poznamka?: string;
-  prirazenaOsoba?: string;  // id osoby přiřazené ke schválení
-  schvalil?: string;        // jméno (denormalizováno) – kdo schválil / zamítl
-  datumSchvaleni?: string;  // datum schválení / zamítnutí
+  prirazenaOsoba?: string;
+  schvalil?: string;
+  datumSchvaleni?: string;
   strediskoOverride?: string;
+  matchingStav?: MatchingStav;
+  dlCisla?: string[];
+  dlCastka?: number;
+  duplikatFakturaId?: string;
+  // Speciální účetní případy (architecture ready)
+  forma?: FakturaForma;       // default 'standard'
+  spojenaSId?: string;        // zálohová → finální faktura, dobropis → původní faktura, offset → protistrana
 }
 
 export interface OstatniPlatba {
@@ -505,6 +535,14 @@ export const FAKTURY_PLATBY: FakturaPlatby[] = [
   { id: 'fp40', cislo: 'FAK-2026-0072', dodavatel: 'Správa budov s.r.o.', kategorie: 'najem' as FakturaKategorie, provozovna: 'jime-brno', castka: 41_000, datum: '2026-04-05', splatnost: '2026-04-20', stav: 'schvalena' as FakturaStavPlatby, typDokladu: 'prijata' as TypDokladu, schvalil: 'Petr Dohnal', datumSchvaleni: '7. 4. 2026', poznamka: 'Nájem duben – Nové sady' },
   { id: 'fp41', cislo: 'FAK-2026-0073', dodavatel: 'E.ON Energie', kategorie: 'energie' as FakturaKategorie, provozovna: 'jime-brno', castka: 6_400, datum: '2026-04-08', splatnost: '2026-04-18', stav: 'schvalena' as FakturaStavPlatby, typDokladu: 'prijata' as TypDokladu, schvalil: 'Petr Dohnal', datumSchvaleni: '10. 4. 2026' },
   { id: 'fp42', cislo: 'FAK-2026-0074', dodavatel: 'Linde Gas (CO₂)', kategorie: 'zbozi' as FakturaKategorie, provozovna: 'jime-brno', castka: 3_900, datum: '2026-04-12', splatnost: '2026-04-19', stav: 'ke-schvaleni' as FakturaStavPlatby, typDokladu: 'prijata' as TypDokladu, prirazenaOsoba: 'u-petra' },
+
+  // ── SPECIÁLNÍ ÚČETNÍ PŘÍPADY (placeholder demo) ──
+  // Zálohová faktura — bude započtena s finální fakturou fp43
+  { id: 'fp43', cislo: 'ZAL-2026-0012', dodavatel: 'Sklářské závody Bohemia', kategorie: 'zbozi' as FakturaKategorie, provozovna: 'cg-brno', castka: 25_000, datum: '2026-04-08', splatnost: '2026-04-15', stav: 'schvalena' as FakturaStavPlatby, typDokladu: 'prijata' as TypDokladu, forma: 'zalohova', poznamka: 'Záloha na sklenice – objednávka 60 ks vinných sklenic', schvalil: 'Petr Dohnal', datumSchvaleni: '10. 4. 2026' },
+  // Dobropis — vrácené zboží z fp14 (Metro)
+  { id: 'fp44', cislo: 'DOB-2026-0003', dodavatel: 'Metro AG', kategorie: 'zbozi' as FakturaKategorie, provozovna: 'cg-brno', castka: -3_400, datum: '2026-04-14', splatnost: '2026-04-21', stav: 'ke-schvaleni' as FakturaStavPlatby, typDokladu: 'prijata' as TypDokladu, forma: 'dobropis', spojenaSId: 'fp14', poznamka: 'Vrácené zkažené zboží – ovoce a zelenina', prirazenaOsoba: 'u-martin' },
+  // Offset — vzájemný zápočet s odběratelem (CG má jak pohledávku, tak závazek)
+  { id: 'fp45', cislo: 'OFF-2026-0001', dodavatel: 'Catering Partners s.r.o.', kategorie: 'sluzby' as FakturaKategorie, provozovna: 'cg-catering', castka: 12_500, datum: '2026-04-12', splatnost: '2026-04-22', stav: 'ke-schvaleni' as FakturaStavPlatby, typDokladu: 'prijata' as TypDokladu, forma: 'offset', spojenaSId: 'fp40', poznamka: 'Vzájemný zápočet – pronájem prostor vs. catering servis' },
 ];
 
 // ─── Ostatní platby v tomto týdnu (13–19.4.) ─────────────────
@@ -693,6 +731,81 @@ export function getBankSync(provozovna: string): BankSyncStav {
 
 export function getPlatbyAudit(fakturaId: string): AuditZaznam[] {
   return PLATBY_AUDIT[fakturaId] ?? [];
+}
+
+// ─── Matching data ────────────────────────────────────────────
+// Separovaná od platebních dat – v produkci přijde z matching engine API
+
+export interface MatchingRecord {
+  stav: MatchingStav;
+  dlCisla?: string[];
+  dlCastka?: number;          // celková částka z DL (pro porovnání nesedí-dl)
+  duplikatFakturaId?: string; // ID originálu při duplicitě
+}
+
+export const MATCHING_DATA: Record<string, MatchingRecord> = {
+  // ── CG Brno ──
+  fp01: { stav: 'sparovana',         dlCisla: ['DL-2026-0041'] },
+  fp02: { stav: 'nesedi-dl',         dlCisla: ['DL-2026-0039'], dlCastka: 4_520 },
+  fp03: { stav: 'bez-dl' },
+  fp04: { stav: 'bez-dl' },
+  fp05: { stav: 'bez-dl' },
+  fp06: { stav: 'bez-dl' },
+  fp07: { stav: 'bez-dl' },
+  fp08: { stav: 'bez-dl' },
+  fp09: { stav: 'bez-dl' },
+  fp10: { stav: 'ceka-na-sparovani', dlCisla: ['DL-2026-0049'] },
+  fp11: { stav: 'sparovana',         dlCisla: ['DL-2026-0048'] },
+  fp12: { stav: 'duplikat',          duplikatFakturaId: 'fp14' },
+  fp13: { stav: 'sparovana',         dlCisla: ['DL-2026-0047'] },
+  fp14: { stav: 'sparovana',         dlCisla: ['DL-2026-0035'] },
+  fp15: { stav: 'nesedi-dl',         dlCisla: ['DL-2026-0049'], dlCastka: 8_100 },
+  fp16: { stav: 'sparovana',         dlCisla: ['DL-2026-0055'] },
+  fp17: { stav: 'sparovana',         dlCisla: ['DL-2026-0043'] },
+  fp18: { stav: 'sparovana',         dlCisla: ['DL-2026-0046'] },
+  // ── U Čápa ──
+  fp19: { stav: 'sparovana',         dlCisla: ['DL-2026-0058'] },
+  fp20: { stav: 'bez-dl' },
+  fp21: { stav: 'ceka-na-sparovani', dlCisla: ['DL-2026-0059'] },
+  fp22: { stav: 'bez-dl' },
+  // ── KOREK WB ──
+  fp23: { stav: 'sparovana',         dlCisla: ['DL-2026-0060'] },
+  fp24: { stav: 'bez-dl' },
+  fp25: { stav: 'bez-dl' },
+  fp26: { stav: 'bez-dl' },
+  // ── U Kohoutů ──
+  fp27: { stav: 'nesedi-dl',         dlCisla: ['DL-2026-0061'], dlCastka: 27_800 },
+  fp28: { stav: 'ceka-na-sparovani', dlCisla: ['DL-2026-0062'] },
+  fp29: { stav: 'bez-dl' },
+  fp30: { stav: 'bez-dl' },
+  // ── Nad Hladinkou ──
+  fp31: { stav: 'sparovana',         dlCisla: ['DL-2026-0063'] },
+  fp32: { stav: 'ceka-na-sparovani', dlCisla: ['DL-2026-0064'] },
+  fp33: { stav: 'bez-dl' },
+  fp34: { stav: 'bez-dl' },
+  // ── Teátr ──
+  fp35: { stav: 'duplikat',          duplikatFakturaId: 'fp12' },
+  fp36: { stav: 'bez-dl' },
+  fp37: { stav: 'bez-dl' },
+  fp38: { stav: 'bez-dl' },
+  // ── Jíme Brno ──
+  fp39: { stav: 'castecne-sparovana',dlCisla: ['DL-2026-0066'], dlCastka: 15_900 },
+  fp40: { stav: 'bez-dl' },
+  fp41: { stav: 'bez-dl' },
+  fp42: { stav: 'ceka-na-sparovani', dlCisla: ['DL-2026-0067'] },
+};
+
+export function getMatchingData(fakturaId: string): MatchingRecord | undefined {
+  return MATCHING_DATA[fakturaId];
+}
+
+// VS = poslední číslice z čísla faktury (přepisovatelné polem faktura.vs)
+export function deriveVS(cislo: string): string {
+  return cislo.replace(/\D/g, '').slice(-8);
+}
+
+export function getVS(faktura: { vs?: string; cislo: string }): string {
+  return faktura.vs ?? deriveVS(faktura.cislo);
 }
 
 export function getFakturyVProcesu(provozovna: string): FakturaPlatby[] {
