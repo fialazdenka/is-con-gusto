@@ -533,13 +533,13 @@ export default function TrzbyView({ state, update }: Props) {
                   return (
                     <tr key={row.datum}>
                       <td className="trzby-col-date trzby-sticky-l fw-semibold">{row.label}</td>
-                      <td className="trzby-col-prov text-end font-monospace" style={{ color: '#1c84ee' }}>
+                      <td className="trzby-col-prov text-end czk-num" style={{ color: '#1c84ee' }}>
                         {fCzk(split.k)}
                       </td>
-                      <td className="trzby-col-prov text-end font-monospace" style={{ color: '#22c55e' }}>
+                      <td className="trzby-col-prov text-end czk-num" style={{ color: '#22c55e' }}>
                         {fCzk(split.b)}
                       </td>
-                      <td className="trzby-col-prov text-end font-monospace fw-semibold">
+                      <td className="trzby-col-prov text-end czk-num fw-semibold">
                         <span className="d-inline-flex align-items-center justify-content-end gap-1">
                           {provLive && <span className="trzby-live-dot flex-shrink-0" style={{ width: 5, height: 5 }} />}
                           {fCzk(split.c)}
@@ -562,13 +562,13 @@ export default function TrzbyView({ state, update }: Props) {
               <tfoot>
                 <tr>
                   <td className="trzby-col-date trzby-sticky-l fw-bold">Celkem</td>
-                  <td className="trzby-col-prov text-end font-monospace fw-bold" style={{ color: '#1c84ee' }}>
+                  <td className="trzby-col-prov text-end czk-num fw-bold" style={{ color: '#1c84ee' }}>
                     {fCzk(tableRows.reduce((s, r) => s + genDayDataSplit(r.datum, singleProv.id).k, 0))}
                   </td>
-                  <td className="trzby-col-prov text-end font-monospace fw-bold" style={{ color: '#22c55e' }}>
+                  <td className="trzby-col-prov text-end czk-num fw-bold" style={{ color: '#22c55e' }}>
                     {fCzk(tableRows.reduce((s, r) => s + genDayDataSplit(r.datum, singleProv.id).b, 0))}
                   </td>
-                  <td className="trzby-col-prov text-end font-monospace fw-bold">
+                  <td className="trzby-col-prov text-end czk-num fw-bold">
                     {fCzk(tableRows.reduce((s, r) => s + genDayDataSplit(r.datum, singleProv.id).c, 0))}
                   </td>
                   <td className="trzby-col-prov trzby-sticky-r text-end text-muted fs-12">—</td>
@@ -609,7 +609,7 @@ export default function TrzbyView({ state, update }: Props) {
                         const val = row.byProv[p.id] ?? 0;
                         const provLive = isToday && (UCTY_MOCK[p.id]?.isLive ?? false);
                         return (
-                          <td key={p.id} className="trzby-col-prov text-end font-monospace">
+                          <td key={p.id} className="trzby-col-prov text-end czk-num">
                             {val > 0
                               ? <span className="d-inline-flex align-items-center justify-content-end gap-1">
                                   {provLive && <span className="trzby-live-dot flex-shrink-0" style={{ width: 5, height: 5 }} />}
@@ -619,7 +619,7 @@ export default function TrzbyView({ state, update }: Props) {
                           </td>
                         );
                       })}
-                      <td className="trzby-col-total trzby-sticky-r font-monospace fw-bold">
+                      <td className="trzby-col-total trzby-sticky-r czk-num fw-bold">
                         <span className="d-inline-flex align-items-center justify-content-end gap-1">
                           {anyLive && <span className="trzby-live-dot flex-shrink-0" style={{ width: 5, height: 5 }} />}
                           {fCzk(total)}
@@ -635,12 +635,12 @@ export default function TrzbyView({ state, update }: Props) {
                   {tableCols.map((p) => {
                     const sum = tableRows.reduce((s, r) => s + (r.byProv[p.id] ?? 0), 0);
                     return (
-                      <td key={p.id} className="trzby-col-prov text-end font-monospace fw-bold">
+                      <td key={p.id} className="trzby-col-prov text-end czk-num fw-bold">
                         {fCzk(sum)}
                       </td>
                     );
                   })}
-                  <td className="trzby-col-total trzby-sticky-r font-monospace fw-bold">
+                  <td className="trzby-col-total trzby-sticky-r czk-num fw-bold">
                     {fCzk(tableRows.reduce((s, r) =>
                       s + tableCols.reduce((ss, p) => ss + (r.byProv[p.id] ?? 0), 0), 0))}
                   </td>
@@ -790,7 +790,7 @@ function DnesKpiBox({ value, otevrene, uzavrene }: {
           Live
         </span>
       </div>
-      <div className="trzby-box-value font-monospace">{fCzk(value)}</div>
+      <div className="trzby-box-value czk-num">{fCzk(value)}</div>
       <div className="trzby-box-sub">17.4.2026 · čtvrtek</div>
       <div className="trzby-box-divider" />
       <div className="trzby-box-comp">
@@ -798,7 +798,7 @@ function DnesKpiBox({ value, otevrene, uzavrene }: {
           <span style={{ width: 7, height: 7, borderRadius: '50%', background: '#22c55e', display: 'inline-block', flexShrink: 0 }} />
           Otevřené účty
         </span>
-        <span className="trzby-box-comp-amount font-monospace" style={{ color: '#16a34a' }}>{fCzk(hodnotaOtevrene)}</span>
+        <span className="trzby-box-comp-amount czk-num" style={{ color: '#16a34a' }}>{fCzk(hodnotaOtevrene)}</span>
         <span className="text-muted" style={{ fontSize: 11 }}>{otevrene} účtů v provozu</span>
       </div>
       <div className="trzby-box-comp" style={{ marginTop: 4 }}>
@@ -806,7 +806,7 @@ function DnesKpiBox({ value, otevrene, uzavrene }: {
           <span style={{ width: 7, height: 7, borderRadius: '50%', background: '#94a3b8', display: 'inline-block', flexShrink: 0 }} />
           Uzavřené účty
         </span>
-        <span className="trzby-box-comp-amount font-monospace text-muted">{fCzk(hodnotaUzavrene)}</span>
+        <span className="trzby-box-comp-amount czk-num text-muted">{fCzk(hodnotaUzavrene)}</span>
         <span className="text-muted" style={{ fontSize: 11 }}>{uzavrene} účtů uzavřeno</span>
       </div>
     </div>
@@ -844,14 +844,14 @@ function KpiBox({
         </span>
       </div>
 
-      <div className="trzby-box-value font-monospace">{fCzk(value)}</div>
+      <div className="trzby-box-value czk-num">{fCzk(value)}</div>
       <div className="trzby-box-sub">{sub}</div>
       <div className="trzby-box-divider" />
 
       {prediction != null && (
         <div className="trzby-box-pred">
           <span>{predictionLabel ?? 'Predikce'}</span>
-          <span className="trzby-box-pred-amount font-monospace" style={{ color: '#7c3aed' }}>
+          <span className="trzby-box-pred-amount czk-num" style={{ color: '#7c3aed' }}>
             ~{fCzk(prediction)}
           </span>
         </div>
@@ -859,7 +859,7 @@ function KpiBox({
 
       <div className="trzby-box-comp">
         <span>{compLabel}</span>
-        <span className="trzby-box-comp-amount font-monospace">{fCzk(compValue)}</span>
+        <span className="trzby-box-comp-amount czk-num">{fCzk(compValue)}</span>
       </div>
 
     </div>
@@ -1114,7 +1114,7 @@ function RocniVyvojTable({ provs, mode, fromYear, year, month, mesicRokyFromYear
                 return (
                   <td key={col.key} className="trzby-col-prov text-end">
                     {v > 0
-                      ? <span className="font-monospace fw-semibold fs-12">{fCzk(v)}</span>
+                      ? <span className="czk-num fw-semibold fs-12">{fCzk(v)}</span>
                       : <span className="text-muted fs-12">—</span>}
                   </td>
                 );
@@ -1129,7 +1129,7 @@ function RocniVyvojTable({ provs, mode, fromYear, year, month, mesicRokyFromYear
           {cols.map((col) => {
             const sum = provs.reduce((s, p) => s + getValue(p, col.key), 0);
             return (
-              <td key={col.key} className="trzby-col-prov text-end font-monospace fw-bold fs-12">
+              <td key={col.key} className="trzby-col-prov text-end czk-num fw-bold fs-12">
                 {sum > 0 ? fCzk(sum) : <span className="text-muted">—</span>}
               </td>
             );
@@ -1238,7 +1238,7 @@ function RocniSrovnaniTable() {
                         <td key={mi} className="trzby-col-prov text-end">
                           {vCur > 0 ? (
                             <>
-                              <div className={`font-monospace fs-12${isNewest ? ' fw-semibold' : ''}`}>
+                              <div className={`czk-num fs-12${isNewest ? ' fw-semibold' : ''}`}>
                                 {fCzk(vCur)}
                               </div>
                               {chng != null && (

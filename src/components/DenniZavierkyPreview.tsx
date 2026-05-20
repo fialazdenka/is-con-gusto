@@ -78,12 +78,12 @@ export default function DenniZavierkyPreview({ provozovna, onNavigate }: Props) 
                       {getProvName(z.provozovna)}
                     </div>
                   </td>
-                  <td className="text-end font-monospace fw-semibold">{fCzk(z.trzba)}</td>
+                  <td className="text-end czk-num fw-semibold">{fCzk(z.trzba)}</td>
                   <td>
                     {/* SOURCE: Larkon .badge.bg-{color}-subtle.text-{color} */}
                     <span className={`badge ${cls}`}>{label}</span>
                   </td>
-                  <td className="text-muted font-monospace">{z.cas}</td>
+                  <td className="text-muted czk-num">{z.cas}</td>
                   <td className="text-muted">{z.zalozil}</td>
                 </tr>
               );

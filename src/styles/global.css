@@ -103,8 +103,8 @@
   --s8: 32px;
 
   /* Font */
-  --font: 'Hanken Grotesk', -apple-system, BlinkMacSystemFont, sans-serif;
-  --font-heading: 'Play', 'Hanken Grotesk', sans-serif;
+  --font: 'Acumin Pro', system-ui, sans-serif;
+  --font-heading: 'Acumin Pro', system-ui, sans-serif;
 }
 
 /* ─── Reset ──────────────────────────────────────────────── */

@@ -179,7 +179,7 @@ export default function CashflowView({ state, update: _update }: Props) {
                   <iconify-icon icon={k.icon} style={{ fontSize: 26, color: k.color, flexShrink: 0, marginTop: 2 }} />
                   <div>
                     <div className="text-muted fs-12 mb-1">{k.label}</div>
-                    <div className="fw-bold fs-4 font-monospace lh-1 mb-1" style={{ color: k.color }}>{k.value}</div>
+                    <div className="fw-bold fs-4 czk-num lh-1 mb-1" style={{ color: k.color }}>{k.value}</div>
                     <div className="text-muted fs-12">{k.sub}</div>
                   </div>
                 </div>
@@ -213,11 +213,11 @@ export default function CashflowView({ state, update: _update }: Props) {
               {/* Sumarizace */}
               <div className="row g-0 border-bottom">
                 <div className="col-6 p-3 text-center border-end">
-                  <div className="fw-bold font-monospace fs-14 text-success">{fCzk(prognozaPrijmy)}</div>
+                  <div className="fw-bold czk-num fs-14 text-success">{fCzk(prognozaPrijmy)}</div>
                   <div className="text-muted fs-11 mt-1">Očekáváno (příjmy)</div>
                 </div>
                 <div className="col-6 p-3 text-center">
-                  <div className="fw-bold font-monospace fs-14 text-danger">{fCzk(prognozaVydaje)}</div>
+                  <div className="fw-bold czk-num fs-14 text-danger">{fCzk(prognozaVydaje)}</div>
                   <div className="text-muted fs-11 mt-1">Plánované výdaje</div>
                 </div>
               </div>
@@ -226,7 +226,7 @@ export default function CashflowView({ state, update: _update }: Props) {
                 <span className="fs-12 fw-semibold" style={{ color: prognozaNet >= 0 ? '#14b8a6' : '#ef4444' }}>
                   Čistý výhled
                 </span>
-                <span className="fw-bold font-monospace fs-13" style={{ color: prognozaNet >= 0 ? '#14b8a6' : '#ef4444' }}>
+                <span className="fw-bold czk-num fs-13" style={{ color: prognozaNet >= 0 ? '#14b8a6' : '#ef4444' }}>
                   {prognozaNet >= 0 ? '+' : '−'}{fCzk(Math.abs(prognozaNet))}
                 </span>
               </div>
@@ -247,7 +247,7 @@ export default function CashflowView({ state, update: _update }: Props) {
                       <div className="text-muted fs-11">{fDate(p.datum)}</div>
                     </div>
                     <div className="text-end flex-shrink-0">
-                      <span className={`fw-bold font-monospace fs-12 ${p.typ === 'prijem' ? 'text-success' : 'text-danger'}`}>
+                      <span className={`fw-bold czk-num fs-12 ${p.typ === 'prijem' ? 'text-success' : 'text-danger'}`}>
                         {p.typ === 'prijem' ? '+' : '−'}{fCzk(p.castka)}
                       </span>
                       <div className="text-muted fs-10">{getProvName(p.provozovna)}</div>
@@ -273,7 +273,7 @@ export default function CashflowView({ state, update: _update }: Props) {
                   <div className="flex-grow-1" style={{ height: 8, background: '#f0f2f7', borderRadius: 4, overflow: 'hidden' }}>
                     <div style={{ height: '100%', width: `${Math.round((k.castka / prijmyTotal) * 100)}%`, background: k.color, borderRadius: 4 }} />
                   </div>
-                  <div style={{ width: 80, textAlign: 'right', flexShrink: 0 }} className="font-monospace fs-12">{fCzk(k.castka)}</div>
+                  <div style={{ width: 80, textAlign: 'right', flexShrink: 0 }} className="czk-num fs-12">{fCzk(k.castka)}</div>
                 </div>
               ))}
 
@@ -284,7 +284,7 @@ export default function CashflowView({ state, update: _update }: Props) {
                   <div className="flex-grow-1" style={{ height: 8, background: '#f0f2f7', borderRadius: 4, overflow: 'hidden' }}>
                     <div style={{ height: '100%', width: `${Math.round((k.castka / vydajeTotal) * 100)}%`, background: k.color, borderRadius: 4 }} />
                   </div>
-                  <div style={{ width: 80, textAlign: 'right', flexShrink: 0 }} className="font-monospace fs-12">{fCzk(k.castka)}</div>
+                  <div style={{ width: 80, textAlign: 'right', flexShrink: 0 }} className="czk-num fs-12">{fCzk(k.castka)}</div>
                 </div>
               ))}
             </div>
@@ -384,7 +384,7 @@ export default function CashflowView({ state, update: _update }: Props) {
                       </td>
                     )}
                     <td className="text-muted fs-13">{fDate(t.datum)}</td>
-                    <td className={`text-end fw-bold font-monospace ${t.typ === 'prijem' ? 'text-success' : ''}`}>
+                    <td className={`text-end fw-bold czk-num ${t.typ === 'prijem' ? 'text-success' : ''}`}>
                       {t.typ === 'prijem' ? '+' : '−'}{fCzk(t.castka)}
                     </td>
                     <td><span className={`badge ${cls}`}>{label}</span></td>

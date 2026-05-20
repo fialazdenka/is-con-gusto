@@ -38,19 +38,20 @@ src/
     FakturyView.tsx      # správa a schvalování faktur
     FakturyTable.tsx     # tabulka faktur (showExtraCols prop pro Platby kontext)
     FakturaDetailDrawer.tsx # offcanvas drawer schválení / detail faktury
-    PlatbyView.tsx       # platební dashboard: multi-účty, právní entity, stavový filtr
-    PlatbyDetailPanel.tsx # offcanvas drawer: platební detail + audit timeline
+    PlatbyView.tsx       # platební dashboard: právní entity, stavový filtr, auto-výběr faktur
+    PlatbyDetailPanel.tsx # offcanvas drawer: detail + audit + pozastavení s poznámkou + náhled faktury
     PlatbyKPIStrip.tsx   # 4× KPI karta platby (zůstatek/schváleno/po-splatnosti/splatné)
+    InvoicePreview.tsx   # paper-styled náhled faktury s položkami, DPH, platebními údaji
     PohledavkyView.tsx   # vydané faktury, sledování úhrad, upomínky
     CashflowView.tsx     # přehled peněžních toků
     KPIStrip.tsx         # 4× KPI karta tržby (Dnes/Včera/Týden/Měsíc) pro dashboard
     AlertStrip.tsx       # upozornění nad dashboardem
     ProvozonySummary.tsx # tabulka provozoven na dashboardu
-    CashflowPreview.tsx  # preview cashflow na dashboardu
+    CashflowPreview.tsx  # preview cashflow na dashboardu (zustatek = getZustatek('all'))
     PohledavkyWidget.tsx # widget pohledávek na dashboardu
-    BalancePanel.tsx     # sticky panel: multi-účty + zahrnout budoucí tržby + kalkulátor
-    DalsiPlatbyPanel.tsx # ostatní platby mimo faktury
-    PotvrditModal.tsx    # potvrzovací modal platby
+    BalancePanel.tsx     # sticky: účty per provozovna + budoucí tržby (2 nezávislé volby) + kalkulátor
+    DalsiPlatbyPanel.tsx # automatické platby – read-only přehled (bez checkboxů)
+    PotvrditModal.tsx    # potvrzovací modal platby (jen faktury)
     ProvozovnaDrawer.tsx # offcanvas detail provozovny
     ProvozovnyView.tsx   # admin sekce: přehled/plánované/práva, brand barvy
     ComponentReference.tsx # dev mapa komponent
@@ -150,16 +151,57 @@ Dvě řady KPI + grafy + přehledy:
 
 ### Struktura
 - **LEFT**: FakturyTable (`showExtraCols=false` – bez Typ dokladu/Kategorie/Přiřazeno) + DalsiPlatbyPanel
-- **RIGHT**: Platební účty panel + BalancePanel (kalkulátor) – obojí sticky
+- **RIGHT**: BalancePanel (účty per provozovna + kalkulátor) – sticky
 
 ### Filtry
 - **Splatné do**: pouze Do datum (Od odstraněno – systém filtruje od `2020-01-01`)
 - **Status select**: Schválená (default) / Nová neschválená
 
+### Automatický výběr faktur
+- `useEffect` v PlatbyView: při změně `selectedProvozovna` se automaticky předvolí všechny `schvalena` faktury pro danou provozovnu
+- Zajišťuje, že BalancePanel okamžitě zobrazuje reálnou dostupnost prostředků
+
 ### Platební účty (BalancePanel)
-- Seznam BANKOVNI_UCTY s checkboxy: barva · zkratka · číslo účtu · zůstatek
-- Multi-select: kombinovaný zůstatek ze zaškrtnutých účtů
-- Min. 1 účet vždy vybrán
+- Účty se zobrazují **podle vybrané provozovny** (bez checkboxů) – `getBankovniUctyForProvozovna(provozovna)`
+- 1 provozovna → 1 účet; všechny → všechny účty stacked
+- EUR účet: Piazza má navíc EUR účet (Raiffeisen Bank) – zobrazen s badge `EUR`, nezahrnuje se do CZK kalkulace
+- `BankovniUcet` má pole `mena?: 'CZK' | 'EUR'`
+
+### Dostupnost prostředků (BalancePanel)
+- Zůstatky per provozovna jako samostatné řádky s barevnou tečkou, pod tím celkový součet
+- Faktury a automatické platby odečteny
+- **Budoucí tržby**: dvě **nezávislé** volby (lze kombinovat):
+  - „Karty v cestě" (`futureRevMode.karty`)
+  - „Odhad tržeb" (`futureRevMode.odhad`)
+  - Při více provozovnách: breakdown per provozovna s tečkou
+- `FutureRevMode = { karty: boolean; odhad: boolean }` (dříve enum)
+
+### Ostatní platby (DalsiPlatbyPanel)
+- **Read-only přehled** – bez checkboxů, bez výběru
+- Automatické platby (trvalé příkazy, splátky, poplatky) vždy zahrnuty do kalkulace dostupnosti
+- Záhlaví: „Ostatní platby v období · automatické odchozí platby"
+
+### Pozastavení faktury s poznámkou
+- Tlačítko „Pozastavit" → inline textarea „Důvod pozastavení…" + Potvrdit / Zrušit
+- Poznámka se uloží do `localPoznamky` v PlatbyView, předá se jako `localPoznamka` prop
+- V draweru zastavené faktury se zobrazí amber alert „Důvod pozastavení"
+- Faktury z mock dat (stav=zastavena) zobrazí svůj `poznamka` field
+
+### Náhled faktury (InvoicePreview)
+- Collapsible sekce v PlatbyDetailPanel: „Zobrazit náhled faktury"
+- Paper-styled dokument: hlavička (číslo, datum, VS), dodavatel/odběratel (IČO, DIČ, adresa), položky, DPH, platební údaje
+- Položky generovány procedurálně dle `kategorie` (zbozi/energie/najem/sluzby/vyplaty)
+- Lookup tabulka dodavatelů pro 17 known suppliers; ostatní mají fallback
+- DPH sazby: zbozi=12%, ostatní=21%, vyplaty=0%
+
+### Platební stavy (FakturaStavPlatby)
+- `nova` · `ke-schvaleni` · `schvalena` · `zamitnuta` · `zastavena`
+- `v-bance` · `ceka-na-sparovani` · **`chyba-platby`** = „Platba neproběhla" (jediná chyba)
+- `odeslana` · `zaplacena`
+
+### PlatbyKPIStrip
+- Zůstatek: `getZustatek(provozovna)` – při 'all' = součet všech účtů, patička „Celkem všechny účty"
+- Ostatní KPI (schválené/po splatnosti/splatné) vždy za vybranou provozovnu
 
 ### Právní entity (PRAVNI_ENTITA v platbyData.ts)
 - `con-gusto`: vše kromě U Čápa a KOREK
@@ -167,13 +209,14 @@ Dvě řady KPI + grafy + přehledy:
 - `korek`: KOREK Wines + KOREK Winebar s.r.o.
 - Při neshodu faktura↔účet → žlutý warning v BalancePanel (neblokující)
 
-### Platební stavy (FakturaStavPlatby)
-- `nova` · `ke-schvaleni` · `schvalena` · `zamitnuta` · `zastavena`
-- `v-bance` · `ceka-na-sparovani` · **`chyba-platby`** = „Platba neproběhla" (jediná chyba)
-- `odeslana` · `zaplacena`
+### Mock data – provozovny s platebními daty
+CG Brno, Piazza (+ EUR účet), Monte, U Čápa, KOREK WB, U Kohoutů, Nad Hladinkou, Teátr, Jíme Brno
+– každá má: UCTY, BANKOVNI_UCTY, BANK_SYNC_DATA, FAKTURY_PLATBY (3–4 ks), OSTATNI_PLATBY (2 ks), BUDOUCI_TRZBY
 
 ### PlatbyDetailPanel
 - Offcanvas drawer: detail faktury + bankovní účet provozovny + audit timeline + workflow akce
+- Pozastavení s poznámkou (inline textarea)
+- Collapsible náhled faktury (InvoicePreview)
 
 ## Provozovny (ProvozovnyView)
 
@@ -206,6 +249,12 @@ Admin sekce (sidebar → Provoz → Provozovny), 3 záložky:
 ### Font
 - Acumin Pro (Book 400 / Semibold 600 / Bold 700) z `/public/fonts/`
 - `@font-face` + globální override `body, .card, .table, .btn, .badge, h1-h6`
+- CSS proměnné `--font` a `--font-heading` nastaveny na `'Acumin Pro'` (global.css)
+- **Nikdy nepoužívat `font-monospace`** – Bootstrap třída přepne na systémový monospace (SF Mono/Menlo)
+
+### Číselné formátování
+- `fCzk(n)` v `data.ts`: oddělovač tisíců = `U+202F` (narrow no-break space) – viz regex `replace(/[  ]/g, ' ')`
+- `.czk-num` CSS třída (custom.css): `font-family: 'Acumin Pro'; font-variant-numeric: tabular-nums` – nahrazuje `font-monospace` všude v projektu
 
 ## Routing (AppShell.tsx)
 
@@ -236,3 +285,4 @@ Piazza otevřena 2006 (potvrzeno majitelem).
 - **v3 s5**: Topbar redesign (breadcrumb, prov-color accent, dynamická výška, sticky headers)
 - **v3 s6**: Tržby UX (LIVE tečky per-venue, date presety, DnesKpiBox hodnoty)
 - **v3 s7**: Dashboard aktualizace (nové KPIStrip Dnes/Včera/Týden/Měsíc, PlatbyKPIStrip)
+- **v3 s8**: Platby UX – oddělovač tisíců (U+202F), czk-num třída místo font-monospace, celoplošný Acumin Pro, pozastavení s poznámkou, InvoicePreview, DalsiPlatbyPanel read-only, BalancePanel per-provozovna účty bez checkboxů, EUR účet Piazza, FutureRevMode jako { karty, odhad }, per-provozovna breakdown budoucích tržeb, auto-výběr schválených faktur, mock data pro 6 nových provozoven, dynamický getZustatek napříč dashboardem

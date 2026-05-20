@@ -782,13 +782,11 @@ export function getTrzbyD7(provozovna: string) {
 
 // ─── Format helpers ───────────────────────────────────────────────────────────
 
-// Oddělovač tisíců: tečka (1.201.800 Kč) – čitelnější než cs-CZ mezera v monospace fontu
-// U+202F (narrow no-break space) a U+00A0 (no-break space) → nahradíme tečkou
 export function fCzk(n: number): string {
   const num = new Intl.NumberFormat('cs-CZ', {
     minimumFractionDigits: 0,
     maximumFractionDigits: 0,
-  }).format(n).replace(/[  ]/g, '.');
+  }).format(n).replace(/(\d)\s(\d)/g, '$1 $2');
   return `${num} Kč`;
 }
 

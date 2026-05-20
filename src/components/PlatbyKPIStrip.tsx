@@ -72,12 +72,14 @@ export default function PlatbyKPIStrip({ provozovna, periodOd, periodDo }: Props
               </div>
               <div className="flex-grow-1 text-end">
                 <p className="text-muted mb-0 text-truncate fs-13">Zůstatek na účtu</p>
-                <h3 className="text-dark mt-1 mb-0 font-monospace">{fCzk(zustatek)}</h3>
+                <h3 className="text-dark mt-1 mb-0 czk-num">{fCzk(zustatek)}</h3>
               </div>
             </div>
           </div>
           <div className="card-footer py-2 bg-light bg-opacity-50">
-            <span className="text-muted fs-12">K {new Date('2026-04-17').toLocaleDateString('cs-CZ')}</span>
+            <span className="text-muted fs-12">
+              {provozovna === 'all' ? 'Celkem všechny účty · ' : ''}17. 4. 2026
+            </span>
           </div>
         </div>
       </div>
@@ -92,7 +94,7 @@ export default function PlatbyKPIStrip({ provozovna, periodOd, periodDo }: Props
               </div>
               <div className="flex-grow-1 text-end">
                 <p className="text-muted mb-0 text-truncate fs-13">Schválené k úhradě</p>
-                <h3 className="text-dark mt-1 mb-0 font-monospace">{fCzk(sumSchvalene)}</h3>
+                <h3 className="text-dark mt-1 mb-0 czk-num">{fCzk(sumSchvalene)}</h3>
               </div>
             </div>
           </div>
@@ -112,7 +114,7 @@ export default function PlatbyKPIStrip({ provozovna, periodOd, periodDo }: Props
               </div>
               <div className="flex-grow-1 text-end">
                 <p className="text-muted mb-0 text-truncate fs-13">Po splatnosti</p>
-                <h3 className="text-danger mt-1 mb-0 font-monospace">{fCzk(sumPoSplat)}</h3>
+                <h3 className="text-danger mt-1 mb-0 czk-num">{fCzk(sumPoSplat)}</h3>
               </div>
             </div>
           </div>
@@ -135,7 +137,7 @@ export default function PlatbyKPIStrip({ provozovna, periodOd, periodDo }: Props
               </div>
               <div className="flex-grow-1 text-end">
                 <p className="text-muted mb-0 text-truncate fs-13">Splatné v období</p>
-                <h3 className="text-warning mt-1 mb-0 font-monospace">{fCzk(sumVObdobi)}</h3>
+                <h3 className="text-warning mt-1 mb-0 czk-num">{fCzk(sumVObdobi)}</h3>
               </div>
             </div>
           </div>

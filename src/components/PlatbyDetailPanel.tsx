@@ -2,7 +2,9 @@
 // SOURCE: Larkon offcanvas pattern + Bootstrap utilities
 // CUSTOM: YES – audit timeline, bank status, payment workflow actions
 
+import { useState } from 'react';
 import type { FakturaPlatby, FakturaStavPlatby } from '../platbyData';
+import InvoicePreview from './InvoicePreview';
 import {
   KATEGORIE_LABELS, getPlatbyAudit, getBankovniUcet,
 } from '../platbyData';
@@ -12,8 +14,9 @@ interface Props {
   faktura: FakturaPlatby;
   onClose: () => void;
   onOdeslatDoBanky?: (id: string) => void;
-  onPozastavit?: (id: string) => void;
+  onPozastavit?: (id: string, poznamka: string) => void;
   onObnovit?: (id: string) => void;
+  localPoznamka?: string;
 }
 
 const STAV_META: Record<FakturaStavPlatby, { cls: string; label: string; icon: string }> = {
@@ -55,7 +58,7 @@ const AUDIT_BARVY: Record<string, string> = {
   obnovena:            '#0d6efd',
 };
 
-export default function PlatbyDetailPanel({ faktura, onClose, onOdeslatDoBanky, onPozastavit, onObnovit }: Props) {
+export default function PlatbyDetailPanel({ faktura, onClose, onOdeslatDoBanky, onPozastavit, onObnovit, localPoznamka }: Props) {
   const provName  = PROVOZOVNY.find((p) => p.id === faktura.provozovna)?.shortName ?? faktura.provozovna;
   const provColor = PROVOZOVNY.find((p) => p.id === faktura.provozovna)?.color ?? '#94a3b8';
   const audit     = getPlatbyAudit(faktura.id);
@@ -66,6 +69,10 @@ export default function PlatbyDetailPanel({ faktura, onClose, onOdeslatDoBanky, 
   const isChyba     = faktura.stav === 'chyba-platby';
   const isAktivni   = faktura.stav === 'schvalena';
   const isZastavena = faktura.stav === 'zastavena';
+
+  const [pozastavitMode, setPozastavitMode] = useState(false);
+  const [poznamkaText, setPoznamkaText] = useState('');
+  const [showPreview, setShowPreview] = useState(false);
 
   return (
     <>
@@ -80,7 +87,7 @@ export default function PlatbyDetailPanel({ faktura, onClose, onOdeslatDoBanky, 
                 <iconify-icon icon={icon} className="me-1" style={{ fontSize: 12 }} />
                 {label}
               </span>
-              <span className="text-muted fs-12 font-monospace">{faktura.cislo}</span>
+              <span className="text-muted fs-12 czk-num">{faktura.cislo}</span>
             </div>
             <h5 className="mb-0 text-truncate">{faktura.dodavatel}</h5>
           </div>
@@ -89,6 +96,17 @@ export default function PlatbyDetailPanel({ faktura, onClose, onOdeslatDoBanky, 
 
         {/* Body */}
         <div className="offcanvas-body p-0 d-flex flex-column" style={{ overflowY: 'auto' }}>
+
+          {/* Zastavena alert */}
+          {isZastavena && (localPoznamka || faktura.poznamka) && (
+            <div className="alert alert-warning m-3 mb-0 d-flex align-items-start gap-2">
+              <iconify-icon icon="solar:pause-circle-bold-duotone" style={{ fontSize: 20, flexShrink: 0, marginTop: 2 }} />
+              <div>
+                <div className="fw-semibold fs-13">Důvod pozastavení</div>
+                <div className="fs-12 mt-1">{localPoznamka ?? faktura.poznamka}</div>
+              </div>
+            </div>
+          )}
 
           {/* Chyba alert */}
           {isChyba && (
@@ -105,7 +123,7 @@ export default function PlatbyDetailPanel({ faktura, onClose, onOdeslatDoBanky, 
           <div className="p-3">
             <div className="row g-2 mb-3">
               <div className="col-6">
-                <DetailField label="Částka" value={<span className="font-monospace fw-bold fs-5">{fCzk(faktura.castka)}</span>} />
+                <DetailField label="Částka" value={<span className="czk-num fw-bold fs-5">{fCzk(faktura.castka)}</span>} />
               </div>
               <div className="col-6">
                 <DetailField label="Splatnost" value={
@@ -149,7 +167,7 @@ export default function PlatbyDetailPanel({ faktura, onClose, onOdeslatDoBanky, 
                 <div className="d-flex align-items-center justify-content-between">
                   <div>
                     <div className="fw-semibold fs-13">{ucet.nazev}</div>
-                    <div className="text-muted fs-12 font-monospace">{ucet.cisloUctu}</div>
+                    <div className="text-muted fs-12 czk-num">{ucet.cisloUctu}</div>
                   </div>
                   <div className="text-end">
                     <div className="text-muted fs-11">{ucet.banka}</div>
@@ -201,6 +219,24 @@ export default function PlatbyDetailPanel({ faktura, onClose, onOdeslatDoBanky, 
                 </div>
               </>
             )}
+            {/* Náhled faktury */}
+            <div className="mt-3">
+              <button
+                className="btn btn-link p-0 text-muted fs-12 d-flex align-items-center gap-1 text-decoration-none"
+                onClick={() => setShowPreview((v) => !v)}
+              >
+                <iconify-icon
+                  icon={showPreview ? 'solar:alt-arrow-up-bold' : 'solar:alt-arrow-down-bold'}
+                  style={{ fontSize: 14 }}
+                />
+                {showPreview ? 'Skrýt náhled faktury' : 'Zobrazit náhled faktury'}
+              </button>
+              {showPreview && (
+                <div className="mt-2">
+                  <InvoicePreview faktura={faktura} />
+                </div>
+              )}
+            </div>
           </div>
         </div>
 
@@ -219,10 +255,35 @@ export default function PlatbyDetailPanel({ faktura, onClose, onOdeslatDoBanky, 
             </button>
           )}
           {(isAktivni || isInBank) && onPozastavit && (
-            <button className="btn btn-light w-100" onClick={() => { onPozastavit(faktura.id); onClose(); }}>
-              <iconify-icon icon="solar:pause-circle-bold" className="me-2" />
-              Pozastavit
-            </button>
+            pozastavitMode ? (
+              <div className="d-flex flex-column gap-2">
+                <textarea
+                  className="form-control fs-13"
+                  rows={3}
+                  placeholder="Důvod pozastavení… (např. probíhá reklamace, čeká na doplnění dokladů)"
+                  value={poznamkaText}
+                  onChange={(e) => setPoznamkaText(e.target.value)}
+                  autoFocus
+                />
+                <div className="d-flex gap-2">
+                  <button
+                    className="btn btn-warning flex-grow-1"
+                    onClick={() => { onPozastavit(faktura.id, poznamkaText); onClose(); }}
+                  >
+                    <iconify-icon icon="solar:pause-circle-bold" className="me-2" />
+                    Potvrdit pozastavení
+                  </button>
+                  <button className="btn btn-light" onClick={() => { setPozastavitMode(false); setPoznamkaText(''); }}>
+                    Zrušit
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <button className="btn btn-light w-100" onClick={() => setPozastavitMode(true)}>
+                <iconify-icon icon="solar:pause-circle-bold" className="me-2" />
+                Pozastavit
+              </button>
+            )
           )}
           {isZastavena && onObnovit && (
             <button className="btn btn-success w-100" onClick={() => { onObnovit(faktura.id); onClose(); }}>

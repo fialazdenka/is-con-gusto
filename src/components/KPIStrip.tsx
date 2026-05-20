@@ -48,7 +48,7 @@ export default function KPIStrip({ provozovna }: Props) {
                 Live
               </span>
             </div>
-            <h3 className="text-dark mb-0 font-monospace text-nowrap">{fCzk(dnes.celkem)}</h3>
+            <h3 className="text-dark mb-0 czk-num text-nowrap">{fCzk(dnes.celkem)}</h3>
             <p className="text-muted fs-11 mb-0 mt-1">17.4.2026 · čtvrtek</p>
           </div>
           <div className="card-footer py-2 bg-light bg-opacity-50">
@@ -70,7 +70,7 @@ export default function KPIStrip({ provozovna }: Props) {
                 {vceraChng >= 0 ? '+' : ''}{vceraChng.toFixed(1).replace('.', ',')} %
               </span>
             </div>
-            <h3 className="text-dark mb-0 font-monospace text-nowrap">{fCzk(vcera.celkem)}</h3>
+            <h3 className="text-dark mb-0 czk-num text-nowrap">{fCzk(vcera.celkem)}</h3>
             <p className="text-muted fs-11 mb-0 mt-1">vs. středa 9.4.2026</p>
           </div>
           <div className="card-footer py-2 bg-light bg-opacity-50">
@@ -89,12 +89,12 @@ export default function KPIStrip({ provozovna }: Props) {
                 {tydenChng >= 0 ? '+' : ''}{tydenChng.toFixed(1).replace('.', ',')} %
               </span>
             </div>
-            <h3 className="text-dark mb-0 font-monospace text-nowrap">{fCzk(tyden.celkem)}</h3>
+            <h3 className="text-dark mb-0 czk-num text-nowrap">{fCzk(tyden.celkem)}</h3>
             <p className="text-muted fs-11 mb-0 mt-1">13.4. – 17.4. · {TYDEN_DNI} dní</p>
           </div>
           <div className="card-footer py-2 bg-light bg-opacity-50">
             <span className="text-muted fs-12">Predikce: </span>
-            <span className="fw-semibold fs-12 font-monospace" style={{ color: '#7c3aed' }}>~{fCzk(tydenPred)}</span>
+            <span className="fw-semibold fs-12 czk-num" style={{ color: '#7c3aed' }}>~{fCzk(tydenPred)}</span>
           </div>
         </div>
       </div>
@@ -109,12 +109,12 @@ export default function KPIStrip({ provozovna }: Props) {
                 {mesicChng >= 0 ? '+' : ''}{mesicChng.toFixed(1).replace('.', ',')} %
               </span>
             </div>
-            <h3 className="text-dark mb-0 font-monospace text-nowrap">{mesic.cur2026 ? fCzk(mesic.cur2026.sumaDoDnes) : '—'}</h3>
+            <h3 className="text-dark mb-0 czk-num text-nowrap">{mesic.cur2026 ? fCzk(mesic.cur2026.sumaDoDnes) : '—'}</h3>
             <p className="text-muted fs-11 mb-0 mt-1">vs. duben 2025 (celý měsíc)</p>
           </div>
           <div className="card-footer py-2 bg-light bg-opacity-50">
             <span className="text-muted fs-12">Predikce: </span>
-            <span className="fw-semibold fs-12 font-monospace" style={{ color: '#7c3aed' }}>~{fCzk(mesicPred)}</span>
+            <span className="fw-semibold fs-12 czk-num" style={{ color: '#7c3aed' }}>~{fCzk(mesicPred)}</span>
           </div>
         </div>
       </div>

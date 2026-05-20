@@ -233,17 +233,17 @@ export default function TrzbyTable({ provozovna, period = 'tyden' }: Props) {
                     </td>
 
                     {/* Kuchyň */}
-                    <td className="text-end font-monospace fs-13 d-mobile-none" style={{ color: '#1c84ee' }}>
+                    <td className="text-end czk-num fs-13 d-mobile-none" style={{ color: '#1c84ee' }}>
                       {fCzk(row.kuchyn)}
                     </td>
 
                     {/* Bar */}
-                    <td className="text-end font-monospace fs-13 d-mobile-none" style={{ color: '#16a34a' }}>
+                    <td className="text-end czk-num fs-13 d-mobile-none" style={{ color: '#16a34a' }}>
                       {fCzk(row.bar)}
                     </td>
 
                     {/* Celkem */}
-                    <td className="text-end font-monospace fw-bold fs-13">{fCzk(row.celkem)}</td>
+                    <td className="text-end czk-num fw-bold fs-13">{fCzk(row.celkem)}</td>
 
                     {/* Výkon */}
                     <td>
@@ -281,9 +281,9 @@ export default function TrzbyTable({ provozovna, period = 'tyden' }: Props) {
             <tfoot>
               <tr className="fw-bold table-light">
                 <td colSpan={3}>Celkem za výběr</td>
-                <td className="text-end font-monospace d-mobile-none" style={{ color: '#1c84ee' }}>{fCzk(total.kuchyn)}</td>
-                <td className="text-end font-monospace d-mobile-none" style={{ color: '#16a34a' }}>{fCzk(total.bar)}</td>
-                <td className="text-end font-monospace fs-6">{fCzk(total.celkem)}</td>
+                <td className="text-end czk-num d-mobile-none" style={{ color: '#1c84ee' }}>{fCzk(total.kuchyn)}</td>
+                <td className="text-end czk-num d-mobile-none" style={{ color: '#16a34a' }}>{fCzk(total.bar)}</td>
+                <td className="text-end czk-num fs-6">{fCzk(total.celkem)}</td>
                 <td colSpan={2} />
               </tr>
             </tfoot>
@@ -332,9 +332,9 @@ export default function TrzbyTable({ provozovna, period = 'tyden' }: Props) {
                       </div>
                     </td>
 
-                    <td className="text-end font-monospace fs-13 d-mobile-none" style={{ color: '#1c84ee' }}>{fCzk(kuchyn)}</td>
-                    <td className="text-end font-monospace fs-13 d-mobile-none" style={{ color: '#16a34a' }}>{fCzk(bar)}</td>
-                    <td className="text-end font-monospace fw-bold fs-13">{fCzk(celkem)}</td>
+                    <td className="text-end czk-num fs-13 d-mobile-none" style={{ color: '#1c84ee' }}>{fCzk(kuchyn)}</td>
+                    <td className="text-end czk-num fs-13 d-mobile-none" style={{ color: '#16a34a' }}>{fCzk(bar)}</td>
+                    <td className="text-end czk-num fw-bold fs-13">{fCzk(celkem)}</td>
 
                     {/* Výkon */}
                     <td>
@@ -351,7 +351,7 @@ export default function TrzbyTable({ provozovna, period = 'tyden' }: Props) {
                       </div>
                     </td>
 
-                    <td className="text-end font-monospace text-muted fs-12 d-mobile-none">
+                    <td className="text-end czk-num text-muted fs-12 d-mobile-none">
                       {fCzk(DAILY_TARGET[p.id] ?? 60000)}
                     </td>
                   </tr>
@@ -361,9 +361,9 @@ export default function TrzbyTable({ provozovna, period = 'tyden' }: Props) {
             <tfoot>
               <tr className="fw-bold table-light">
                 <td colSpan={3}>Celkem</td>
-                <td className="text-end font-monospace d-mobile-none" style={{ color: '#1c84ee' }}>{fCzk(provTotal.kuchyn)}</td>
-                <td className="text-end font-monospace d-mobile-none" style={{ color: '#16a34a' }}>{fCzk(provTotal.bar)}</td>
-                <td className="text-end font-monospace fs-6">{fCzk(provTotal.celkem)}</td>
+                <td className="text-end czk-num d-mobile-none" style={{ color: '#1c84ee' }}>{fCzk(provTotal.kuchyn)}</td>
+                <td className="text-end czk-num d-mobile-none" style={{ color: '#16a34a' }}>{fCzk(provTotal.bar)}</td>
+                <td className="text-end czk-num fs-6">{fCzk(provTotal.celkem)}</td>
                 <td colSpan={2} />
               </tr>
             </tfoot>

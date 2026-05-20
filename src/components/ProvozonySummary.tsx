@@ -74,9 +74,9 @@ export default function ProvozonySummary({ selectedProvozovna, onOpenDrawer }: P
                     <span className="fw-semibold">{p.name}</span>
                   </div>
                 </td>
-                <td className="text-end font-monospace">{fCzk(cur.kuchyn)}</td>
-                <td className="text-end font-monospace">{fCzk(cur.bar)}</td>
-                <td className="text-end font-monospace fw-bold">{fCzk(cur.celkem)}</td>
+                <td className="text-end czk-num">{fCzk(cur.kuchyn)}</td>
+                <td className="text-end czk-num">{fCzk(cur.bar)}</td>
+                <td className="text-end czk-num fw-bold">{fCzk(cur.celkem)}</td>
                 <td className="text-end">
                   {/* SOURCE: Larkon .badge.bg-{color}-subtle */}
                   <span className={`badge ${chng >= 0 ? 'bg-success-subtle text-success' : 'bg-danger-subtle text-danger'}`}>
@@ -107,9 +107,9 @@ export default function ProvozonySummary({ selectedProvozovna, onOpenDrawer }: P
             <tfoot>
               <tr className="fw-bold table-light">
                 <td>Celkem CG</td>
-                <td className="text-end font-monospace">{fCzk(totalCur.kuchyn)}</td>
-                <td className="text-end font-monospace">{fCzk(totalCur.bar)}</td>
-                <td className="text-end font-monospace text-primary">{fCzk(totalCur.celkem)}</td>
+                <td className="text-end czk-num">{fCzk(totalCur.kuchyn)}</td>
+                <td className="text-end czk-num">{fCzk(totalCur.bar)}</td>
+                <td className="text-end czk-num text-primary">{fCzk(totalCur.celkem)}</td>
                 <td />
                 <td className="text-end">100 %</td>
                 <td />

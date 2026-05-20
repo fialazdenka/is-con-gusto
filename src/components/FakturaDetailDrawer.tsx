@@ -148,7 +148,7 @@ export default function FakturaDetailDrawer({
                 <span className={`badge ${stav.cls}`}>{stav.label}</span>
               </div>
               <div className="text-end">
-                <div className="fw-bold font-monospace fs-4" style={{ color: '#313b5e' }}>
+                <div className="fw-bold czk-num fs-4" style={{ color: '#313b5e' }}>
                   {fCzk(faktura.castka)}
                 </div>
                 <div className="text-muted fs-12">

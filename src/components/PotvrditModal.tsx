@@ -15,15 +15,12 @@
 //   .btn.btn-secondary / .btn-primary / .btn-danger → akce
 
 import { FAKTURY_PLATBY, OSTATNI_PLATBY, getZustatek } from '../platbyData';
-import type { FutureRevMode } from '../platbyData';
 import type { ProvozovnaId } from '../types';
 import { fCzk, fDate } from '../data';
 
 interface Props {
   provozovna: ProvozovnaId;
   selectedFaIds: Set<string>;
-  selectedOstatniIds: Set<string>;
-  futureRevMode: FutureRevMode;
   vysledekBalance: number;
   onConfirm: () => void;
   onClose: () => void;
@@ -32,7 +29,6 @@ interface Props {
 export default function PotvrditModal({
   provozovna,
   selectedFaIds,
-  selectedOstatniIds,
   vysledekBalance,
   onConfirm,
   onClose,
@@ -40,13 +36,9 @@ export default function PotvrditModal({
   const faktury = FAKTURY_PLATBY.filter(
     (f) => selectedFaIds.has(f.id) && (provozovna === 'all' || f.provozovna === provozovna)
   );
-  const ostatni = OSTATNI_PLATBY.filter(
-    (o) => selectedOstatniIds.has(o.id) && (provozovna === 'all' || o.provozovna === provozovna)
-  );
 
   const sumaFa    = faktury.reduce((s, f) => s + f.castka, 0);
-  const sumaOst   = ostatni.reduce((s, o) => s + o.castka, 0);
-  const sumaTotal = sumaFa + sumaOst;
+  const sumaTotal = sumaFa;
   const nedostatek = vysledekBalance < 0;
   const zustatek   = getZustatek(provozovna);
 
@@ -92,11 +84,8 @@ export default function PotvrditModal({
 
               {/* Shrnutí – SOURCE: Bootstrap .row.g-3 */}
               <div className="row g-3 mb-4">
-                <div className="col-6">
-                  <SummaryBox label="Faktury" count={faktury.length} suma={sumaFa} color="#ff6c2f" />
-                </div>
-                <div className="col-6">
-                  <SummaryBox label="Ostatní platby" count={ostatni.length} suma={sumaOst} color="#d97706" />
+                <div className="col-12">
+                  <SummaryBox label="Faktury k odeslání" count={faktury.length} suma={sumaFa} color="#ff6c2f" />
                 </div>
               </div>
 
@@ -118,12 +107,12 @@ export default function PotvrditModal({
                           <tr key={f.id}>
                             <td className="fw-semibold">{f.dodavatel}</td>
                             <td className="text-muted">{fDate(f.splatnost)}</td>
-                            <td className="text-end font-monospace fw-semibold">{fCzk(f.castka)}</td>
+                            <td className="text-end czk-num fw-semibold">{fCzk(f.castka)}</td>
                           </tr>
                         ))}
                         <tr className="fw-bold table-light">
                           <td colSpan={2}>Faktury celkem</td>
-                          <td className="text-end font-monospace" style={{ color: '#ff6c2f' }}>{fCzk(sumaFa)}</td>
+                          <td className="text-end czk-num" style={{ color: '#ff6c2f' }}>{fCzk(sumaFa)}</td>
                         </tr>
                       </tbody>
                     </table>
@@ -131,43 +120,13 @@ export default function PotvrditModal({
                 </>
               )}
 
-              {/* Ostatní platby list */}
-              {ostatni.length > 0 && (
-                <>
-                  <div className="text-uppercase fw-semibold text-muted fs-11 mb-2">Ostatní platby</div>
-                  <div className="table-responsive">
-                    <table className="table table-sm table-hover mb-0">
-                      <thead className="table-light">
-                        <tr>
-                          <th>Popis</th>
-                          <th>Datum</th>
-                          <th className="text-end">Částka</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {ostatni.map((o) => (
-                          <tr key={o.id}>
-                            <td className="fw-semibold">{o.popis}</td>
-                            <td className="text-muted">{fDate(o.datum)}</td>
-                            <td className="text-end font-monospace fw-semibold">{fCzk(o.castka)}</td>
-                          </tr>
-                        ))}
-                        <tr className="fw-bold table-light">
-                          <td colSpan={2}>Ostatní celkem</td>
-                          <td className="text-end font-monospace" style={{ color: '#d97706' }}>{fCzk(sumaOst)}</td>
-                        </tr>
-                      </tbody>
-                    </table>
-                  </div>
-                </>
-              )}
             </div>
 
             {/* Celkový součet */}
             <div className="px-3 py-2 bg-light border-top border-bottom">
               <div className="d-flex justify-content-between align-items-center">
                 <span className="fw-bold">Celkem k odeslání</span>
-                <span className="fw-bold font-monospace fs-5">{fCzk(sumaTotal)}</span>
+                <span className="fw-bold czk-num fs-5">{fCzk(sumaTotal)}</span>
               </div>
             </div>
 
@@ -204,7 +163,7 @@ function SummaryBox({ label, count, suma, color }: { label: string; count: numbe
   return (
     <div className="p-3 rounded" style={{ background: color + '0d', border: `1px solid ${color}33` }}>
       <div className="fw-semibold fs-11 mb-1" style={{ color }}>{label}</div>
-      <div className="fw-bold font-monospace fs-5">{fCzk(suma)}</div>
+      <div className="fw-bold czk-num fs-5">{fCzk(suma)}</div>
       <div className="text-muted fs-12 mt-1">
         {count} {count === 1 ? 'položka' : count < 5 ? 'položky' : 'položek'}
       </div>

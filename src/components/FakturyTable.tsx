@@ -204,7 +204,7 @@ export default function FakturyTable({
                       onChange={() => vybiratelna && onToggle(f.id)}
                     />
                   </td>
-                  <td className="text-muted fs-12 font-monospace">{f.cislo}</td>
+                  <td className="text-muted fs-12 czk-num">{f.cislo}</td>
                   <td>
                     <div className="fw-semibold">{f.dodavatel}</div>
                     {f.poznamka && <div className="text-muted fs-12">{f.poznamka}</div>}
@@ -235,7 +235,7 @@ export default function FakturyTable({
                       </div>
                     </td>
                   )}
-                  <td className="text-end fw-bold font-monospace">{fCzk(f.castka)}</td>
+                  <td className="text-end fw-bold czk-num">{fCzk(f.castka)}</td>
                   <td>
                     <span className={poSpl ? 'text-danger fw-bold' : 'text-muted'}>
                       {fDate(f.splatnost)}

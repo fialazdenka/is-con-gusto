@@ -31,7 +31,7 @@ export type OstatniTyp =
   | 'vyplata'
   | 'dalsi';
 
-export type FutureRevMode = 'off' | 'budouci' | 'budouci-plus';
+export interface FutureRevMode { karty: boolean; odhad: boolean; }
 
 export type TypDokladu = 'prijata' | 'vydana';
 
@@ -114,6 +114,7 @@ export interface BankovniUcet {
   zustatek: number;
   cekajiciKarty: number;
   iban: string;
+  mena?: 'CZK' | 'EUR';
 }
 
 export interface BankSyncStav {
@@ -141,21 +142,40 @@ export const PROCESSING_DAYS_DEFAULT = 2; // dní před splatností = kdy musím
 // ─── Zůstatky na účtech ───────────────────────────────────────
 
 export const UCTY: UcetZustatek[] = [
-  { provozovna: 'cg-brno', zustatek: 287_300, cekajiciKarty: 42_100 },
-  { provozovna: 'piazza',  zustatek: 124_500, cekajiciKarty: 22_300 },
-  { provozovna: 'monte',   zustatek:  75_500, cekajiciKarty: 18_600 },
+  { provozovna: 'cg-brno',        zustatek: 287_300, cekajiciKarty: 42_100 },
+  { provozovna: 'piazza',         zustatek: 124_500, cekajiciKarty: 22_300 },
+  { provozovna: 'monte',          zustatek:  75_500, cekajiciKarty: 18_600 },
+  { provozovna: 'u-capa',         zustatek:  98_400, cekajiciKarty: 15_200 },
+  { provozovna: 'korek-winebar',  zustatek:  67_800, cekajiciKarty: 12_100 },
+  { provozovna: 'u-kohoutu',      zustatek:  45_300, cekajiciKarty:  8_900 },
+  { provozovna: 'nad-hladinkou',  zustatek:  52_700, cekajiciKarty: 11_400 },
+  { provozovna: 'teatr',          zustatek:  38_900, cekajiciKarty:  7_600 },
+  { provozovna: 'jime-brno',      zustatek:  29_500, cekajiciKarty:  5_800 },
 ];
 
 export const BANKOVNI_UCTY: BankovniUcet[] = [
-  { provozovna: 'cg-brno', cisloUctu: '1028374650/0300', nazev: 'CG Brno – Provozní', banka: 'Komerční banka',   zustatek: 287_300, cekajiciKarty: 42_100, iban: 'CZ5503000000001028374650' },
-  { provozovna: 'piazza',  cisloUctu: '2047836291/0800', nazev: 'Piazza – Provozní',   banka: 'Česká spořitelna', zustatek: 124_500, cekajiciKarty: 22_300, iban: 'CZ6808000000002047836291' },
-  { provozovna: 'monte',   cisloUctu: '3019284736/2010', nazev: 'Monte – Provozní',    banka: 'Fio banka',        zustatek:  75_500, cekajiciKarty: 18_600, iban: 'CZ9420100000003019284736' },
+  { provozovna: 'cg-brno',       cisloUctu: '1028374650/0300',  nazev: 'CG Brno – Provozní',     banka: 'Komerční banka',   zustatek: 287_300, cekajiciKarty: 42_100, iban: 'CZ5503000000001028374650' },
+  { provozovna: 'piazza',        cisloUctu: '2047836291/0800',  nazev: 'Piazza – Provozní CZK',  banka: 'Česká spořitelna', zustatek: 124_500, cekajiciKarty: 22_300, iban: 'CZ6808000000002047836291' },
+  { provozovna: 'piazza',        cisloUctu: 'AT61190430023457320100', nazev: 'Piazza – EUR',     banka: 'Raiffeisen Bank',  zustatek:   8_420, cekajiciKarty:      0, iban: 'AT61 1904 3002 3457 3201', mena: 'EUR' },
+  { provozovna: 'monte',         cisloUctu: '3019284736/2010',  nazev: 'Monte – Provozní',       banka: 'Fio banka',        zustatek:  75_500, cekajiciKarty: 18_600, iban: 'CZ9420100000003019284736' },
+  { provozovna: 'u-capa',        cisloUctu: '4082910347/0100',  nazev: 'U Čápa – Provozní',      banka: 'Komerční banka',   zustatek:  98_400, cekajiciKarty: 15_200, iban: 'CZ3301000000004082910347' },
+  { provozovna: 'korek-winebar', cisloUctu: '5173820456/5500',  nazev: 'KOREK WB – Provozní',    banka: 'Raiffeisenbank',   zustatek:  67_800, cekajiciKarty: 12_100, iban: 'CZ8855000000005173820456' },
+  { provozovna: 'u-kohoutu',     cisloUctu: '6284731567/2010',  nazev: 'U Kohoutů – Provozní',   banka: 'Fio banka',        zustatek:  45_300, cekajiciKarty:  8_900, iban: 'CZ1720100000006284731567' },
+  { provozovna: 'nad-hladinkou', cisloUctu: '7395642678/0800',  nazev: 'Nad Hladinkou – Provozní',banka: 'Česká spořitelna', zustatek:  52_700, cekajiciKarty: 11_400, iban: 'CZ4208000000007395642678' },
+  { provozovna: 'teatr',         cisloUctu: '8406553789/0300',  nazev: 'Teátr – Provozní',       banka: 'ČSOB',             zustatek:  38_900, cekajiciKarty:  7_600, iban: 'CZ6103000000008406553789' },
+  { provozovna: 'jime-brno',     cisloUctu: '9517464890/2010',  nazev: 'Jíme Brno – Provozní',   banka: 'Fio banka',        zustatek:  29_500, cekajiciKarty:  5_800, iban: 'CZ9220100000009517464890' },
 ];
 
 export const BANK_SYNC_DATA: BankSyncStav[] = [
-  { provozovna: 'cg-brno', posledniSync: '2026-04-17T14:32:00', stav: 'ok' },
-  { provozovna: 'piazza',  posledniSync: '2026-04-17T13:15:00', stav: 'ok' },
-  { provozovna: 'monte',   posledniSync: '2026-04-17T09:41:00', stav: 'ceka', zprava: 'Synchronizace probíhá' },
+  { provozovna: 'cg-brno',       posledniSync: '2026-04-17T14:32:00', stav: 'ok' },
+  { provozovna: 'piazza',        posledniSync: '2026-04-17T13:15:00', stav: 'ok' },
+  { provozovna: 'monte',         posledniSync: '2026-04-17T09:41:00', stav: 'ceka', zprava: 'Synchronizace probíhá' },
+  { provozovna: 'u-capa',        posledniSync: '2026-04-17T14:10:00', stav: 'ok' },
+  { provozovna: 'korek-winebar', posledniSync: '2026-04-17T13:55:00', stav: 'ok' },
+  { provozovna: 'u-kohoutu',     posledniSync: '2026-04-17T12:30:00', stav: 'ok' },
+  { provozovna: 'nad-hladinkou', posledniSync: '2026-04-17T11:45:00', stav: 'ok' },
+  { provozovna: 'teatr',         posledniSync: '2026-04-17T10:20:00', stav: 'chyba', zprava: 'Chyba připojení – pokus o obnovení' },
+  { provozovna: 'jime-brno',     posledniSync: '2026-04-17T14:00:00', stav: 'ok' },
 ];
 
 export const PLATBY_AUDIT: Record<string, AuditZaznam[]> = {
@@ -449,6 +469,42 @@ export const FAKTURY_PLATBY: FakturaPlatby[] = [
     datumSchvaleni: '11. 4. 2026',
     poznamka: 'CHYBA: Nesprávné číslo účtu dodavatele – platba vrácena',
   },
+
+  // ── U ČÁPA ──
+  { id: 'fp19', cislo: 'FAK-2026-0051', dodavatel: 'Plzeňský Prazdroj', kategorie: 'zbozi' as FakturaKategorie, provozovna: 'u-capa', castka: 38_400, datum: '2026-04-09', splatnost: '2026-04-16', stav: 'schvalena' as FakturaStavPlatby, typDokladu: 'prijata' as TypDokladu, schvalil: 'Petr Dohnal', datumSchvaleni: '11. 4. 2026', poznamka: 'Týdenní dodávka piva – duben' },
+  { id: 'fp20', cislo: 'FAK-2026-0052', dodavatel: 'Správa budov s.r.o.', kategorie: 'najem' as FakturaKategorie, provozovna: 'u-capa', castka: 62_000, datum: '2026-04-05', splatnost: '2026-04-20', stav: 'schvalena' as FakturaStavPlatby, typDokladu: 'prijata' as TypDokladu, schvalil: 'Petr Dohnal', datumSchvaleni: '7. 4. 2026', poznamka: 'Nájem duben – Štefánikova' },
+  { id: 'fp21', cislo: 'FAK-2026-0053', dodavatel: 'Makro Cash & Carry', kategorie: 'zbozi' as FakturaKategorie, provozovna: 'u-capa', castka: 14_700, datum: '2026-04-11', splatnost: '2026-04-18', stav: 'ke-schvaleni' as FakturaStavPlatby, typDokladu: 'prijata' as TypDokladu, prirazenaOsoba: 'u-petr' },
+  { id: 'fp22', cislo: 'FAK-2026-0054', dodavatel: 'E.ON Energie', kategorie: 'energie' as FakturaKategorie, provozovna: 'u-capa', castka: 9_800, datum: '2026-04-08', splatnost: '2026-04-17', stav: 'v-bance' as FakturaStavPlatby, typDokladu: 'prijata' as TypDokladu, schvalil: 'Petr Dohnal', datumSchvaleni: '10. 4. 2026' },
+
+  // ── KOREK WINEBAR ──
+  { id: 'fp23', cislo: 'FAK-2026-0055', dodavatel: 'Vinné sklepy Lechovice', kategorie: 'zbozi' as FakturaKategorie, provozovna: 'korek-winebar', castka: 52_300, datum: '2026-04-08', splatnost: '2026-04-17', stav: 'schvalena' as FakturaStavPlatby, typDokladu: 'prijata' as TypDokladu, schvalil: 'Petr Dohnal', datumSchvaleni: '10. 4. 2026', poznamka: 'Nákup vín – jarní kolekce' },
+  { id: 'fp24', cislo: 'FAK-2026-0056', dodavatel: 'Správa budov s.r.o.', kategorie: 'najem' as FakturaKategorie, provozovna: 'korek-winebar', castka: 74_500, datum: '2026-04-05', splatnost: '2026-04-20', stav: 'schvalena' as FakturaStavPlatby, typDokladu: 'prijata' as TypDokladu, schvalil: 'Petr Dohnal', datumSchvaleni: '7. 4. 2026', poznamka: 'Nájem duben – Náměstí Svobody' },
+  { id: 'fp25', cislo: 'FAK-2026-0057', dodavatel: 'Sodexo (stravování)', kategorie: 'sluzby' as FakturaKategorie, provozovna: 'korek-winebar', castka: 6_200, datum: '2026-04-10', splatnost: '2026-04-17', stav: 'nova' as FakturaStavPlatby, typDokladu: 'prijata' as TypDokladu },
+  { id: 'fp26', cislo: 'FAK-2026-0058', dodavatel: 'ČEZ (elektřina)', kategorie: 'energie' as FakturaKategorie, provozovna: 'korek-winebar', castka: 7_400, datum: '2026-04-07', splatnost: '2026-04-19', stav: 'schvalena' as FakturaStavPlatby, typDokladu: 'prijata' as TypDokladu, schvalil: 'Petr Dohnal', datumSchvaleni: '9. 4. 2026' },
+
+  // ── U KOHOUTŮ ──
+  { id: 'fp27', cislo: 'FAK-2026-0059', dodavatel: 'Pivovary Krušovice', kategorie: 'zbozi' as FakturaKategorie, provozovna: 'u-kohoutu', castka: 28_900, datum: '2026-04-10', splatnost: '2026-04-17', stav: 'schvalena' as FakturaStavPlatby, typDokladu: 'prijata' as TypDokladu, schvalil: 'Petr Dohnal', datumSchvaleni: '12. 4. 2026', poznamka: 'Pravidelná dodávka piva' },
+  { id: 'fp28', cislo: 'FAK-2026-0060', dodavatel: 'Metro AG', kategorie: 'zbozi' as FakturaKategorie, provozovna: 'u-kohoutu', castka: 19_600, datum: '2026-04-11', splatnost: '2026-04-18', stav: 'schvalena' as FakturaStavPlatby, typDokladu: 'prijata' as TypDokladu, schvalil: 'Petr Dohnal', datumSchvaleni: '12. 4. 2026' },
+  { id: 'fp29', cislo: 'FAK-2026-0061', dodavatel: 'Správa budov s.r.o.', kategorie: 'najem' as FakturaKategorie, provozovna: 'u-kohoutu', castka: 48_000, datum: '2026-04-05', splatnost: '2026-04-20', stav: 'zastavena' as FakturaStavPlatby, typDokladu: 'prijata' as TypDokladu, poznamka: 'Pozdrženo – probíhá jednání o výši nájmu' },
+  { id: 'fp30', cislo: 'FAK-2026-0062', dodavatel: 'E.ON Energie', kategorie: 'energie' as FakturaKategorie, provozovna: 'u-kohoutu', castka: 8_100, datum: '2026-04-08', splatnost: '2026-04-18', stav: 'ke-schvaleni' as FakturaStavPlatby, typDokladu: 'prijata' as TypDokladu, prirazenaOsoba: 'u-petra' },
+
+  // ── NAD HLADINKOU ──
+  { id: 'fp31', cislo: 'FAK-2026-0063', dodavatel: 'Makro Cash & Carry', kategorie: 'zbozi' as FakturaKategorie, provozovna: 'nad-hladinkou', castka: 31_200, datum: '2026-04-09', splatnost: '2026-04-15', stav: 'schvalena' as FakturaStavPlatby, typDokladu: 'prijata' as TypDokladu, schvalil: 'Petr Dohnal', datumSchvaleni: '11. 4. 2026', poznamka: 'Nákup 9.4. – týdenní zásoby' },
+  { id: 'fp32', cislo: 'FAK-2026-0064', dodavatel: 'Coca-Cola HBC', kategorie: 'zbozi' as FakturaKategorie, provozovna: 'nad-hladinkou', castka: 11_500, datum: '2026-04-10', splatnost: '2026-04-17', stav: 'schvalena' as FakturaStavPlatby, typDokladu: 'prijata' as TypDokladu, schvalil: 'Petr Dohnal', datumSchvaleni: '12. 4. 2026' },
+  { id: 'fp33', cislo: 'FAK-2026-0065', dodavatel: 'Správa budov s.r.o.', kategorie: 'najem' as FakturaKategorie, provozovna: 'nad-hladinkou', castka: 55_000, datum: '2026-04-05', splatnost: '2026-04-20', stav: 'schvalena' as FakturaStavPlatby, typDokladu: 'prijata' as TypDokladu, schvalil: 'Petr Dohnal', datumSchvaleni: '8. 4. 2026', poznamka: 'Nájem duben – Nad Hladinkou' },
+  { id: 'fp34', cislo: 'FAK-2026-0066', dodavatel: 'UniCredit (internet + telefon)', kategorie: 'sluzby' as FakturaKategorie, provozovna: 'nad-hladinkou', castka: 3_200, datum: '2026-04-12', splatnost: '2026-04-19', stav: 'nova' as FakturaStavPlatby, typDokladu: 'prijata' as TypDokladu },
+
+  // ── TEÁTR ──
+  { id: 'fp35', cislo: 'FAK-2026-0067', dodavatel: 'Metro AG', kategorie: 'zbozi' as FakturaKategorie, provozovna: 'teatr', castka: 24_800, datum: '2026-04-10', splatnost: '2026-04-17', stav: 'schvalena' as FakturaStavPlatby, typDokladu: 'prijata' as TypDokladu, schvalil: 'Petr Dohnal', datumSchvaleni: '12. 4. 2026' },
+  { id: 'fp36', cislo: 'FAK-2026-0068', dodavatel: 'Správa budov s.r.o.', kategorie: 'najem' as FakturaKategorie, provozovna: 'teatr', castka: 68_000, datum: '2026-04-05', splatnost: '2026-04-20', stav: 'schvalena' as FakturaStavPlatby, typDokladu: 'prijata' as TypDokladu, schvalil: 'Petr Dohnal', datumSchvaleni: '7. 4. 2026', poznamka: 'Nájem duben – divadelní sál' },
+  { id: 'fp37', cislo: 'FAK-2026-0069', dodavatel: 'Sodexo (stravování)', kategorie: 'sluzby' as FakturaKategorie, provozovna: 'teatr', castka: 7_800, datum: '2026-04-10', splatnost: '2026-04-18', stav: 'ke-schvaleni' as FakturaStavPlatby, typDokladu: 'prijata' as TypDokladu, prirazenaOsoba: 'u-petra' },
+  { id: 'fp38', cislo: 'FAK-2026-0070', dodavatel: 'ČEZ (elektřina)', kategorie: 'energie' as FakturaKategorie, provozovna: 'teatr', castka: 12_600, datum: '2026-04-07', splatnost: '2026-04-17', stav: 'schvalena' as FakturaStavPlatby, typDokladu: 'prijata' as TypDokladu, schvalil: 'Petr Dohnal', datumSchvaleni: '9. 4. 2026' },
+
+  // ── JÍME BRNO ──
+  { id: 'fp39', cislo: 'FAK-2026-0071', dodavatel: 'Makro Cash & Carry', kategorie: 'zbozi' as FakturaKategorie, provozovna: 'jime-brno', castka: 18_300, datum: '2026-04-11', splatnost: '2026-04-17', stav: 'schvalena' as FakturaStavPlatby, typDokladu: 'prijata' as TypDokladu, schvalil: 'Petr Dohnal', datumSchvaleni: '13. 4. 2026', poznamka: 'Zásoby – lunch menu' },
+  { id: 'fp40', cislo: 'FAK-2026-0072', dodavatel: 'Správa budov s.r.o.', kategorie: 'najem' as FakturaKategorie, provozovna: 'jime-brno', castka: 41_000, datum: '2026-04-05', splatnost: '2026-04-20', stav: 'schvalena' as FakturaStavPlatby, typDokladu: 'prijata' as TypDokladu, schvalil: 'Petr Dohnal', datumSchvaleni: '7. 4. 2026', poznamka: 'Nájem duben – Nové sady' },
+  { id: 'fp41', cislo: 'FAK-2026-0073', dodavatel: 'E.ON Energie', kategorie: 'energie' as FakturaKategorie, provozovna: 'jime-brno', castka: 6_400, datum: '2026-04-08', splatnost: '2026-04-18', stav: 'schvalena' as FakturaStavPlatby, typDokladu: 'prijata' as TypDokladu, schvalil: 'Petr Dohnal', datumSchvaleni: '10. 4. 2026' },
+  { id: 'fp42', cislo: 'FAK-2026-0074', dodavatel: 'Linde Gas (CO₂)', kategorie: 'zbozi' as FakturaKategorie, provozovna: 'jime-brno', castka: 3_900, datum: '2026-04-12', splatnost: '2026-04-19', stav: 'ke-schvaleni' as FakturaStavPlatby, typDokladu: 'prijata' as TypDokladu, prirazenaOsoba: 'u-petra' },
 ];
 
 // ─── Ostatní platby v tomto týdnu (13–19.4.) ─────────────────
@@ -508,6 +564,18 @@ export const OSTATNI_PLATBY: OstatniPlatba[] = [
     provozovna: 'piazza',
     periodicita: 'ctvrtleti',
   },
+  { id: 'op07', typ: 'trv-prikaz', popis: 'Záloha energie – U Čápa (trvalý příkaz)',       castka:  6_800, datum: '2026-04-16', provozovna: 'u-capa',        periodicita: 'mesic' },
+  { id: 'op08', typ: 'splatka-uveru', popis: 'Splátka provozního úvěru – U Čápa',           castka: 22_000, datum: '2026-04-17', provozovna: 'u-capa',        periodicita: 'mesic' },
+  { id: 'op09', typ: 'trv-prikaz', popis: 'Záloha energie – KOREK WB (trvalý příkaz)',      castka:  5_200, datum: '2026-04-15', provozovna: 'korek-winebar', periodicita: 'mesic' },
+  { id: 'op10', typ: 'poplatek',   popis: 'Bankovní poplatky – KOREK WB',                   castka:    620, datum: '2026-04-17', provozovna: 'korek-winebar', periodicita: 'mesic' },
+  { id: 'op11', typ: 'trv-prikaz', popis: 'Záloha energie – U Kohoutů (trvalý příkaz)',     castka:  4_900, datum: '2026-04-16', provozovna: 'u-kohoutu',     periodicita: 'mesic' },
+  { id: 'op12', typ: 'splatka-uveru', popis: 'Splátka vybavení kuchyně – U Kohoutů',        castka: 12_500, datum: '2026-04-18', provozovna: 'u-kohoutu',     periodicita: 'mesic' },
+  { id: 'op13', typ: 'trv-prikaz', popis: 'Záloha energie – Nad Hladinkou (trvalý příkaz)',castka:  7_300, datum: '2026-04-15', provozovna: 'nad-hladinkou', periodicita: 'mesic' },
+  { id: 'op14', typ: 'poplatek',   popis: 'Pojistné – Nad Hladinkou (čtvrtletní)',          castka:  8_900, datum: '2026-04-18', provozovna: 'nad-hladinkou', periodicita: 'ctvrtleti' },
+  { id: 'op15', typ: 'trv-prikaz', popis: 'Záloha energie – Teátr (trvalý příkaz)',         castka:  9_100, datum: '2026-04-16', provozovna: 'teatr',         periodicita: 'mesic' },
+  { id: 'op16', typ: 'splatka-uveru', popis: 'Splátka rekonstrukce sálu – Teátr',           castka: 18_000, datum: '2026-04-17', provozovna: 'teatr',         periodicita: 'mesic' },
+  { id: 'op17', typ: 'trv-prikaz', popis: 'Záloha energie – Jíme Brno (trvalý příkaz)',     castka:  3_800, datum: '2026-04-16', provozovna: 'jime-brno',     periodicita: 'mesic' },
+  { id: 'op18', typ: 'poplatek',   popis: 'Bankovní poplatky – Jíme Brno',                  castka:    490, datum: '2026-04-17', provozovna: 'jime-brno',     periodicita: 'mesic' },
 ];
 
 // ─── Odhadované budoucí tržby v období ───────────────────────
@@ -520,24 +588,15 @@ export interface BudouciTrzbyOdhad {
 }
 
 export const BUDOUCI_TRZBY: BudouciTrzbyOdhad[] = [
-  {
-    provozovna: 'cg-brno',
-    cekajiciKarty: 42_100,
-    odhadZbytek: 68_200,
-    baze: 'průměr: min. rok stejný týden + 3 předchozí týdny',
-  },
-  {
-    provozovna: 'piazza',
-    cekajiciKarty: 22_300,
-    odhadZbytek: 38_900,
-    baze: 'průměr: min. rok stejný týden + 3 předchozí týdny',
-  },
-  {
-    provozovna: 'monte',
-    cekajiciKarty: 18_600,
-    odhadZbytek: 29_400,
-    baze: 'průměr: min. rok stejný týden + 3 předchozí týdny',
-  },
+  { provozovna: 'cg-brno',       cekajiciKarty: 42_100, odhadZbytek: 68_200, baze: 'průměr: min. rok stejný týden + 3 předchozí týdny' },
+  { provozovna: 'piazza',        cekajiciKarty: 22_300, odhadZbytek: 38_900, baze: 'průměr: min. rok stejný týden + 3 předchozí týdny' },
+  { provozovna: 'monte',         cekajiciKarty: 18_600, odhadZbytek: 29_400, baze: 'průměr: min. rok stejný týden + 3 předchozí týdny' },
+  { provozovna: 'u-capa',        cekajiciKarty: 15_200, odhadZbytek: 24_800, baze: 'průměr: min. rok stejný týden + 3 předchozí týdny' },
+  { provozovna: 'korek-winebar', cekajiciKarty: 12_100, odhadZbytek: 19_600, baze: 'průměr: min. rok stejný týden + 3 předchozí týdny' },
+  { provozovna: 'u-kohoutu',     cekajiciKarty:  8_900, odhadZbytek: 14_200, baze: 'průměr: min. rok stejný týden + 3 předchozí týdny' },
+  { provozovna: 'nad-hladinkou', cekajiciKarty: 11_400, odhadZbytek: 18_300, baze: 'průměr: min. rok stejný týden + 3 předchozí týdny' },
+  { provozovna: 'teatr',         cekajiciKarty:  7_600, odhadZbytek: 12_100, baze: 'průměr: min. rok stejný týden + 3 předchozí týdny' },
+  { provozovna: 'jime-brno',     cekajiciKarty:  5_800, odhadZbytek:  9_400, baze: 'průměr: min. rok stejný týden + 3 předchozí týdny' },
 ];
 
 // ─── Helper functions ──────────────────────────────────────────
@@ -612,7 +671,12 @@ export const OSTPLATBA_LABELS: Record<OstatniTyp, string> = {
 };
 
 export function getBankovniUcet(provozovna: string): BankovniUcet | undefined {
-  return BANKOVNI_UCTY.find((u) => u.provozovna === provozovna);
+  return BANKOVNI_UCTY.find((u) => u.provozovna === provozovna && (!u.mena || u.mena === 'CZK'));
+}
+
+export function getBankovniUctyForProvozovna(provozovna: string): BankovniUcet[] {
+  if (provozovna === 'all') return BANKOVNI_UCTY;
+  return BANKOVNI_UCTY.filter((u) => u.provozovna === provozovna);
 }
 
 export function getBankSync(provozovna: string): BankSyncStav {

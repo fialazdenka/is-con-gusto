@@ -92,7 +92,7 @@ export default function ProvozovnaDrawer({ provozovnaId, onClose }: Props) {
           <div className="col-6">
             <div className="p-3 bg-light rounded">
               <div className="text-muted fs-12 mb-1">Tržby 7 dní</div>
-              <div className="fw-bold font-monospace fs-5">{fCzk(cur.celkem)}</div>
+              <div className="fw-bold czk-num fs-5">{fCzk(cur.celkem)}</div>
               <div className={`mt-2 fw-semibold fs-12 ${isUp ? 'text-success' : 'text-danger'}`}>
                 <iconify-icon icon={isUp ? 'solar:arrow-up-bold' : 'solar:arrow-down-bold'} />
                 {' '}{isUp ? '+' : ''}{chng.toFixed(1)} % vs. min. týden
@@ -102,8 +102,8 @@ export default function ProvozovnaDrawer({ provozovnaId, onClose }: Props) {
           <div className="col-6">
             <div className="p-3 bg-light rounded">
               <div className="text-muted fs-12 mb-1">Kuchyň / Bar</div>
-              <div className="fw-bold font-monospace fs-5">{fCzk(cur.kuchyn)}</div>
-              <div className="fw-semibold font-monospace text-success fs-5">{fCzk(cur.bar)}</div>
+              <div className="fw-bold czk-num fs-5">{fCzk(cur.kuchyn)}</div>
+              <div className="fw-semibold czk-num text-success fs-5">{fCzk(cur.bar)}</div>
             </div>
           </div>
         </div>
@@ -207,7 +207,7 @@ export default function ProvozovnaDrawer({ provozovnaId, onClose }: Props) {
                   return (
                     <tr key={z.id}>
                       <td className="text-muted">{fDate(z.datum)}</td>
-                      <td className="text-end font-monospace fw-semibold">{fCzk(z.trzba)}</td>
+                      <td className="text-end czk-num fw-semibold">{fCzk(z.trzba)}</td>
                       <td><span className={`badge ${cls}`}>{label}</span></td>
                       <td className="text-muted">{z.zalozil}</td>
                     </tr>

@@ -48,7 +48,7 @@ function ProvRow({ p, indent }: { p: Provozovna; indent?: boolean }) {
       </td>
       <td className="text-muted fs-12">{p.shortName}</td>
       <td>
-        <span className="badge rounded-pill px-2 py-1 font-monospace fs-11"
+        <span className="badge rounded-pill px-2 py-1 czk-num fs-11"
           style={{ background: p.color, color: textColor, letterSpacing: '0.03em' }}>
           {p.color.toUpperCase()}
         </span>
@@ -183,7 +183,7 @@ export default function ProvozovnyView() {
                         <td className="text-muted fs-12">{p.shortName}</td>
                         <td>
                           {p.color !== '#9097a7' ? (
-                            <span className="badge rounded-pill px-2 py-1 font-monospace fs-11"
+                            <span className="badge rounded-pill px-2 py-1 czk-num fs-11"
                               style={{ background: p.color, color: textColor }}>
                               {p.color.toUpperCase()}
                             </span>

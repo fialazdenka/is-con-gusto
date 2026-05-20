@@ -3,7 +3,7 @@
 // Referenční datum: 2026-04-17 (čtvrtek, týden 16)
 // ─────────────────────────────────────────────────────────────
 
-import { FAKTURY_PLATBY, OSTATNI_PLATBY } from './platbyData';
+import { FAKTURY_PLATBY, OSTATNI_PLATBY, getZustatek } from './platbyData';
 import { POHLEDAVKY } from './pohledavkyData';
 
 export interface CashflowTyden {
@@ -66,21 +66,15 @@ export function getCashflowTydny(provozovna: string): CashflowTyden[] {
 const KPI_BASE = {
   prijmy:  1_173_000, // T15 (plný) + T16 (5 dní) + catering
   vydaje:    958_000,
-  zustatek:  487_300, // suma UCTY
 };
 
 export function getCashflowKPI(provozovna: string) {
   const s = PROV_SCALE[provozovna] ?? 1.0;
-  const z = provozovna === 'all'
-    ? 487_300
-    : provozovna === 'cg-brno' ? 287_300
-    : provozovna === 'piazza'  ? 124_500
-    : 75_500;
   return {
-    prijmy:      Math.round(KPI_BASE.prijmy  * s),
-    vydaje:      Math.round(KPI_BASE.vydaje  * s),
-    cistyCC:     Math.round((KPI_BASE.prijmy - KPI_BASE.vydaje) * s),
-    zustatek:    z,
+    prijmy:  Math.round(KPI_BASE.prijmy  * s),
+    vydaje:  Math.round(KPI_BASE.vydaje  * s),
+    cistyCC: Math.round((KPI_BASE.prijmy - KPI_BASE.vydaje) * s),
+    zustatek: getZustatek(provozovna),
   };
 }
 

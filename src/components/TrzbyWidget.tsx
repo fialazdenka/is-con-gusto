@@ -342,7 +342,7 @@ function StrediskaBreakdown({ days }: { days: string[] }) {
                 <div className="progress-bar" style={{ width: `${pct}%`, background: st.color }} />
               </div>
             </div>
-            <span className="font-monospace fw-bold fs-13 text-end" style={{ width: 90, flexShrink: 0 }}>
+            <span className="czk-num fw-bold fs-13 text-end" style={{ width: 90, flexShrink: 0 }}>
               {fCzk(st.trzba)}
             </span>
             <span className="text-muted fs-12" style={{ width: 36, textAlign: 'right', flexShrink: 0 }}>

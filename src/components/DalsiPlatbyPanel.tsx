@@ -1,16 +1,3 @@
-// COMPONENT: Ostatní platby v období – Collapsible Card
-// SOURCE: Larkon _card.scss + _tables.scss + _badge.scss
-// CUSTOM: NO
-//
-// Larkon class mapping:
-//   .card                              → karta
-//   .card-header (klikatelný)          → collapsible hlavička
-//   .table.table-hover.table-centered.table-nowrap → tabulka
-//   .form-check-input                  → checkbox
-//   .badge.bg-secondary-subtle.text-secondary → typ badge
-//   .badge.bg-warning-subtle.text-warning → zahrnuto badge
-//   .btn.btn-link.btn-sm               → toggle tlačítko
-
 import { useState } from 'react';
 import type { ProvozovnaId } from '../types';
 import { getOstatniForProvozovna, OSTPLATBA_LABELS, isPoSplatnosti } from '../platbyData';
@@ -20,8 +7,6 @@ interface Props {
   provozovna: ProvozovnaId;
   periodOd: string;
   periodDo: string;
-  selectedIds: Set<string>;
-  onToggle: (id: string) => void;
 }
 
 const TYP_IKONY: Record<string, string> = {
@@ -32,29 +17,19 @@ const TYP_IKONY: Record<string, string> = {
   'dalsi':         'solar:document-bold-duotone',
 };
 
-export default function DalsiPlatbyPanel({
-  provozovna,
-  periodOd,
-  periodDo,
-  selectedIds,
-  onToggle,
-}: Props) {
+export default function DalsiPlatbyPanel({ provozovna, periodOd, periodDo }: Props) {
   const [open, setOpen] = useState(true);
 
-  const platby = getOstatniForProvozovna(provozovna).filter(
+  const platby  = getOstatniForProvozovna(provozovna).filter(
     (o) => o.datum >= periodOd && o.datum <= periodDo
   );
-
-  const celkem    = platby.reduce((s, o) => s + o.castka, 0);
-  const vybrano   = platby.filter((o) => selectedIds.has(o.id));
-  const vybranoSum = vybrano.reduce((s, o) => s + o.castka, 0);
+  const celkem  = platby.reduce((s, o) => s + o.castka, 0);
 
   const getProvName  = (id: string) => PROVOZOVNY.find((p) => p.id === id)?.shortName ?? id;
   const getProvColor = (id: string) => PROVOZOVNY.find((p) => p.id === id)?.color ?? '#94a3b8';
 
   return (
     <div className="card mb-4">
-      {/* SOURCE: Larkon .card-header – klikatelný collapsible toggle */}
       <div
         className="card-header d-flex align-items-center justify-content-between"
         style={{ cursor: 'pointer' }}
@@ -63,15 +38,10 @@ export default function DalsiPlatbyPanel({
         <div className="d-flex align-items-center gap-2">
           <h5 className="card-title mb-0">Ostatní platby v období</h5>
           <span className="badge bg-secondary-subtle text-secondary">{platby.length} položek</span>
-          {vybrano.length > 0 && (
-            <span className="badge bg-warning-subtle text-warning">{vybrano.length} zahrnuto</span>
-          )}
+          <span className="text-muted fs-12">· automatické odchozí platby</span>
         </div>
         <div className="d-flex align-items-center gap-3">
-          <span className="fw-bold font-monospace">{fCzk(celkem)}</span>
-          {vybranoSum > 0 && (
-            <span className="text-muted fs-13 font-monospace">(vybráno: {fCzk(vybranoSum)})</span>
-          )}
+          <span className="fw-bold czk-num">{fCzk(celkem)}</span>
           <iconify-icon
             icon={open ? 'solar:alt-arrow-up-bold' : 'solar:alt-arrow-down-bold'}
             className="text-muted"
@@ -80,14 +50,10 @@ export default function DalsiPlatbyPanel({
       </div>
 
       {open && (
-        // SOURCE: Larkon .table.table-hover.table-centered.table-nowrap
         <div className="table-responsive">
           <table className="table table-hover table-centered table-nowrap mb-0">
             <thead className="table-light">
               <tr>
-                <th style={{ width: 36 }}>
-                  <span className="text-muted fs-12">Zahrnout</span>
-                </th>
                 <th>Typ</th>
                 <th>Popis</th>
                 {provozovna === 'all' && <th>Provoz</th>}
@@ -99,34 +65,18 @@ export default function DalsiPlatbyPanel({
             <tbody>
               {platby.length === 0 && (
                 <tr>
-                  <td colSpan={7} className="text-center py-4 text-muted">
-                    V tomto období nejsou žádné ostatní platby
+                  <td colSpan={provozovna === 'all' ? 6 : 5} className="text-center py-4 text-muted">
+                    V tomto období nejsou žádné automatické platby
                   </td>
                 </tr>
               )}
               {platby.map((o) => {
-                const poSpl  = isPoSplatnosti(o.datum);
-                const vybran = selectedIds.has(o.id);
+                const poSpl = isPoSplatnosti(o.datum);
                 return (
-                  <tr
-                    key={o.id}
-                    className={vybran ? 'table-primary' : poSpl ? 'table-danger' : ''}
-                    style={{ cursor: 'pointer' }}
-                    onClick={() => onToggle(o.id)}
-                  >
-                    <td onClick={(e) => e.stopPropagation()}>
-                      {/* SOURCE: Bootstrap .form-check-input */}
-                      <input
-                        type="checkbox"
-                        className="form-check-input"
-                        checked={vybran}
-                        onChange={() => onToggle(o.id)}
-                      />
-                    </td>
+                  <tr key={o.id} className={poSpl ? 'table-danger' : ''}>
                     <td>
                       <div className="d-flex align-items-center gap-2">
                         <iconify-icon icon={TYP_IKONY[o.typ] ?? 'solar:document-bold-duotone'} className="text-muted" />
-                        {/* SOURCE: Larkon .badge.bg-secondary-subtle.text-secondary */}
                         <span className="badge bg-secondary-subtle text-secondary fs-11">
                           {OSTPLATBA_LABELS[o.typ]}
                         </span>
@@ -144,7 +94,7 @@ export default function DalsiPlatbyPanel({
                         </div>
                       </td>
                     )}
-                    <td className="text-end font-monospace fw-bold">{fCzk(o.castka)}</td>
+                    <td className="text-end czk-num fw-bold">{fCzk(o.castka)}</td>
                     <td>
                       <span className={poSpl ? 'text-danger fw-bold' : 'text-muted'}>
                         {fDate(o.datum)}
@@ -159,8 +109,8 @@ export default function DalsiPlatbyPanel({
             {platby.length > 0 && (
               <tfoot>
                 <tr className="fw-bold table-light">
-                  <td colSpan={provozovna === 'all' ? 4 : 3}>Celkem ostatní platby</td>
-                  <td className="text-end font-monospace">{fCzk(celkem)}</td>
+                  <td colSpan={provozovna === 'all' ? 3 : 2}>Celkem automatické platby</td>
+                  <td className="text-end czk-num">{fCzk(celkem)}</td>
                   <td colSpan={2} />
                 </tr>
               </tfoot>

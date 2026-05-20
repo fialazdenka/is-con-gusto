@@ -13,7 +13,10 @@
 //   .d-flex.justify-content-between.border-bottom.py-2 → pohyb řádek
 //   .text-uppercase.fw-semibold.text-muted.fs-11 → sekce titulek
 
-import { CASHFLOW_ITEMS, FAKTURY, ZUSTATEK_UCET, fCzk, fDate } from '../data';
+import { CASHFLOW_ITEMS, FAKTURY, fCzk, fDate } from '../data';
+import { getZustatek } from '../platbyData';
+
+const ZUSTATEK_UCET = getZustatek('all');
 
 interface Props {
   onNavigate: () => void;
@@ -44,7 +47,7 @@ export default function CashflowPreview({ onNavigate }: Props) {
         <div className="p-3 bg-info bg-opacity-10 rounded mb-3 d-flex align-items-center justify-content-between">
           <div>
             <div className="text-muted fs-12 mb-1">Zůstatek na účtu</div>
-            <h3 className="text-info fw-bold font-monospace mb-0 text-nowrap">{fCzk(ZUSTATEK_UCET)}</h3>
+            <h3 className="text-info fw-bold czk-num mb-0 text-nowrap">{fCzk(ZUSTATEK_UCET)}</h3>
           </div>
           <span className="badge bg-info-subtle text-info">Aktuální</span>
         </div>
@@ -54,14 +57,14 @@ export default function CashflowPreview({ onNavigate }: Props) {
           <div className="col-6">
             <div className="p-3 bg-danger bg-opacity-10 rounded">
               <div className="text-danger fw-semibold fs-12">Po splatnosti</div>
-              <div className="h5 fw-bold font-monospace text-danger mb-1 text-nowrap">{fCzk(sumaPoSplatnosti)}</div>
+              <div className="h5 fw-bold czk-num text-danger mb-1 text-nowrap">{fCzk(sumaPoSplatnosti)}</div>
               <div className="text-muted fs-12">{poSplatnosti.length} faktura</div>
             </div>
           </div>
           <div className="col-6">
             <div className="p-3 bg-warning rounded">
               <div className="text-white fw-semibold fs-12">Čekající platby</div>
-              <div className="h5 fw-bold font-monospace text-white mb-1 text-nowrap">{fCzk(sumaCekajici)}</div>
+              <div className="h5 fw-bold czk-num text-white mb-1 text-nowrap">{fCzk(sumaCekajici)}</div>
               <div className="fs-12" style={{ color: 'rgba(255,255,255,0.75)' }}>{cekajici.length} faktury</div>
             </div>
           </div>
@@ -80,7 +83,7 @@ export default function CashflowPreview({ onNavigate }: Props) {
             </div>
             <div className="text-end">
               <div
-                className={`fw-semibold font-monospace fs-13 text-nowrap ${item.typ === 'prijem' ? 'text-success' : ''}`}
+                className={`fw-semibold czk-num fs-13 text-nowrap ${item.typ === 'prijem' ? 'text-success' : ''}`}
               >
                 {item.typ === 'prijem' ? '+' : '−'} {fCzk(item.castka)}
               </div>

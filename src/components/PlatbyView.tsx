@@ -2,14 +2,14 @@
 // SOURCE: Larkon _page-title.scss + Bootstrap layout
 // CUSTOM: PARTIAL – sync bar, smart alerts, bulk toolbar, detail panel
 
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import type { AppState } from '../types';
 import type { FutureRevMode, FakturaStavPlatby } from '../platbyData';
 import {
-  FAKTURY_PLATBY, OSTATNI_PLATBY,
+  FAKTURY_PLATBY,
   getFakturyForProvozovna, getZustatek, getCekajiciKarty, getOdhadZbytek,
   isPoSplatnosti,
-  TYDEN_DO, PROCESSING_DAYS_DEFAULT, BANKOVNI_UCTY,
+  TYDEN_DO, PROCESSING_DAYS_DEFAULT,
 } from '../platbyData';
 import FakturyTable from './FakturyTable';
 import DalsiPlatbyPanel from './DalsiPlatbyPanel';
@@ -37,47 +37,38 @@ export default function PlatbyView({ state, update }: Props) {
   const periodOd = '2020-01-01'; // Od vždy od počátku – nic neutece
   const [periodDo, setPeriodDo] = useState(TYDEN_DO);
   const [stavFilter, setStavFilter] = useState<'schvalena' | 'neschvalena'>('schvalena');
-  const [selectedFaIds,  setSelectedFaIds]  = useState<Set<string>>(new Set());
-  // Vybrané platební účty – default: jen aktuálně vybraná provozovna (nebo první 3)
-  const [selectedUctyIds, setSelectedUctyIds] = useState<Set<string>>(() =>
-    selectedProvozovna === 'all'
-      ? new Set(BANKOVNI_UCTY.map((u) => u.provozovna))
-      : new Set([selectedProvozovna])
+  const schvaleneIds = (provId: string) => new Set(
+    FAKTURY_PLATBY
+      .filter((f) => f.stav === 'schvalena' && (provId === 'all' || f.provozovna === provId))
+      .map((f) => f.id)
   );
-  const toggleUcet = (provId: string) => setSelectedUctyIds((prev) => {
-    const n = new Set(prev);
-    if (n.has(provId) && n.size > 1) n.delete(provId); // min. 1 účet vždy
-    else n.add(provId);
-    return n;
-  });
-  const [selectedOstIds, setSelectedOstIds] = useState<Set<string>>(new Set());
-  const [futureRevMode,  setFutureRevMode]  = useState<FutureRevMode>('off');
+
+  const [selectedFaIds,  setSelectedFaIds]  = useState<Set<string>>(() => schvaleneIds(selectedProvozovna));
+  const [futureRevMode,  setFutureRevMode]  = useState<FutureRevMode>({ karty: false, odhad: false });
+
+  useEffect(() => {
+    setSelectedFaIds(schvaleneIds(selectedProvozovna));
+  }, [selectedProvozovna]);
   const [potvrzeni,      setPotvrzeni]      = useState<Potvrzeni>('idle');
   const [detailId,       setDetailId]       = useState<string | null>(null);
   const [localStavy,     setLocalStavy]     = useState<LocalStavy>({});
+  const [localPoznamky,  setLocalPoznamky]  = useState<Record<string, string>>({});
 
   const toggleFa = useCallback((id: string) => {
     setSelectedFaIds((prev) => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n; });
   }, []);
   const toggleAllFa = useCallback((ids: string[]) => { setSelectedFaIds(new Set(ids)); }, []);
-  const toggleOst = useCallback((id: string) => {
-    setSelectedOstIds((prev) => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n; });
-  }, []);
 
   const zustatek = getZustatek(selectedProvozovna);
   const sumaFa   = FAKTURY_PLATBY
     .filter((f) => selectedFaIds.has(f.id) && (selectedProvozovna === 'all' || f.provozovna === selectedProvozovna))
     .reduce((s, f) => s + f.castka, 0);
-  const sumaOst  = OSTATNI_PLATBY
-    .filter((o) => selectedOstIds.has(o.id) && (selectedProvozovna === 'all' || o.provozovna === selectedProvozovna))
-    .reduce((s, o) => s + o.castka, 0);
-  const karty    = futureRevMode !== 'off' ? getCekajiciKarty(selectedProvozovna) : 0;
-  const odhad    = futureRevMode === 'budouci-plus' ? getOdhadZbytek(selectedProvozovna) : 0;
-  const vysledek = zustatek - sumaFa - sumaOst + karty + odhad;
+  const karty    = futureRevMode.karty ? getCekajiciKarty(selectedProvozovna) : 0;
+  const odhad    = futureRevMode.odhad ? getOdhadZbytek(selectedProvozovna) : 0;
+  const vysledek = zustatek - sumaFa + karty + odhad;
 
   function handleConfirm() {
     setSelectedFaIds(new Set());
-    setSelectedOstIds(new Set());
     setPotvrzeni('sent');
   }
 
@@ -95,7 +86,7 @@ export default function PlatbyView({ state, update }: Props) {
   const chybaPlatby    = vsechnyFaktury.filter((f) => (localStavy[f.id] ?? f.stav) === 'chyba-platby');
   const neschvalene    = vsechnyFaktury.filter((f) => f.stav === 'nova' || f.stav === 'ke-schvaleni');
 
-  const pocetVybrano = selectedFaIds.size + selectedOstIds.size;
+  const pocetVybrano = selectedFaIds.size;
 
   const detailFaktura = detailId
     ? FAKTURY_PLATBY.find((f) => f.id === detailId)
@@ -223,8 +214,6 @@ export default function PlatbyView({ state, update }: Props) {
             provozovna={selectedProvozovna}
             periodOd={periodOd}
             periodDo={periodDo}
-            selectedIds={selectedOstIds}
-            onToggle={toggleOst}
           />
         </div>
         <div className="col-lg-4">
@@ -233,12 +222,9 @@ export default function PlatbyView({ state, update }: Props) {
             periodOd={periodOd}
             periodDo={periodDo}
             selectedFaIds={selectedFaIds}
-            selectedOstatniIds={selectedOstIds}
             futureRevMode={futureRevMode}
             onFutureRevChange={setFutureRevMode}
             onPotvrdit={() => setPotvrzeni('confirm')}
-            selectedUctyIds={selectedUctyIds}
-            onToggleUcet={toggleUcet}
           />
         </div>
       </div>
@@ -249,10 +235,10 @@ export default function PlatbyView({ state, update }: Props) {
           <div className="d-flex align-items-center gap-3">
             <span className="fw-semibold">
               {pocetVybrano} položek vybráno
-              {' '}· <span className="font-monospace">{fCzk(sumaFa + sumaOst)}</span>
+              {' '}· <span className="czk-num">{fCzk(sumaFa)}</span>
             </span>
             <div className="d-flex gap-2 ms-auto">
-              <button className="btn btn-light btn-sm" onClick={() => { setSelectedFaIds(new Set()); setSelectedOstIds(new Set()); }}>
+              <button className="btn btn-light btn-sm" onClick={() => setSelectedFaIds(new Set())}>
                 Zrušit výběr
               </button>
               <button
@@ -273,13 +259,15 @@ export default function PlatbyView({ state, update }: Props) {
       {detailId && detailFakturaEffective && (
         <PlatbyDetailPanel
           faktura={detailFakturaEffective}
+          localPoznamka={detailId ? localPoznamky[detailId] : undefined}
           onClose={() => setDetailId(null)}
           onOdeslatDoBanky={(id) => {
             setLocalStavy((prev) => ({ ...prev, [id]: 'v-bance' }));
             setDetailId(null);
           }}
-          onPozastavit={(id) => {
+          onPozastavit={(id, poznamka) => {
             setLocalStavy((prev) => ({ ...prev, [id]: 'zastavena' }));
+            if (poznamka) setLocalPoznamky((prev) => ({ ...prev, [id]: poznamka }));
             setDetailId(null);
           }}
           onObnovit={(id) => {
@@ -294,8 +282,6 @@ export default function PlatbyView({ state, update }: Props) {
         <PotvrditModal
           provozovna={selectedProvozovna}
           selectedFaIds={selectedFaIds}
-          selectedOstatniIds={selectedOstIds}
-          futureRevMode={futureRevMode}
           vysledekBalance={vysledek}
           onConfirm={handleConfirm}
           onClose={() => setPotvrzeni('idle')}

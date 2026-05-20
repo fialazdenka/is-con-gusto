@@ -57,7 +57,7 @@ export default function PohledavkyWidget({ provozovna, onNavigate }: Props) {
             { label: 'Očekáváno',        value: fCzk(celkemOcekavane),     count: ocekavane.length,     color: '#1c84ee' },
           ].map((m, i) => (
             <div key={m.label} className={`col-4 p-3 text-center${i < 2 ? ' border-end' : ''}`}>
-              <div className="fw-bold font-monospace fs-14" style={{ color: m.color }}>{m.value}</div>
+              <div className="fw-bold czk-num fs-14" style={{ color: m.color }}>{m.value}</div>
               <div className="text-muted fs-11 mt-1">{m.label}</div>
               <div className="text-muted fs-11">({m.count} fakt.)</div>
             </div>
@@ -98,7 +98,7 @@ export default function PohledavkyWidget({ provozovna, onNavigate }: Props) {
                     <div className="text-muted fs-12">{fDate(p.splatnost)} · {dni} dní po splatnosti</div>
                   </div>
                   <div className="text-end flex-shrink-0">
-                    <div className="fw-bold font-monospace fs-13">{fCzk(p.castka)}</div>
+                    <div className="fw-bold czk-num fs-13">{fCzk(p.castka)}</div>
                     <span className={`badge ${cls} fs-10`}>{label}</span>
                   </div>
                 </div>

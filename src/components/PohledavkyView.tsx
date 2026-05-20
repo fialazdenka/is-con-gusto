@@ -195,7 +195,7 @@ export default function PohledavkyView({ state, update }: Props) {
                   <iconify-icon icon={k.icon} style={{ fontSize: 26, color: k.color, flexShrink: 0, marginTop: 2 }} />
                   <div className="flex-grow-1 min-w-0">
                     <div className="text-muted fs-12 mb-1">{k.label}</div>
-                    <div className="fw-bold fs-4 font-monospace lh-1 mb-1" style={{ color: '#313b5e' }}>{k.value}</div>
+                    <div className="fw-bold fs-4 czk-num lh-1 mb-1" style={{ color: '#313b5e' }}>{k.value}</div>
                     <div className="text-muted fs-12">{k.sub}</div>
                   </div>
                 </div>
@@ -225,7 +225,7 @@ export default function PohledavkyView({ state, update }: Props) {
                     minWidth: b.castka > 0 ? 4 : 0,
                   }} />
                 </div>
-                <div style={{ width: 110, textAlign: 'right', flexShrink: 0 }} className="font-monospace fs-13 fw-semibold">
+                <div style={{ width: 110, textAlign: 'right', flexShrink: 0 }} className="czk-num fs-13 fw-semibold">
                   {b.castka > 0 ? fCzk(b.castka) : <span className="text-muted">—</span>}
                 </div>
                 <div style={{ width: 60, flexShrink: 0 }} className="text-muted fs-12 text-end">
@@ -304,7 +304,7 @@ export default function PohledavkyView({ state, update }: Props) {
                     className={stav === 'predžalobni' ? 'table-danger' : stav === 'po-splatnosti' || stav === 'upominka-1' || stav === 'upominka-2' ? 'table-warning' : ''}
                     onClick={() => setDrawerPohId(p.id)}
                   >
-                    <td className="text-muted fs-12 font-monospace">{p.cislo}</td>
+                    <td className="text-muted fs-12 czk-num">{p.cislo}</td>
                     <td>
                       <div className="fw-semibold">{p.klient}</div>
                       {p.poznamka && <div className="text-muted fs-12">{p.poznamka}</div>}
@@ -318,7 +318,7 @@ export default function PohledavkyView({ state, update }: Props) {
                         </div>
                       </td>
                     )}
-                    <td className="text-end fw-bold font-monospace">{fCzk(p.castka)}</td>
+                    <td className="text-end fw-bold czk-num">{fCzk(p.castka)}</td>
                     <td className="text-muted fs-13">{fDate(p.datum)}</td>
                     <td>
                       <span className={dni > 0 ? 'text-danger fw-bold' : 'text-muted'}>
@@ -388,7 +388,7 @@ export default function PohledavkyView({ state, update }: Props) {
                   <div className="d-flex align-items-start justify-content-between gap-2 mb-3">
                     <span className={`badge ${cls} fs-12`}>{label}</span>
                     <div className="text-end">
-                      <div className="fw-bold font-monospace fs-3" style={{ color: '#313b5e' }}>{fCzk(drawerPoh.castka)}</div>
+                      <div className="fw-bold czk-num fs-3" style={{ color: '#313b5e' }}>{fCzk(drawerPoh.castka)}</div>
                       {drawerPoh.opakovani && (
                         <div className="text-muted fs-12">
                           <iconify-icon icon="solar:refresh-bold-duotone" style={{ fontSize: 12 }} className="me-1" />

@@ -212,7 +212,7 @@ body {
   font-size: 10px;
   font-weight: 700;
   color: var(--bs-primary);
-  font-family: monospace;
+  font-family: 'Acumin Pro', system-ui, sans-serif;
   letter-spacing: 0.04em;
   text-transform: uppercase;
   white-space: nowrap;
@@ -1197,4 +1197,9 @@ tfoot .trzby-sticky-r {
 .platby-audit-content {
   flex: 1;
   min-width: 0;
+}
+
+.czk-num {
+  font-family: 'Acumin Pro', sans-serif;
+  font-variant-numeric: tabular-nums;
 }
