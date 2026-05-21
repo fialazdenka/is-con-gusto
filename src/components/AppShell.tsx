@@ -17,6 +17,7 @@ import DashboardView from './DashboardView';
 import PlaceholderView from './PlaceholderView';
 import ProvozovnaDrawer from './ProvozovnaDrawer';
 import ComponentReference from './ComponentReference';
+import KodView from './KodView';
 import TrzbyView from './TrzbyView';
 import FakturyView from './FakturyView';
 import PohledavkyView from './PohledavkyView';
@@ -92,6 +93,8 @@ export default function AppShell({ state, update }: Props) {
         return <ProvozovnyView />;
       case 'komponenty':
         return <ComponentReference />;
+      case 'kod':
+        return <KodView />;
       default:
         return <PlaceholderView section={selectedSection} />;
     }

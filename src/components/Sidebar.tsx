@@ -52,6 +52,7 @@ const SYSTEM_ITEMS: NavItem[] = [
 
 const DEV_ITEMS: NavItem[] = [
   { id: 'komponenty', label: 'Mapa komponent', icon: 'solar:layers-bold-duotone' },
+  { id: 'kod',        label: 'Kód',            icon: 'solar:code-2-bold-duotone' },
 ];
 
 export default function Sidebar({ active, onSelect }: Props) {

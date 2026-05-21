@@ -12,7 +12,8 @@ export type SidebarSection =
   | 'platby'
   | 'reporty'
   | 'nastaveni'
-  | 'komponenty';
+  | 'komponenty'
+  | 'kod';
 
 export type ZavierkaStav = 'ok' | 'chyba' | 'ceka';
 export type CashflowStav = 'ok' | 'po-splatnosti' | 'ceka';

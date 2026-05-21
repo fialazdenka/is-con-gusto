@@ -23,6 +23,7 @@ const META: Record<SidebarSection, { icon: string; title: string; desc: string }
   reporty:    { icon: 'solar:graph-bold-duotone',            title: 'Reporty',          desc: 'Exporty a analytické reporty' },
   nastaveni:  { icon: 'solar:settings-bold-duotone',         title: 'Nastavení',        desc: 'Konfigurace systému' },
   komponenty: { icon: 'solar:layers-bold-duotone',           title: 'Mapa komponent',   desc: 'Dev reference' },
+  kod:        { icon: 'solar:code-2-bold-duotone',           title: 'Kód',              desc: 'Backend implementace (Laravel / Livewire v4 / Alpine.js)' },
 };
 
 interface Props {

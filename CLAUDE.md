@@ -33,6 +33,7 @@ src/
   dodaciListyData.ts    # mock dodací listy (DodaciList, DLPolozka, getDodaciList/y)
   fakturaPolozkyUtils.ts# generateFakturaPolozky(), DPH_SAZBA, getDiffStav(), DIFF_META, tolerance prahy
   components/
+    KodView.tsx          # /kod – podklady pro kodéra: PHP/Laravel/Livewire v4 + náhledy
     AppShell.tsx         # shell: sidebar + topbar + routing + mobilní overlay
     Sidebar.tsx          # navigace – Přehled / Finance / Systém / Dev
     Topbar.tsx           # dynamická výška (62px dashboard / 100px ostatní), breadcrumb, prov-color
@@ -323,6 +324,43 @@ CG Brno, Piazza (+ EUR účet), Monte, U Čápa, KOREK WB, U Kohoutů, Nad Hladi
 - **Ke schválení** – warning, click → `setStavFilters(new Set(['nova', 'ke-schvaleni']))`
 - **Splatné tento týden** – info, click → `setPresetFilters(new Set(['tydni']))`
 
+## Kód (KodView) – podklady pro kodéra
+
+Samostatná podstránka v sidebaru → **Dev → Kód** (`selectedSection: 'kod'`).
+
+### Účel
+Příprava backend implementace pro vývojáře pracujícího v jiném stacku. Aktuálně obsahuje dva segmenty
+ze sekce Tržby (`Tržby detail` a `Vývoj tržeb`) přepsané do:
+- **PHP** (jazyk)
+- **Laravel 11+** (framework)
+- **Livewire v4** (server-side state + reactive re-renders, `#[Computed]` attributes, `wire:click`, `wire:model.live`)
+- **Alpine.js 3** (klientská interaktivita — hover tooltip v grafu)
+- **plain JavaScript + plain CSS** (žádný React/Vue/Tailwind/SCSS)
+
+### Struktura stránky (3 skupiny)
+1. **Tržby detail** — modrý box „Náhled" s interaktivní mock tabulkou (5 dní × 5 provozoven, sticky první + poslední sloupec, live tečka u dnešního dne) + 2 rozbalovací sekce (Livewire komponenta, Blade šablona)
+2. **Vývoj tržeb** — modrý box „Náhled" s interaktivním SVG grafem (3 linie přes 5 let, hover tooltip, smooth Catmull-Rom path, area fill) + 2 rozbalovací sekce (Livewire komponenta, Blade + Alpine.js)
+3. **Sdílené** — bez náhledu (helpery, CSS, routing/layout)
+
+### Code samples v accordionu (kód jako konstanty v KodView.tsx)
+Každá rozbalovací sekce obsahuje 1–3 soubory s tlačítkem „Kopírovat":
+- `app/Support/Provozovny.php` — statický seznam provozoven s brand barvami
+- `app/Support/TrzbyHelper.php` — pure-function helpery: `detRand()`, `getDowFactor()`, `genDayData()`, `genDayDataSplit()`, `genD7Split()`, `genMonthRevenue()`, `genAnnualRevenue()`, `smoothPath()`, `fCzk()` s U+202F
+- `app/Livewire/TrzbyDetail.php` + `resources/views/livewire/trzby-detail.blade.php`
+- `app/Livewire/VyvojTrzeb.php` + `resources/views/livewire/vyvoj-trzeb.blade.php` + `resources/views/livewire/vyvoj-trzeb-tabulka.blade.php` + `resources/js/vyvoj-chart.js`
+- `resources/css/trzby.css` — sticky cols, pulse animace, segment buttons
+- `routes/web.php` + `resources/views/trzby/index.blade.php` — sample routing a layout
+
+### Mock data v náhledech
+- `PREVIEW_PROVS` — 5 ukázkových provozoven s brand barvami
+- `PREVIEW_ROWS` — 5 dní (po–pá 13.4.–17.4.) × 5 provozoven, hardcoded částky
+- `PREVIEW_LIVE` — `isLive` flag per provozovna
+- `CHART_DATA` — 3 provozovny × 5 let (2022–2026), hardcoded miliónové hodnoty
+- Mock data jsou pouze pro vizuální náhled. Plně funkční verze v sekci **Tržby** v levém menu.
+
+### Klíčový princip
+**TrzbyView.tsx zůstává nedotčený** — náhledy v KodView jsou nezávislé mock komponenty `TrzbyDetailPreview` a `VyvojTrzebPreview` s vlastními daty a state. Vizuálně match 1:1 (sticky cols, live dot pulse, smooth SVG path, tooltip).
+
 ## Provozovny (ProvozovnyView)
 
 Admin sekce (sidebar → Provoz → Provozovny), 3 záložky:
@@ -373,6 +411,7 @@ Admin sekce (sidebar → Provoz → Provozovny), 3 záložky:
 | `platby` | PlatbyView |
 | `provozovny` | ProvozovnyView |
 | `komponenty` | ComponentReference |
+| `kod` | KodView |
 | ostatní | PlaceholderView |
 
 ## Kontext projektu
@@ -391,4 +430,5 @@ Piazza otevřena 2006 (potvrzeno majitelem).
 - **v3 s6**: Tržby UX (LIVE tečky per-venue, date presety, DnesKpiBox hodnoty)
 - **v3 s7**: Dashboard aktualizace (nové KPIStrip Dnes/Včera/Týden/Měsíc, PlatbyKPIStrip)
 - **v3 s8**: Platby UX – oddělovač tisíců (U+202F), czk-num třída místo font-monospace, celoplošný Acumin Pro, pozastavení s poznámkou, InvoicePreview, DalsiPlatbyPanel read-only, BalancePanel per-provozovna účty bez checkboxů, EUR účet Piazza, FutureRevMode jako { karty, odhad }, per-provozovna breakdown budoucích tržeb, auto-výběr schválených faktur, mock data pro 6 nových provozoven, dynamický getZustatek napříč dashboardem
+- **v3 s10**: Sekce **Kód** (`/kod`) – podklady pro backend kodéra (PHP/Laravel 11+/Livewire v4/Alpine.js 3/plain JS+CSS). 3 skupiny: Tržby detail (mock tabulka 5×5 se sticky cols + live tečka + Livewire/Blade kód), Vývoj tržeb (interaktivní SVG graf s tooltipem + Livewire/Blade/Alpine kód), Sdílené (helpery `TrzbyHelper.php` s `detRand`/`smoothPath`/`fCzk(U+202F)`, CSS, routing). Accordion s „Kopírovat" tlačítkem, code v dark theme `<pre>`. TrzbyView.tsx nedotčen — `TrzbyDetailPreview` a `VyvojTrzebPreview` jsou nezávislé mock komponenty.
 - **v3 s9**: Faktury workflow dashboard (body 1–12 z checklistu) – `MATCHING_DATA` oddělené od FAKTURY_PLATBY (API-ready), `MatchingStav` (6 stavů), `getVS()`/`deriveVS()`, `FakturaForma` (standard/zálohová/dobropis/offset) s `spojenaSId`, 2-col layout (tabulka + sticky FakturySidePanel místo offcanvas drawer), DLMatchingDetail (editovatelné DL, diff tabulka s tolerance prahy ≤1 Kč/≤5%/>5%, „Spustit párování" s `onRematch` callback), DuplicateDetail (side-by-side s red highlighty), `duplicateDetection.ts` pure function (VS/číslo/dodavatel+částka+měsíc, critical/warning), `dodaciListyData.ts` (7 mock DL), `fakturaPolozkyUtils.ts` shared utility, AutoStatusBar (cron readiness indikátor), 4 řady multiselect chip filtrů (Stav/Párování/Forma + presety), Set\<T\>+toggleSet pattern, sortovatelné hlavičky tabulky (↑↓), částka range filter, audit log s 8 typovými badgemi (`SessionAuditEntry.typ`), interní komunikační vlákno (Účetní/Provoz/Management mock thread), Přílohy sekce (mock PDF), session entries pro schválení/zamítnutí/odložení/rematch/komentář, mock data pro speciální formy (fp43 ZAL, fp44 DOB −3 400 Kč, fp45 OFF), záporné částky červeně napříč UI

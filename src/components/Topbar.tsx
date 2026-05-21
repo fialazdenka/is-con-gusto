@@ -41,6 +41,7 @@ const SECTION_LABELS: Record<SidebarSection, string> = {
   reporty:    'Reporty',
   nastaveni:  'Nastavení',
   komponenty: 'Mapa komponent',
+  kod:        'Kód',
 };
 
 // Drobečková navigace – rodič sekce + label pro navigaci zpět
@@ -53,6 +54,7 @@ const BREADCRUMB_PARENT: Partial<Record<SidebarSection, { label: string; section
   provozovny: { label: 'Provoz',  section: 'dashboard' },
   reporty:    { label: 'Přehledy', section: 'dashboard' },
   komponenty: { label: 'Dev',     section: 'dashboard' },
+  kod:        { label: 'Dev',     section: 'dashboard' },
 };
 
 const PERIOD_OPTS: { value: Period; label: string }[] = [
