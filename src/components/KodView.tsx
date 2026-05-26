@@ -289,239 +289,532 @@ function VyvojTrzebPreview() {
   );
 }
 
-// ─── Code samples (PHP / Blade / CSS / JS) ────────────────────
+// ─── Code samples (Volt / Blade / CSS / JS) ───────────────────
 
-const CODE_PROVOZOVNY_PHP = `<?php
-// app/Support/Provozovny.php
-// Statický seznam provozoven s brand barvami a metadaty.
-// V produkci by toto byla DB tabulka (model Provozovna).
-namespace App\\Support;
+const CODE_TRZBY_DETAIL_VOLT = `<?php
+// resources/views/livewire/trzby-detail.blade.php
+// Livewire Volt — single-file komponenta (anonymní třída + Blade v jednom souboru).
+// Inspirováno stylem kodérovy komponenty sales-sum.blade.php.
+//
+// Datové zdroje:
+//   - Branch                       (Eloquent model, branches table)
+//   - DailyClosing                 (daily_closings)
+//   - DailyClosingRow              (daily_closing_rows, type_id, value)
+//   - DailyClosingRow::SALES       — běžné tržby
+//   - DailyClosingRow::SALE_MANUAL — manuálně dorovnané tržby
+//
+// Multi-tenancy: auth()->user()->activeBranch() + mainBranchGet()
+//   - když user je na "main" pobočce → vidí všechny branches (multi-venue režim)
+//   - jinak → vidí jen svou pobočku (single-venue režim)
+//
+// TODO (kodér):
+//   - Kuchyň / Bar split — zatím jen sloupec "Celkem". Až bude rozlišení
+//     v daily_closing_rows (např. další type_id konstanty), rozšířit single-venue mód.
+//   - vs. D-7 (% změna oproti minulému týdnu) — zatím vynecháno.
 
-class Provozovny
+use Livewire\\Volt\\Component;
+use Livewire\\Attributes\\Defer;
+
+use App\\Models\\Branch;
+use App\\Models\\DailyClosingRow;
+
+use Carbon\\Carbon;
+use Carbon\\CarbonPeriod;
+
+new #[Defer] class extends Component
 {
-    public const ITEMS = [
-        ['id' => 'cg-brno',                'name' => 'CG Brno',                  'shortName' => 'CG Brno',     'color' => '#cdaa69', 'status' => 'active'],
-        ['id' => 'piazza',                 'name' => 'Piazza',                   'shortName' => 'Piazza',      'color' => '#143746', 'status' => 'active'],
-        ['id' => 'monte',                  'name' => 'Monte',                    'shortName' => 'Monte',       'color' => '#ad0d24', 'status' => 'active'],
-        ['id' => 'u-capa',                 'name' => 'Pivnice U Čápa',           'shortName' => 'U Čápa',      'color' => '#0C5E44', 'status' => 'active'],
-        ['id' => 'korek-winebar',          'name' => 'KOREK Winebar',            'shortName' => 'KOREK WB',    'color' => '#648CE8', 'status' => 'active'],
-        ['id' => 'u-kohoutu',              'name' => 'U Kohoutů',                'shortName' => 'U Kohoutů',   'color' => '#E64843', 'status' => 'active'],
-        ['id' => 'nad-hladinkou',          'name' => 'Nad Hladinkou',            'shortName' => 'Nad Hladinkou','color'=> '#203A9A', 'status' => 'active'],
-        ['id' => 'flank',                  'name' => 'Flank',                    'shortName' => 'Flank',       'color' => '#3E111B', 'status' => 'active'],
-        ['id' => 'cg-catering',            'name' => 'CG Catering',              'shortName' => 'CG Catering', 'color' => '#4b0041', 'status' => 'active'],
-        ['id' => 'tackarna-londyn',        'name' => 'Táckárna Londýn',          'shortName' => 'Táck. LN',    'color' => '#a4e055', 'status' => 'active'],
-        ['id' => 'tackarna-turanka',       'name' => 'Táckárna Turanka',         'shortName' => 'Táck. TU',    'color' => '#40cf6d', 'status' => 'active'],
-        ['id' => 'tackarna-svedske-valy',  'name' => 'Táckárna Švédské Valy',    'shortName' => 'Táck. ŠV',    'color' => '#d9f5bf', 'status' => 'active'],
-        ['id' => 'teatr',                  'name' => 'Teátr',                    'shortName' => 'Teátr',       'color' => '#e56445', 'status' => 'active'],
-        ['id' => 'korek-wines',            'name' => 'KOREK Wines',              'shortName' => 'KOREK W',     'color' => '#FFD9AB', 'status' => 'active'],
-        ['id' => 'jime-brno',              'name' => 'Jíme Brno',                'shortName' => 'Jíme Brno',   'color' => '#0a0a5a', 'status' => 'active'],
+    public $branch;
+    public $branches;
+
+    public $from;
+    public $to;
+    public $days = [];
+    public $data = [];
+    public $singleData = [];
+
+    // Předdefinované presety (referenční datum: 2026-04-17)
+    public const PRESETS = [
+        ['label' => 'Dnes',           'from' => '2026-04-17', 'to' => '2026-04-17'],
+        ['label' => 'Včera',          'from' => '2026-04-16', 'to' => '2026-04-16'],
+        ['label' => 'Aktuální týden', 'from' => '2026-04-13', 'to' => '2026-04-17'],
+        ['label' => 'Minulý týden',   'from' => '2026-04-06', 'to' => '2026-04-12'],
+        ['label' => 'Aktuální měsíc', 'from' => '2026-04-01', 'to' => '2026-04-17'],
+        ['label' => 'Minulý měsíc',   'from' => '2026-03-01', 'to' => '2026-03-31'],
+        ['label' => 'Aktuální rok',   'from' => '2026-01-01', 'to' => '2026-04-17'],
+        ['label' => 'Minulý rok',     'from' => '2025-01-01', 'to' => '2025-12-31'],
     ];
 
-    public static function active(): array
+    public function mount(): void
     {
-        return array_values(array_filter(self::ITEMS, fn ($p) => $p['status'] === 'active'));
+        $this->branch = auth()->user()->activeBranch();
+
+        if ($this->branch) {
+            // Multi-tenancy: "main" branch vidí všechny, ostatní jen sebe
+            if ($this->branch->id == mainBranchGet()) {
+                $this->branches = Branch::all();
+            } else {
+                $this->branches = Branch::where('id', $this->branch->id)->get();
+            }
+
+            $this->from = Carbon::now()->subDays(7)->format('Y-m-d');
+            $this->to   = Carbon::now()->format('Y-m-d');
+            $this->loadData();
+        }
     }
 
-    public static function findById(string $id): ?array
+    public function applyPreset(string $label): void
     {
-        foreach (self::ITEMS as $p) {
-            if ($p['id'] === $id) return $p;
+        foreach (self::PRESETS as $p) {
+            if ($p['label'] === $label) {
+                $this->from = $p['from'];
+                $this->to   = $p['to'];
+                $this->loadData();
+                return;
+            }
         }
-        return null;
     }
-}
+
+    public function loadData(): void
+    {
+        // Normalizace datumů
+        $from = $this->from ? Carbon::parse($this->from) : now()->subDays(7);
+        $to   = $this->to   ? Carbon::parse($this->to)   : now();
+
+        if ($from->gt($to)) {
+            [$from, $to] = [$to, $from];
+            $this->from = $from->format('Y-m-d');
+            $this->to   = $to->format('Y-m-d');
+        }
+
+        // Inicializace dní (sumy) + label dopředu (žádný Carbon::parse ve view)
+        $days = [];
+        foreach (CarbonPeriod::create($from, $to) as $date) {
+            $key = $date->format('Y-m-d');
+            $days[$key] = [
+                'sum'   => 0,
+                'label' => $date->translatedFormat('D j.n.'),
+                'isToday' => $date->isToday(),
+            ];
+        }
+
+        // Query: agregace daily_closing_rows.value GROUP BY branch + date
+        $branchIds = $this->branches->pluck('id')->all();
+
+        $salesRows = DailyClosingRow::query()
+            ->selectRaw('
+                daily_closings.branch_id,
+                DATE(daily_closings.date) as closing_date,
+                SUM(daily_closing_rows.value) as sales
+            ')
+            ->join(
+                'daily_closings',
+                'daily_closings.id',
+                '=',
+                'daily_closing_rows.daily_closing_id'
+            )
+            ->whereIn('daily_closings.branch_id', $branchIds)
+            ->whereBetween('daily_closings.date', [$from, $to])
+            ->whereIn('daily_closing_rows.type_id', [
+                DailyClosingRow::SALES,
+                DailyClosingRow::SALE_MANUAL,
+            ])
+            ->groupBy(
+                'daily_closings.branch_id',
+                'closing_date'
+            )
+            ->get();
+
+        $indexed = $salesRows->keyBy(function ($row) {
+            return $row->branch_id . '_' . $row->closing_date;
+        });
+
+        // Sestavení datové struktury per branch
+        $data = [];
+        foreach ($this->branches as $branch) {
+            $value = [
+                'id'    => $branch->id,
+                'name'  => $branch->name,
+                'color' => $branch->color,
+                'data'  => [],
+                'sum'   => 0,
+            ];
+
+            foreach ($days as $dateKey => $_day) {
+                $indexKey = $branch->id . '_' . $dateKey;
+                $sales = isset($indexed[$indexKey])
+                    ? (float) $indexed[$indexKey]->sales
+                    : null;
+
+                $value['data'][$dateKey] = $sales;
+
+                if ($sales !== null) {
+                    $value['sum'] += $sales;
+                    $days[$dateKey]['sum'] += $sales;
+                }
+            }
+            $data[] = $value;
+        }
+
+        $fullSum = array_sum(array_column($data, 'sum'));
+
+        $this->data       = $data;
+        $this->days       = $days;
+        $this->singleData = ['fullSum' => $fullSum];
+    }
+
+    public function isSingleVenue(): bool
+    {
+        return count($this->data) === 1;
+    }
+};
+?>
+
+@placeholder
+    <div class="card">
+        <div class="card-header"><h4>Tržby detail</h4></div>
+        <div class="card-body">
+            <div class="spinner-border text-primary" role="status">
+                <span class="visually-hidden">Loading...</span>
+            </div>
+        </div>
+    </div>
+@endplaceholder
+
+<div class="card mb-4">
+    <div class="card-header trzby-detail-header-sticky">
+        <div class="d-flex align-items-center justify-content-between flex-wrap gap-2">
+            <h4 class="card-title mb-0">
+                Tržby detail
+                @if($this->isSingleVenue() && count($data) > 0)
+                    <span class="ms-2 fw-normal fs-6 text-muted">
+                        <span class="rounded-circle d-inline-block me-1"
+                              style="width:8px;height:8px;background:{{ $data[0]['color'] }}"></span>
+                        {{ $data[0]['name'] }}
+                    </span>
+                @endif
+            </h4>
+
+            <div class="d-flex align-items-center gap-2 flex-wrap">
+                {{-- Přednastavené filtry --}}
+                <select class="form-select form-select-sm" style="width:auto"
+                        wire:change="applyPreset($event.target.value)">
+                    <option value="" disabled selected>Rychlý výběr…</option>
+                    @foreach(self::PRESETS as $p)
+                        <option value="{{ $p['label'] }}">{{ $p['label'] }}</option>
+                    @endforeach
+                </select>
+
+                <div class="topbar-divider"></div>
+
+                {{-- Stejný pattern jako kodérova sales-sum.blade.php --}}
+                <x-input label="Od" wire:model="from" type="date" wire:input="loadData()" margin="1" />
+                <x-input label="Do" wire:model="to" type="date" wire:input="loadData()" margin="1" />
+
+                <span class="badge bg-light text-muted border">
+                    {{ count($days) }} {{ count($days) === 1 ? 'den' : 'dní' }}
+                </span>
+            </div>
+        </div>
+    </div>
+
+    <div class="card-body p-0">
+        <div class="spinner-border text-primary m-3" role="status" wire:loading wire:target="loadData">
+            <span class="visually-hidden">Loading...</span>
+        </div>
+
+        @if ($data != [])
+            <div class="table-responsive" wire:loading.remove wire:target="loadData">
+                <table class="table align-middle mb-0 table-hover table-centered trzby-detail-table">
+                    <thead class="bg-light">
+                        <tr>
+                            <th class="trzby-col-date trzby-sticky-l" style="min-width:120px;">Datum</th>
+                            @foreach ($data as $branchH)
+                                <th style="min-width:140px; text-align:right;">
+                                    <div class="d-flex gap-1 align-items-center justify-content-end">
+                                        <div style="width:8px; height:8px; border-radius:50%; background-color:{{ $branchH['color'] }};"></div>
+                                        <span class="mb-0">{{ $branchH['name'] }}</span>
+                                    </div>
+                                </th>
+                            @endforeach
+                            <th class="trzby-sticky-r bg-light" style="min-width:140px; text-align:right;">Celkem</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach ($days as $keyDay => $day)
+                            <tr wire:key="row-{{ $keyDay }}">
+                                <td class="trzby-sticky-l">
+                                    <strong>{{ $day['label'] }}</strong>
+                                    @if($day['isToday'] ?? false)
+                                        <span class="trzby-live-dot ms-1" style="width:5px;height:5px"></span>
+                                    @endif
+                                </td>
+                                @foreach ($data as $branch)
+                                    <td class="text-end czk-num" wire:key="c-{{ $keyDay }}-{{ $branch['id'] }}">
+                                        @if(is_null($branch['data'][$keyDay]))
+                                            <span class="text-muted">—</span>
+                                        @else
+                                            {{ formatMoney($branch['data'][$keyDay], false) }} Kč
+                                        @endif
+                                    </td>
+                                @endforeach
+                                <td class="trzby-sticky-r bg-light-subtle text-end czk-num fw-bold">
+                                    {{ formatMoney($day['sum'], false) }} Kč
+                                </td>
+                            </tr>
+                        @endforeach
+                    </tbody>
+                    <tfoot>
+                        <tr class="bg-light">
+                            <td class="trzby-sticky-l"><strong>Celkem</strong></td>
+                            @foreach ($data as $finalBranch)
+                                <td class="text-end czk-num fw-bold">
+                                    {{ formatMoney($finalBranch['sum'], false) }} Kč
+                                </td>
+                            @endforeach
+                            <td class="trzby-sticky-r bg-light text-end czk-num fw-bold">
+                                {{ formatMoney($singleData['fullSum'] ?? 0, false) }} Kč
+                            </td>
+                        </tr>
+                    </tfoot>
+                </table>
+            </div>
+        @else
+            <p class="p-3 text-muted">Nenalezena žádná data</p>
+        @endif
+    </div>
+</div>
 `;
 
-const CODE_TRZBY_HELPER_PHP = `<?php
-// app/Support/TrzbyHelper.php
-// Pure-function helper s mock daty + deterministická "variabilita" (bez random()).
-// Stejné hodnoty pro stejné vstupy → predikovatelné chování napříč serverovými requesty.
-namespace App\\Support;
+const CODE_VYVOJ_TRZEB_VOLT = `<?php
+// resources/views/livewire/vyvoj-trzeb.blade.php
+// Livewire Volt — multi-line SVG chart vývoje tržeb + tabulka pod ním.
+// Stejný styl jako trzby-detail.blade.php (Volt single-file).
+//
+// Datové zdroje:
+//   - Branch (Eloquent model)
+//   - DailyClosing + DailyClosingRow — denní závěrky agregované po měsících / letech
+//
+// 3 módy:
+//   - 'roky'        — X osa = roky (např. 2018–2026), Y = roční suma tržeb
+//   - 'rok-mesice'  — X osa = 12 měsíců zvoleného roku, Y = měsíční suma
+//   - 'mesic-roky'  — X osa = roky, Y = suma zvoleného měsíce napříč roky
+//
+// OTÁZKY PRO KODÉRA (otevřené):
+//   1) Historické agregace — pro roční přehled (2006–2026) se každé zobrazení
+//      počítá z daily_closings. Při větších datech (10+ let × 15 provozoven)
+//      by mohla být dobrá monthly_summaries / branch_yearly_revenue tabulka.
+//      Existuje něco takového? Jinak by se mělo nacacheovat (Cache::remember).
+//
+//   2) Rok vzniku provozovny — pro filtr "od roku X" (linie začínají od založení).
+//      Existuje v branches sloupec opened_at / founded_year?
+//      Pokud ne, MIN(daily_closings.date) per branch by mohl být fallback.
+
+use Livewire\\Volt\\Component;
+use Livewire\\Attributes\\Defer;
+
+use App\\Models\\Branch;
+use App\\Models\\DailyClosingRow;
 
 use Carbon\\Carbon;
 
-class TrzbyHelper
+new #[Defer] class extends Component
 {
-    // Kuchyň/Bar denní průměry (Kč/den) per provozovna
-    public const BASE_SPLIT = [
-        'cg-brno'                => ['k' => 50800, 'b' => 22100],
-        'piazza'                 => ['k' => 35600, 'b' => 11500],
-        'monte'                  => ['k' => 25200, 'b' => 16900],
-        'u-capa'                 => ['k' => 21900, 'b' => 25400],
-        'korek-winebar'          => ['k' =>  5700, 'b' => 24400],
-        'u-kohoutu'              => ['k' => 19800, 'b' => 23300],
-        'nad-hladinkou'          => ['k' => 17700, 'b' => 20300],
-        'flank'                  => ['k' => 33500, 'b' => 12800],
-        'cg-catering'            => ['k' => 21700, 'b' =>  4400],
-        'tackarna-londyn'        => ['k' => 15000, 'b' =>  3900],
-        'tackarna-turanka'       => ['k' => 11800, 'b' =>  3300],
-        'tackarna-svedske-valy'  => ['k' => 13400, 'b' =>  3500],
-        'teatr'                  => ['k' => 26200, 'b' => 19000],
-        'korek-wines'            => ['k' =>  4600, 'b' => 17300],
-        'jime-brno'              => ['k' => 29500, 'b' =>  8600],
-    ];
+    public string $mode    = 'roky';              // roky | rok-mesice | mesic-roky
+    public string $period  = 'vse';               // 3 | 5 | 10 | vse (jen pro mode='roky')
+    public int    $year    = 2025;                // pro mode='rok-mesice'
+    public int    $month   = 1;                   // pro mode='mesic-roky' (1-12)
+    public array  $selectedBranchIds = [];        // multi-select branches v grafu
 
-    // Multiplikátor dle dne v týdnu (index 0 = pondělí, 6 = neděle)
-    public const DOW_MULT = [0.80, 0.85, 0.90, 0.95, 1.12, 1.28, 1.12];
+    public $branches;
 
-    // Sezónní faktor (index 0 = leden, 11 = prosinec)
-    public const SEASONAL = [0.80, 0.75, 0.88, 0.95, 1.05, 1.10, 1.12, 1.08, 1.05, 0.98, 0.88, 1.18];
+    public const MONTH_LABELS = ['Led','Únor','Bře','Dub','Kvě','Čer','Čec','Srp','Zář','Říj','Lis','Pro'];
+    public const MONTH_FULL   = ['Leden','Únor','Březen','Duben','Květen','Červen','Červenec','Srpen','Září','Říjen','Listopad','Prosinec'];
 
-    // Roky vzniku provozoven
-    public const FOUNDING_YEAR = [
-        'cg-brno' => 2018, 'piazza' => 2006, 'monte' => 2021, 'u-capa' => 2020,
-        'korek-winebar' => 2022, 'u-kohoutu' => 2021, 'nad-hladinkou' => 2022,
-        'flank' => 2023, 'cg-catering' => 2020, 'tackarna-londyn' => 2023,
-        'tackarna-turanka' => 2024, 'tackarna-svedske-valy' => 2024,
-        'teatr' => 2022, 'korek-wines' => 2023, 'jime-brno' => 2024,
-    ];
+    // SVG dimensions
+    public const CW = 700; public const CH = 210;
+    public const ML = 62;  public const MT = 16;
+    public const MR = 16;  public const MB = 38;
 
-    // 2026 má data jen do dubna (17. 4.)
-    public const MAX_MONTH_2026 = 4;
-    public const REFERENCNI_DATUM = '2026-04-17';
-
-    // Mock isLive flag per provozovna (otevřené účty)
-    public const UCTY_MOCK = [
-        'cg-brno' => true, 'piazza' => true, 'monte' => false, 'u-capa' => true,
-        'korek-winebar' => true, 'u-kohoutu' => false, 'nad-hladinkou' => false,
-        'flank' => true, 'cg-catering' => false, 'tackarna-londyn' => true,
-        'tackarna-turanka' => true, 'tackarna-svedske-valy' => false,
-        'teatr' => true, 'korek-wines' => true, 'jime-brno' => false,
-    ];
-
-    // ── Deterministická pseudo-random varianta (bez random()) ──
-    public static function detRand(string $dateStr, string $provId): float
+    public function mount(): void
     {
-        $h = 0;
-        $s = $dateStr . $provId;
-        for ($i = 0; $i < strlen($s); $i++) {
-            $h = (($h * 31) + ord($s[$i])) & 0xFFFF;
-        }
-        return 0.88 + ($h % 1000) / 4000; // rozsah ~0.88–1.13
-    }
+        $branch = auth()->user()->activeBranch();
+        if (!$branch) return;
 
-    public static function baseDay(string $provId): int
-    {
-        $s = self::BASE_SPLIT[$provId] ?? null;
-        return $s ? $s['k'] + $s['b'] : 0;
-    }
-
-    public static function getDowFactor(string $dateStr): float
-    {
-        $d   = Carbon::parse($dateStr . ' 12:00:00');
-        $dow = $d->dayOfWeek;                  // 0 = neděle, 1 = pondělí…
-        $idx = $dow === 0 ? 6 : $dow - 1;
-        $monthGrowth = 1 + max(0, $d->month - 3) * 0.015;
-        return self::DOW_MULT[$idx] * $monthGrowth;
-    }
-
-    // ── Celková tržba per provozovna pro 1 den (multi-venue tabulka) ──
-    public static function genDayData(string $dateStr): array
-    {
-        $factor = self::getDowFactor($dateStr);
-        $out = [];
-        foreach (Provozovny::active() as $p) {
-            $base = self::baseDay($p['id']);
-            $out[$p['id']] = $base
-                ? (int) round($base * $factor * self::detRand($dateStr, $p['id']))
-                : 0;
-        }
-        return $out;
-    }
-
-    // ── Kuchyň / Bar / Celkem split (single-venue tabulka) ──
-    public static function genDayDataSplit(string $dateStr, string $provId): array
-    {
-        $factor = self::getDowFactor($dateStr);
-        $split  = self::BASE_SPLIT[$provId] ?? ['k' => 0, 'b' => 0];
-        $r      = self::detRand($dateStr, $provId);
-        $k = (int) round($split['k'] * $factor * $r);
-        $b = (int) round($split['b'] * $factor * $r);
-        return ['k' => $k, 'b' => $b, 'c' => $k + $b];
-    }
-
-    // ── Srovnání D-7 (stejný den před týdnem) ──
-    public static function genD7Split(string $dateStr, string $provId): array
-    {
-        $d7 = Carbon::parse($dateStr . ' 12:00:00')->subDays(7)->format('Y-m-d');
-        return self::genDayDataSplit($d7, $provId);
-    }
-
-    // ── Dní v měsíci (s respektováním omezení 2026) ──
-    public static function daysInMonth(int $year, int $month): int
-    {
-        if ($year === 2026 && $month === self::MAX_MONTH_2026) return 17;
-        if ($year === 2026 && $month >  self::MAX_MONTH_2026) return 0;
-        return Carbon::create($year, $month, 1)->daysInMonth;
-    }
-
-    // ── Měsíční tržba pro jednu provozovnu ──
-    public static function genMonthRevenue(int $year, int $month, string $provId): int
-    {
-        $fy = self::FOUNDING_YEAR[$provId] ?? 2022;
-        if ($year < $fy) return 0;
-
-        $days = self::daysInMonth($year, $month);
-        if ($days === 0) return 0;
-
-        $base = self::baseDay($provId);
-        if (!$base) return 0;
-
-        // Meziroční růst: 2025 = baseline, 2026 = +5 %, starší = ×0.95 ^ N
-        $yFactor = $year === 2026 ? 1.05
-                 : ($year === 2025 ? 1.0
-                 : pow(0.95, 2025 - $year));
-
-        $r = self::detRand(sprintf('%d-%02d', $year, $month), $provId);
-        return (int) round($base * $days * self::SEASONAL[$month - 1] * $yFactor * $r);
-    }
-
-    // ── Roční tržba (pro graf vývoje) ──
-    public static function genAnnualRevenue(int $year, string $provId): int
-    {
-        $fy = self::FOUNDING_YEAR[$provId] ?? 2022;
-        if ($year < $fy || $year > 2026) return 0;
-
-        if ($year >= 2025) {
-            $sum = 0;
-            for ($m = 1; $m <= 12; $m++) $sum += self::genMonthRevenue($year, $m, $provId);
-            return $sum;
+        if ($branch->id == mainBranchGet()) {
+            $this->branches = Branch::all();
+        } else {
+            $this->branches = Branch::where('id', $branch->id)->get();
         }
 
-        // Historická extrapolace
-        $base = 0;
-        for ($m = 1; $m <= 12; $m++) $base += self::genMonthRevenue(2025, $m, $provId);
-        $back = 2025 - $year;
-        $r    = self::detRand("ann-{$year}", $provId);
-        return (int) round($base * pow(0.88, $back) * (0.93 + $r * 0.14));
+        // Default: první 3 branches v grafu
+        $this->selectedBranchIds = $this->branches->take(3)->pluck('id')->all();
     }
 
-    // ── Formátování Kč s narrow no-break space (U+202F) ──
-    public static function fCzk(int $n): string
-    {
-        $sign = $n < 0 ? '-' : '';
-        $abs  = abs($n);
-        $rev  = strrev((string) $abs);
-        $grp  = str_split($rev, 3);
-        $s    = strrev(implode("\\u{202F}", $grp));
-        return $sign . $s . "\\u{202F}Kč";
-    }
+    public function setMode(string $m): void   { $this->mode   = $m; }
+    public function setPeriod(string $p): void { $this->period = $p; }
+    public function setYear(int $y): void      { $this->year   = $y; }
+    public function setMonth(int $m): void     { $this->month  = $m; }
 
-    // ── Datumy v rozsahu (včetně) ──
-    public static function getDatesInRange(string $from, string $to): array
+    public function toggleBranch(int $id): void
     {
-        $dates = [];
-        $cur = Carbon::parse($from . ' 12:00:00');
-        $end = Carbon::parse($to   . ' 12:00:00');
-        while ($cur <= $end) {
-            $dates[] = $cur->format('Y-m-d');
-            $cur->addDay();
+        if (in_array($id, $this->selectedBranchIds, true)) {
+            $this->selectedBranchIds = array_values(array_filter(
+                $this->selectedBranchIds, fn ($x) => $x !== $id
+            ));
+        } else {
+            $this->selectedBranchIds[] = $id;
         }
-        return $dates;
     }
 
-    // ── Smooth SVG path (Catmull-Rom přes cubic bezier) ──
-    public static function smoothPath(array $pts): string
+    // ── Helpery (volatelné z Blade jako $this->...) ──
+
+    public function selectedBranches()
+    {
+        if (!$this->branches) return collect();
+        return $this->branches->whereIn('id', $this->selectedBranchIds)->values();
+    }
+
+    public function fromYear(): int
+    {
+        return match ($this->period) {
+            '3'   => 2024, '5' => 2022, '10' => 2017, 'vse' => 2006,
+            default => 2006,
+        };
+    }
+
+    public function xLabels(): array
+    {
+        return match ($this->mode) {
+            'roky'       => array_map('strval', range($this->fromYear(), now()->year)),
+            'rok-mesice' => self::MONTH_LABELS,
+            'mesic-roky' => array_map('strval', range($this->fromYear(), now()->year)),
+        };
+    }
+
+    // ── Hlavní query ─────────────────────────────────────────────
+    // Vrací: array indexed by [branchId][xLabel] => suma tržeb
+    // TODO: pro větší rozsahy zvážit cache nebo monthly_summaries tabulku
+    public function loadChartData(): array
+    {
+        $branchIds = $this->selectedBranchIds;
+        if (empty($branchIds)) return [];
+
+        // Datum range podle módu
+        if ($this->mode === 'roky') {
+            $from = Carbon::create($this->fromYear(), 1, 1);
+            $to   = Carbon::create(now()->year, 12, 31);
+        } elseif ($this->mode === 'rok-mesice') {
+            $from = Carbon::create($this->year, 1, 1);
+            $to   = Carbon::create($this->year, 12, 31);
+        } else { // mesic-roky
+            $from = Carbon::create($this->fromYear(), $this->month, 1);
+            $to   = Carbon::create(now()->year, $this->month, 1)->endOfMonth();
+        }
+
+        // Agregace dle módu (year | year+month | year)
+        $groupBy = $this->mode === 'rok-mesice'
+            ? 'MONTH(daily_closings.date)'
+            : 'YEAR(daily_closings.date)';
+
+        $rows = DailyClosingRow::query()
+            ->selectRaw("
+                daily_closings.branch_id,
+                {$groupBy} as period_key,
+                SUM(daily_closing_rows.value) as sales
+            ")
+            ->join(
+                'daily_closings',
+                'daily_closings.id',
+                '=',
+                'daily_closing_rows.daily_closing_id'
+            )
+            ->whereIn('daily_closings.branch_id', $branchIds)
+            ->whereBetween('daily_closings.date', [$from, $to])
+            // pro mesic-roky filtrovat na zvolený měsíc
+            ->when($this->mode === 'mesic-roky', function ($q) {
+                $q->whereRaw('MONTH(daily_closings.date) = ?', [$this->month]);
+            })
+            ->whereIn('daily_closing_rows.type_id', [
+                DailyClosingRow::SALES,
+                DailyClosingRow::SALE_MANUAL,
+            ])
+            ->groupBy('daily_closings.branch_id', 'period_key')
+            ->get();
+
+        // Indexace [branchId][periodKey] => sales
+        $indexed = [];
+        foreach ($rows as $r) {
+            $indexed[$r->branch_id][$r->period_key] = (float) $r->sales;
+        }
+        return $indexed;
+    }
+
+    // SVG chart payload (rendrované server-side, hover ovládá Alpine.js)
+    public function chart(): array
+    {
+        $IW = self::CW - self::ML - self::MR;
+        $IH = self::CH - self::MT - self::MB;
+
+        $xLabels  = $this->xLabels();
+        $N        = count($xLabels);
+        $branches = $this->selectedBranches();
+        $indexed  = $this->loadChartData();
+
+        // Sestav data per branch per x-bod
+        $dataPerBranch = [];
+        foreach ($branches as $b) {
+            $vals = [];
+            foreach ($xLabels as $i => $label) {
+                $periodKey = $this->mode === 'rok-mesice' ? ($i + 1) : (int) $label;
+                $vals[] = $indexed[$b->id][$periodKey] ?? 0;
+            }
+            $dataPerBranch[] = ['branch' => $b, 'vals' => $vals];
+        }
+
+        $allVals = [];
+        foreach ($dataPerBranch as $d) foreach ($d['vals'] as $v) if ($v > 0) $allVals[] = $v;
+        $maxVal = !empty($allVals) ? max($allVals) : 1;
+        $yMax = (int) (ceil($maxVal / 1_000_000) * 1_000_000) ?: (int) (ceil($maxVal / 100_000) * 100_000);
+
+        $xPx = fn (int $i) => $N > 1 ? self::ML + ($i / ($N - 1)) * $IW : self::ML + $IW / 2;
+        $yPx = fn (float $v) => self::MT + $IH - ($v / $yMax) * $IH;
+
+        $lines = [];
+        foreach ($dataPerBranch as $d) {
+            $pts = [];
+            foreach ($d['vals'] as $i => $v) {
+                $pts[] = ['x' => $xPx($i), 'y' => $yPx(max($v, 0)), 'v' => $v, 'has' => $v > 0];
+            }
+            $nonZero = array_values(array_filter($pts, fn ($p) => $p['has']));
+            $areaPath = '';
+            if (count($nonZero) > 1) {
+                $smooth = $this->smoothPath($nonZero);
+                $last = end($nonZero); $first = reset($nonZero);
+                $baseLine = self::MT + $IH;
+                $areaPath = "{$smooth} L {$last['x']},{$baseLine} L {$first['x']},{$baseLine} Z";
+            }
+            $lines[] = [
+                'branch'   => $d['branch'],
+                'pts'      => $pts,
+                'linePath' => $this->smoothPath($pts),
+                'areaPath' => $areaPath,
+            ];
+        }
+
+        $xCoords = array_map(fn ($i) => $xPx($i), array_keys($xLabels));
+
+        return [
+            'IW' => $IW, 'IH' => $IH, 'N' => $N, 'yMax' => $yMax,
+            'xLabels'  => $xLabels,
+            'gridVals' => [$yMax * 0.25, $yMax * 0.5, $yMax * 0.75, $yMax],
+            'lines'    => $lines,
+            'xCoords'  => $xCoords,
+            'xHalf'    => $N > 1 ? ($IW / ($N - 1)) / 2 : $IW / 2,
+        ];
+    }
+
+    // Smooth SVG path (Catmull-Rom přes cubic bezier)
+    public function smoothPath(array $pts): string
     {
         $n = count($pts);
         if ($n < 2) return '';
@@ -541,555 +834,62 @@ class TrzbyHelper
         }
         return $d;
     }
-}
-`;
 
-const CODE_TRZBY_DETAIL_PHP = `<?php
-// app/Livewire/TrzbyDetail.php
-// Livewire v4 komponenta — tabulka tržeb za období + přednastavené filtry.
-// State: dateFrom, dateTo, selectedProvozovna (null = všechny).
-namespace App\\Livewire;
-
-use App\\Support\\Provozovny;
-use App\\Support\\TrzbyHelper;
-use Carbon\\Carbon;
-use Livewire\\Attributes\\Computed;
-use Livewire\\Component;
-
-class TrzbyDetail extends Component
-{
-    public string  $dateFrom            = '2026-04-11';
-    public string  $dateTo              = '2026-04-17';
-    public ?string $selectedProvozovna  = null;            // null = všechny
-
-    // Předdefinované presety (referenční datum: 2026-04-17)
-    public const PRESETS = [
-        ['label' => 'Dnes',           'from' => '2026-04-17', 'to' => '2026-04-17'],
-        ['label' => 'Včera',          'from' => '2026-04-16', 'to' => '2026-04-16'],
-        ['label' => 'Aktuální týden', 'from' => '2026-04-13', 'to' => '2026-04-17'],
-        ['label' => 'Minulý týden',   'from' => '2026-04-06', 'to' => '2026-04-12'],
-        ['label' => 'Aktuální měsíc', 'from' => '2026-04-01', 'to' => '2026-04-17'],
-        ['label' => 'Minulý měsíc',   'from' => '2026-03-01', 'to' => '2026-03-31'],
-        ['label' => 'Aktuální rok',   'from' => '2026-01-01', 'to' => '2026-04-17'],
-        ['label' => 'Minulý rok',     'from' => '2025-01-01', 'to' => '2025-12-31'],
-    ];
-
-    public function applyPreset(string $label): void
+    public function fmtY(float $v): string
     {
-        foreach (self::PRESETS as $p) {
-            if ($p['label'] === $label) {
-                $this->dateFrom = $p['from'];
-                $this->dateTo   = $p['to'];
-                return;
-            }
-        }
+        return $v >= 1_000_000
+            ? sprintf('%.1fM', $v / 1_000_000)
+            : sprintf('%dk', (int) round($v / 1_000));
     }
+};
+?>
 
-    #[Computed]
-    public function isSingleVenue(): bool
-    {
-        return $this->selectedProvozovna !== null && $this->selectedProvozovna !== 'all';
-    }
-
-    #[Computed]
-    public function singleProv(): ?array
-    {
-        return $this->isSingleVenue
-            ? Provozovny::findById($this->selectedProvozovna)
-            : null;
-    }
-
-    #[Computed]
-    public function isMonthly(): bool
-    {
-        // Rozsah > 60 dní → měsíční agregace
-        $from = Carbon::parse($this->dateFrom);
-        $to   = Carbon::parse($this->dateTo);
-        return $from->diffInDays($to) > 60;
-    }
-
-    #[Computed]
-    public function rows(): array
-    {
-        $dates = TrzbyHelper::getDatesInRange($this->dateFrom, $this->dateTo);
-
-        if (! $this->isMonthly) {
-            return array_map(fn ($d) => [
-                'label'  => $this->rowLabel($d),
-                'datum'  => $d,
-                'byProv' => TrzbyHelper::genDayData($d),
-            ], $dates);
-        }
-
-        // Měsíční agregace
-        $months = [];
-        foreach ($dates as $d) {
-            $key = substr($d, 0, 7);
-            $day = TrzbyHelper::genDayData($d);
-            foreach (Provozovny::active() as $p) {
-                $months[$key][$p['id']] = ($months[$key][$p['id']] ?? 0) + ($day[$p['id']] ?? 0);
-            }
-        }
-        ksort($months);
-
-        return array_map(fn ($key, $byProv) => [
-            'label'  => $this->monthLabel($key),
-            'datum'  => $key . '-01',
-            'byProv' => $byProv,
-        ], array_keys($months), $months);
-    }
-
-    #[Computed]
-    public function cols(): array
-    {
-        return $this->isSingleVenue ? [] : Provozovny::active();
-    }
-
-    protected function rowLabel(string $d): string
-    {
-        $dt = Carbon::parse($d . ' 12:00:00');
-        $wd = ['ne','po','út','st','čt','pá','so'][$dt->dayOfWeek];
-        return "{$wd} {$dt->day}.{$dt->month}.";
-    }
-
-    protected function monthLabel(string $key): string
-    {
-        $dt = Carbon::parse($key . '-01 12:00:00');
-        $m  = ['leden','únor','březen','duben','květen','červen',
-               'červenec','srpen','září','říjen','listopad','prosinec'][$dt->month - 1];
-        return "{$m} {$dt->year}";
-    }
-
-    public function render()
-    {
-        return view('livewire.trzby-detail', [
-            'presets' => self::PRESETS,
-        ]);
-    }
-}
-`;
-
-const CODE_TRZBY_DETAIL_BLADE = `{{-- resources/views/livewire/trzby-detail.blade.php --}}
-{{-- Vyžaduje TrzbyHelper a Provozovny aliasy; assume Bootstrap 5 + iconify-icon web-component --}}
-@php
-    use App\\Support\\TrzbyHelper;
-@endphp
-<div class="card mb-4">
-    <div class="card-header trzby-detail-header-sticky">
-        <div class="d-flex align-items-center justify-content-between flex-wrap gap-2">
-            <h5 class="card-title mb-0">
-                Tržby detail
-                @if($this->isSingleVenue && $this->singleProv)
-                    <span class="ms-2 fw-normal fs-6 text-muted">
-                        <span class="rounded-circle d-inline-block me-1"
-                              style="width:8px;height:8px;background:{{ $this->singleProv['color'] }}"></span>
-                        {{ $this->singleProv['name'] }}
-                    </span>
-                @endif
-            </h5>
-
-            <div class="d-flex align-items-center gap-2 flex-wrap">
-                {{-- Přednastavené filtry --}}
-                <select class="form-select form-select-sm" style="width:auto"
-                        wire:change="applyPreset($event.target.value)">
-                    <option value="" disabled selected>Rychlý výběr…</option>
-                    @foreach($presets as $p)
-                        <option value="{{ $p['label'] }}">{{ $p['label'] }}</option>
-                    @endforeach
-                </select>
-
-                <div class="topbar-divider"></div>
-
-                <div class="d-flex align-items-center gap-1">
-                    <span class="text-muted small">Od</span>
-                    <input type="date" class="form-control form-control-sm" style="width:140px"
-                           wire:model.live.debounce.300ms="dateFrom">
-                </div>
-                <div class="d-flex align-items-center gap-1">
-                    <span class="text-muted small">Do</span>
-                    <input type="date" class="form-control form-control-sm" style="width:140px"
-                           wire:model.live.debounce.300ms="dateTo">
-                </div>
-
-                <span class="badge bg-light text-muted border">
-                    {{ $this->isMonthly ? 'Měsíce' : 'Dny' }} · {{ count($this->rows) }} řádků
-                </span>
+@placeholder
+    <div class="card">
+        <div class="card-header"><h4>Vývoj tržeb</h4></div>
+        <div class="card-body">
+            <div class="spinner-border text-primary" role="status">
+                <span class="visually-hidden">Loading...</span>
             </div>
         </div>
     </div>
+@endplaceholder
 
-    <div class="trzby-detail-wrap">
-        @if(count($this->rows) === 0)
-            <div class="p-4 text-center text-muted">Vyberte platný rozsah dat (max. 2 roky).</div>
-
-        @elseif($this->isSingleVenue && $this->singleProv)
-            {{-- ─── Single venue: Kuchyň / Bar / Celkem / vs. D-7 ─── --}}
-            @php
-                $prov     = $this->singleProv;
-                $isToday  = fn ($d) => $d === '2026-04-17';
-                $isLive   = TrzbyHelper::UCTY_MOCK[$prov['id']] ?? false;
-                $sumK = 0; $sumB = 0; $sumC = 0;
-            @endphp
-            <table class="trzby-detail-table">
-                <thead>
-                    <tr>
-                        <th class="trzby-col-date trzby-sticky-l">
-                            <div class="d-flex align-items-center gap-1">
-                                <span class="rounded-circle d-inline-block"
-                                      style="width:8px;height:8px;background:{{ $prov['color'] }}"></span>
-                                {{ $this->isMonthly ? 'Měsíc' : 'Datum' }}
-                            </div>
-                        </th>
-                        <th class="trzby-col-prov" style="color:#1c84ee">Kuchyň</th>
-                        <th class="trzby-col-prov" style="color:#22c55e">Bar</th>
-                        <th class="trzby-col-prov">Celkem</th>
-                        <th class="trzby-col-prov trzby-sticky-r" style="min-width:110px">vs. D-7</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    @foreach($this->rows as $row)
-                        @php
-                            $split = TrzbyHelper::genDayDataSplit($row['datum'], $prov['id']);
-                            $d7    = $this->isMonthly ? null : TrzbyHelper::genD7Split($row['datum'], $prov['id']);
-                            $d7Chng = $d7 ? round((($split['c'] - $d7['c']) / max($d7['c'], 1)) * 1000) / 10 : null;
-                            $d7Up   = $d7Chng !== null && $d7Chng >= 0;
-                            $provLive = $isToday($row['datum']) && $isLive;
-                            $sumK += $split['k']; $sumB += $split['b']; $sumC += $split['c'];
-                        @endphp
-                        <tr wire:key="row-{{ $row['datum'] }}">
-                            <td class="trzby-col-date trzby-sticky-l fw-semibold">{{ $row['label'] }}</td>
-                            <td class="trzby-col-prov text-end czk-num" style="color:#1c84ee">
-                                {{ TrzbyHelper::fCzk($split['k']) }}
-                            </td>
-                            <td class="trzby-col-prov text-end czk-num" style="color:#22c55e">
-                                {{ TrzbyHelper::fCzk($split['b']) }}
-                            </td>
-                            <td class="trzby-col-prov text-end czk-num fw-semibold">
-                                <span class="d-inline-flex align-items-center justify-content-end gap-1">
-                                    @if($provLive)
-                                        <span class="trzby-live-dot" style="width:5px;height:5px"></span>
-                                    @endif
-                                    {{ TrzbyHelper::fCzk($split['c']) }}
-                                </span>
-                            </td>
-                            <td class="trzby-col-prov trzby-sticky-r text-end">
-                                @if($d7Chng !== null)
-                                    <span class="badge {{ $d7Up ? 'bg-success-subtle text-success' : 'bg-danger-subtle text-danger' }}">
-                                        <iconify-icon icon="{{ $d7Up ? 'solar:arrow-up-bold' : 'solar:arrow-down-bold' }}"></iconify-icon>
-                                        {{ $d7Up ? '+' : '' }}{{ number_format($d7Chng, 1, ',', '') }} %
-                                    </span>
-                                @else
-                                    <span class="text-muted">—</span>
-                                @endif
-                            </td>
-                        </tr>
-                    @endforeach
-                </tbody>
-                <tfoot>
-                    <tr>
-                        <td class="trzby-col-date trzby-sticky-l fw-bold">Celkem</td>
-                        <td class="trzby-col-prov text-end czk-num fw-bold" style="color:#1c84ee">{{ TrzbyHelper::fCzk($sumK) }}</td>
-                        <td class="trzby-col-prov text-end czk-num fw-bold" style="color:#22c55e">{{ TrzbyHelper::fCzk($sumB) }}</td>
-                        <td class="trzby-col-prov text-end czk-num fw-bold">{{ TrzbyHelper::fCzk($sumC) }}</td>
-                        <td class="trzby-col-prov trzby-sticky-r text-end text-muted">—</td>
-                    </tr>
-                </tfoot>
-            </table>
-
-        @else
-            {{-- ─── Multi venue: jeden sloupec per provozovna ─── --}}
-            @php
-                $isToday = fn ($d) => $d === '2026-04-17';
-                $colSums  = [];
-                $grandTot = 0;
-            @endphp
-            <table class="trzby-detail-table">
-                <thead>
-                    <tr>
-                        <th class="trzby-col-date trzby-sticky-l">{{ $this->isMonthly ? 'Měsíc' : 'Datum' }}</th>
-                        @foreach($this->cols as $p)
-                            <th class="trzby-col-prov" wire:key="head-{{ $p['id'] }}">
-                                <div class="d-flex align-items-center justify-content-end gap-1">
-                                    <span class="rounded-circle d-inline-block flex-shrink-0"
-                                          style="width:7px;height:7px;background:{{ $p['color'] }}"></span>
-                                    {{ $p['shortName'] }}
-                                </div>
-                            </th>
-                        @endforeach
-                        <th class="trzby-col-total trzby-sticky-r">Celkem</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    @foreach($this->rows as $row)
-                        @php
-                            $rowTotal = 0;
-                            foreach ($this->cols as $p) $rowTotal += $row['byProv'][$p['id']] ?? 0;
-                            $anyLive = false;
-                            if ($isToday($row['datum'])) {
-                                foreach ($this->cols as $p) {
-                                    if (TrzbyHelper::UCTY_MOCK[$p['id']] ?? false) { $anyLive = true; break; }
-                                }
-                            }
-                            $grandTot += $rowTotal;
-                        @endphp
-                        <tr wire:key="row-{{ $row['datum'] }}">
-                            <td class="trzby-col-date trzby-sticky-l fw-semibold">{{ $row['label'] }}</td>
-                            @foreach($this->cols as $p)
-                                @php
-                                    $v = $row['byProv'][$p['id']] ?? 0;
-                                    $colSums[$p['id']] = ($colSums[$p['id']] ?? 0) + $v;
-                                    $provLive = $isToday($row['datum']) && (TrzbyHelper::UCTY_MOCK[$p['id']] ?? false);
-                                @endphp
-                                <td class="trzby-col-prov text-end czk-num" wire:key="c-{{ $row['datum'] }}-{{ $p['id'] }}">
-                                    @if($v > 0)
-                                        <span class="d-inline-flex align-items-center justify-content-end gap-1">
-                                            @if($provLive)
-                                                <span class="trzby-live-dot" style="width:5px;height:5px"></span>
-                                            @endif
-                                            {{ TrzbyHelper::fCzk($v) }}
-                                        </span>
-                                    @else
-                                        <span class="text-muted">—</span>
-                                    @endif
-                                </td>
-                            @endforeach
-                            <td class="trzby-col-total trzby-sticky-r text-end czk-num fw-bold">
-                                <span class="d-inline-flex align-items-center justify-content-end gap-1">
-                                    @if($anyLive)
-                                        <span class="trzby-live-dot" style="width:5px;height:5px"></span>
-                                    @endif
-                                    {{ TrzbyHelper::fCzk($rowTotal) }}
-                                </span>
-                            </td>
-                        </tr>
-                    @endforeach
-                </tbody>
-                <tfoot>
-                    <tr>
-                        <td class="trzby-col-date trzby-sticky-l fw-bold">Celkem</td>
-                        @foreach($this->cols as $p)
-                            <td class="trzby-col-prov text-end czk-num fw-bold" wire:key="foot-{{ $p['id'] }}">
-                                {{ TrzbyHelper::fCzk($colSums[$p['id']] ?? 0) }}
-                            </td>
-                        @endforeach
-                        <td class="trzby-col-total trzby-sticky-r text-end czk-num fw-bold">
-                            {{ TrzbyHelper::fCzk($grandTot) }}
-                        </td>
-                    </tr>
-                </tfoot>
-            </table>
-        @endif
-    </div>
-</div>
-`;
-
-const CODE_VYVOJ_TRZEB_PHP = `<?php
-// app/Livewire/VyvojTrzeb.php
-// Livewire v4 komponenta — multi-line SVG chart vývoje tržeb + tabulka pod ním.
-// 3 módy: Roky (X = roky) / Rok › měsíce (X = měsíce zvoleného roku) / Měsíc › roky (X = roky zvoleného měsíce).
-namespace App\\Livewire;
-
-use App\\Support\\Provozovny;
-use App\\Support\\TrzbyHelper;
-use Livewire\\Attributes\\Computed;
-use Livewire\\Component;
-
-class VyvojTrzeb extends Component
-{
-    public string $mode    = 'roky';              // roky | rok-mesice | mesic-roky
-    public string $period  = 'vse';               // 3 | 5 | 10 | vse (jen pro mode='roky')
-    public int    $year    = 2025;                // pro mode='rok-mesice'
-    public int    $month   = 1;                   // pro mode='mesic-roky' (1-12)
-    public array  $selectedProvs = ['cg-brno', 'piazza', 'monte'];
-
-    public const MONTH_LABELS = ['Led','Únor','Bře','Dub','Kvě','Čer','Čec','Srp','Zář','Říj','Lis','Pro'];
-    public const MONTH_FULL   = ['Leden','Únor','Březen','Duben','Květen','Červen','Červenec','Srpen','Září','Říjen','Listopad','Prosinec'];
-
-    // SVG dimensions (musí matchovat s JS verzí)
-    public const CW = 700; public const CH = 210;
-    public const ML = 62;  public const MT = 16;
-    public const MR = 16;  public const MB = 38;
-
-    public function setMode(string $m): void   { $this->mode = $m; }
-    public function setPeriod(string $p): void { $this->period = $p; }
-
-    public function toggleProv(string $id): void
-    {
-        if (in_array($id, $this->selectedProvs, true)) {
-            $this->selectedProvs = array_values(array_filter($this->selectedProvs, fn ($x) => $x !== $id));
-        } else {
-            $this->selectedProvs[] = $id;
-        }
-    }
-
-    #[Computed]
-    public function chartProvs(): array
-    {
-        return array_values(array_filter(
-            Provozovny::active(),
-            fn ($p) => in_array($p['id'], $this->selectedProvs, true) && TrzbyHelper::baseDay($p['id']) > 0
-        ));
-    }
-
-    #[Computed]
-    public function fromYear(): int
-    {
-        return match ($this->period) {
-            '3'   => 2024,
-            '5'   => 2022,
-            '10'  => 2017,
-            'vse' => 2006,
-            default => 2006,
-        };
-    }
-
-    #[Computed]
-    public function mesicRokyFromYear(): int
-    {
-        if (empty($this->chartProvs)) return 2018;
-        $years = array_map(
-            fn ($p) => TrzbyHelper::FOUNDING_YEAR[$p['id']] ?? 2018,
-            $this->chartProvs
-        );
-        return min($years);
-    }
-
-    #[Computed]
-    public function xLabels(): array
-    {
-        return match ($this->mode) {
-            'roky'       => array_map('strval', range($this->fromYear, 2026)),
-            'rok-mesice' => self::MONTH_LABELS,
-            'mesic-roky' => array_map('strval', range($this->mesicRokyFromYear, 2026)),
-        };
-    }
-
-    #[Computed]
-    public function data(): array
-    {
-        $out = [];
-        foreach ($this->chartProvs as $p) {
-            $vals = [];
-            if ($this->mode === 'roky') {
-                foreach ($this->xLabels as $y) $vals[] = TrzbyHelper::genAnnualRevenue((int) $y, $p['id']);
-            } elseif ($this->mode === 'rok-mesice') {
-                for ($i = 1; $i <= 12; $i++) $vals[] = TrzbyHelper::genMonthRevenue($this->year, $i, $p['id']);
-            } else { // mesic-roky
-                foreach ($this->xLabels as $y) $vals[] = TrzbyHelper::genMonthRevenue((int) $y, $this->month, $p['id']);
-            }
-            $out[] = $vals;
-        }
-        return $out;
-    }
-
-    // Připraví SVG payload pro Blade (paths, body, gridy…)
-    #[Computed]
-    public function chart(): array
-    {
-        $IW = self::CW - self::ML - self::MR;
-        $IH = self::CH - self::MT - self::MB;
-        $N  = count($this->xLabels);
-
-        $allVals = [];
-        foreach ($this->data as $row) foreach ($row as $v) if ($v > 0) $allVals[] = $v;
-        $maxVal = !empty($allVals) ? max($allVals) : 1;
-        $yMax   = (int) (ceil($maxVal / 1_000_000) * 1_000_000) ?: (int) (ceil($maxVal / 100_000) * 100_000);
-
-        $xPx = fn (int $i) => $N > 1 ? self::ML + ($i / ($N - 1)) * $IW : self::ML + $IW / 2;
-        $yPx = fn (float $v) => self::MT + $IH - ($v / $yMax) * $IH;
-
-        $lines = [];
-        foreach ($this->chartProvs as $pi => $prov) {
-            $pts = [];
-            foreach ($this->data[$pi] as $i => $v) {
-                $pts[] = ['x' => $xPx($i), 'y' => $yPx(max($v, 0)), 'v' => $v, 'has' => $v > 0];
-            }
-            $nonZero = array_values(array_filter($pts, fn ($p) => $p['has']));
-
-            $areaPath = '';
-            if (count($nonZero) > 1) {
-                $smooth   = TrzbyHelper::smoothPath($nonZero);
-                $last     = end($nonZero);
-                $first    = reset($nonZero);
-                $baseLine = self::MT + $IH;
-                $areaPath = "{$smooth} L {$last['x']},{$baseLine} L {$first['x']},{$baseLine} Z";
-            }
-
-            $lines[] = [
-                'prov'     => $prov,
-                'pts'      => $pts,
-                'linePath' => TrzbyHelper::smoothPath($pts),
-                'areaPath' => $areaPath,
-            ];
-        }
-
-        $xCoords = array_map(fn ($i) => $xPx($i), array_keys($this->xLabels));
-
-        return [
-            'IW' => $IW, 'IH' => $IH, 'N' => $N, 'yMax' => $yMax,
-            'gridVals' => [$yMax * 0.25, $yMax * 0.5, $yMax * 0.75, $yMax],
-            'lines'    => $lines,
-            'xCoords'  => $xCoords,
-            'xHalf'    => $N > 1 ? ($IW / ($N - 1)) / 2 : $IW / 2,
-            'fmtY'     => function (float $v): string {
-                return $v >= 1_000_000
-                    ? sprintf('%.1fM', $v / 1_000_000)
-                    : sprintf('%dk', (int) round($v / 1_000));
-            },
-        ];
-    }
-
-    public function render()
-    {
-        return view('livewire.vyvoj-trzeb');
-    }
-}
-`;
-
-const CODE_VYVOJ_TRZEB_BLADE = `{{-- resources/views/livewire/vyvoj-trzeb.blade.php --}}
-{{-- Vyžaduje Alpine.js (pro hover tooltip) + iconify-icon web-component. --}}
 @php
-    use App\\Support\\Provozovny;
-    use App\\Support\\TrzbyHelper;
-    $activeProvs = array_values(array_filter(
-        Provozovny::active(),
-        fn ($p) => TrzbyHelper::baseDay($p['id']) > 0
-    ));
-    $chart = $this->chart;
-    // Pole hodnot pro JS (Alpine tooltip)
-    $dataJs    = json_encode($this->data);
-    $xCoordsJs = json_encode($chart['xCoords']);
-    $provsJs   = json_encode(array_map(fn ($p) => [
-        'id' => $p['id'], 'shortName' => $p['shortName'], 'color' => $p['color'],
-    ], $this->chartProvs));
+    $chart = $this->chart();
+    $branches = $this->branches;
+    $selected = $this->selectedBranches();
 @endphp
+
 <div class="card mb-3"
      x-data="vyvojChart({
-         data: {{ $dataJs }},
-         xCoords: {{ $xCoordsJs }},
-         provs: {{ $provsJs }},
-         xLabels: {{ json_encode($this->xLabels) }},
-         monthLabels: {{ json_encode(\\App\\Livewire\\VyvojTrzeb::MONTH_LABELS) }},
-         mode: '{{ $this->mode }}',
-         year: {{ $this->year }},
+         xCoords: {{ json_encode($chart['xCoords']) }},
+         xLabels: {{ json_encode($chart['xLabels']) }},
+         lines:   {{ json_encode(array_map(fn ($l) => [
+                        'id'    => $l['branch']->id,
+                        'name'  => $l['branch']->name,
+                        'color' => $l['branch']->color,
+                        'vals'  => array_column($l['pts'], 'v'),
+                    ], $chart['lines'])) }},
+         mode:  '{{ $this->mode }}',
+         year:  {{ $this->year }},
          month: {{ $this->month }},
-         ml: {{ \\App\\Livewire\\VyvojTrzeb::ML }},
-         iw: {{ $chart['IW'] }},
-         N:  {{ $chart['N'] }},
+         ml:    {{ \\App\\Livewire\\VyvojTrzeb::ML ?? 62 }},
+         iw:    {{ $chart['IW'] }},
+         N:     {{ $chart['N'] }},
      })">
-
     <div class="card-header trzby-detail-header-sticky">
         {{-- Řádek 1: nadpis + mode switcher --}}
         <div class="d-flex align-items-center justify-content-between flex-wrap gap-2 mb-2">
             <div>
-                <h5 class="card-title mb-0">Vývoj tržeb</h5>
+                <h4 class="card-title mb-0">Vývoj tržeb</h4>
                 <small class="text-muted fw-normal">
                     @if($this->mode === 'roky')
-                        Roční přehled · {{ $this->fromYear }}–2026 · *duben 2026
+                        Roční přehled · {{ $this->fromYear() }}–{{ now()->year }}
                     @elseif($this->mode === 'rok-mesice')
                         Měsíční přehled · rok {{ $this->year }}
                     @else
-                        {{ \\App\\Livewire\\VyvojTrzeb::MONTH_FULL[$this->month - 1] }} · {{ $this->mesicRokyFromYear }}–2026
+                        {{ self::MONTH_FULL[$this->month - 1] }} · {{ $this->fromYear() }}–{{ now()->year }}
                     @endif
                 </small>
             </div>
@@ -1100,6 +900,7 @@ const CODE_VYVOJ_TRZEB_BLADE = `{{-- resources/views/livewire/vyvoj-trzeb.blade.
                                 wire:click="setMode('{{ $k }}')">{{ $lbl }}</button>
                     @endforeach
                 </div>
+
                 @if($this->mode === 'roky')
                     <div class="lk-segment">
                         @foreach(['3' => '3 roky', '5' => '5 let', '10' => '10 let', 'vse' => 'Vše'] as $k => $lbl)
@@ -1108,16 +909,18 @@ const CODE_VYVOJ_TRZEB_BLADE = `{{-- resources/views/livewire/vyvoj-trzeb.blade.
                         @endforeach
                     </div>
                 @endif
+
                 @if($this->mode === 'rok-mesice')
                     <select class="form-select form-select-sm" style="width:auto" wire:model.live="year">
-                        @for($y = 2026; $y >= 2006; $y--)
+                        @for($y = now()->year; $y >= 2006; $y--)
                             <option value="{{ $y }}">{{ $y }}</option>
                         @endfor
                     </select>
                 @endif
+
                 @if($this->mode === 'mesic-roky')
                     <select class="form-select form-select-sm" style="width:auto" wire:model.live="month">
-                        @foreach(\\App\\Livewire\\VyvojTrzeb::MONTH_FULL as $i => $m)
+                        @foreach(self::MONTH_FULL as $i => $m)
                             <option value="{{ $i + 1 }}">{{ $m }}</option>
                         @endforeach
                     </select>
@@ -1125,61 +928,57 @@ const CODE_VYVOJ_TRZEB_BLADE = `{{-- resources/views/livewire/vyvoj-trzeb.blade.
             </div>
         </div>
 
-        {{-- Řádek 2: toggle tlačítka podniků --}}
+        {{-- Řádek 2: toggle tlačítka branches --}}
         <div class="d-flex flex-wrap gap-1">
-            @foreach($activeProvs as $p)
-                @php $sel = in_array($p['id'], $this->selectedProvs, true); @endphp
+            @foreach($branches as $b)
+                @php $sel = in_array($b->id, $this->selectedBranchIds, true); @endphp
                 <button class="trzby-chart-toggle"
-                        style="{{ $sel ? "background:{$p['color']};border-color:{$p['color']};color:white" : '' }}"
-                        wire:click="toggleProv('{{ $p['id'] }}')">
-                    {{ $p['shortName'] }}
+                        style="{{ $sel ? "background:{$b->color};border-color:{$b->color};color:white" : '' }}"
+                        wire:click="toggleBranch({{ $b->id }})">
+                    {{ $b->name }}
                 </button>
             @endforeach
         </div>
     </div>
 
     <div class="card-body pb-2">
-        @if(empty($this->chartProvs))
+        <div class="spinner-border text-primary" role="status" wire:loading wire:target="setMode,setPeriod,year,month,toggleBranch">
+            <span class="visually-hidden">Loading...</span>
+        </div>
+
+        @if($selected->isEmpty())
             <div style="height:230px;display:flex;align-items:center;justify-content:center" class="text-muted">
                 Vyberte alespoň jeden podnik pomocí tlačítek výše.
             </div>
         @else
-            <div style="position:relative;height:230px">
-                <svg viewBox="0 0 {{ \\App\\Livewire\\VyvojTrzeb::CW }} {{ \\App\\Livewire\\VyvojTrzeb::CH }}"
-                     style="width:100%;height:100%;display:block">
-
-                    {{-- Grid --}}
-                    @php
-                        $ML = \\App\\Livewire\\VyvojTrzeb::ML;
-                        $MR = \\App\\Livewire\\VyvojTrzeb::MR;
-                        $MT = \\App\\Livewire\\VyvojTrzeb::MT;
-                        $CW = \\App\\Livewire\\VyvojTrzeb::CW;
-                    @endphp
+            <div style="position:relative;height:230px" wire:loading.remove>
+                <svg viewBox="0 0 {{ self::CW }} {{ self::CH }}" style="width:100%;height:100%;display:block">
+                    {{-- Grid + osy --}}
                     @foreach($chart['gridVals'] as $gv)
-                        @php $yp = $MT + $chart['IH'] - ($gv / $chart['yMax']) * $chart['IH']; @endphp
-                        <line x1="{{ $ML }}" y1="{{ $yp }}" x2="{{ $CW - $MR }}" y2="{{ $yp }}"
+                        @php $yp = self::MT + $chart['IH'] - ($gv / $chart['yMax']) * $chart['IH']; @endphp
+                        <line x1="{{ self::ML }}" y1="{{ $yp }}" x2="{{ self::CW - self::MR }}" y2="{{ $yp }}"
                               stroke="#eaedf1" stroke-width="1" stroke-dasharray="4 3"/>
-                        <text x="{{ $ML - 6 }}" y="{{ $yp + 4 }}" text-anchor="end" font-size="9" fill="#9097a7">
-                            {{ ($chart['fmtY'])($gv) }}
+                        <text x="{{ self::ML - 6 }}" y="{{ $yp + 4 }}" text-anchor="end" font-size="9" fill="#9097a7">
+                            {{ $this->fmtY($gv) }}
                         </text>
                     @endforeach
-                    <line x1="{{ $ML }}" y1="{{ $MT + $chart['IH'] }}"
-                          x2="{{ $CW - $MR }}" y2="{{ $MT + $chart['IH'] }}"
+                    <line x1="{{ self::ML }}" y1="{{ self::MT + $chart['IH'] }}"
+                          x2="{{ self::CW - self::MR }}" y2="{{ self::MT + $chart['IH'] }}"
                           stroke="#eaedf1" stroke-width="1"/>
 
-                    {{-- Linie per provozovna --}}
-                    @foreach($chart['lines'] as $idx => $line)
+                    {{-- Linie per branch --}}
+                    @foreach($chart['lines'] as $line)
                         <g>
                             @if($line['areaPath'])
-                                <path d="{{ $line['areaPath'] }}" fill="{{ $line['prov']['color'] }}" fill-opacity="0.07"/>
+                                <path d="{{ $line['areaPath'] }}" fill="{{ $line['branch']->color }}" fill-opacity="0.07"/>
                             @endif
                             <path d="{{ $line['linePath'] }}" fill="none"
-                                  stroke="{{ $line['prov']['color'] }}" stroke-width="2.2" opacity="0.9"/>
+                                  stroke="{{ $line['branch']->color }}" stroke-width="2.2" opacity="0.9"/>
                             @foreach($line['pts'] as $i => $pt)
                                 @if($pt['has'])
                                     <circle cx="{{ $pt['x'] }}" cy="{{ $pt['y'] }}"
                                             :r="tooltipIdx === {{ $i }} ? 5.5 : 3.5"
-                                            fill="{{ $line['prov']['color'] }}" stroke="white" stroke-width="1.5"
+                                            fill="{{ $line['branch']->color }}" stroke="white" stroke-width="1.5"
                                             style="transition:r 0.1s"/>
                                 @endif
                             @endforeach
@@ -1187,12 +986,12 @@ const CODE_VYVOJ_TRZEB_BLADE = `{{-- resources/views/livewire/vyvoj-trzeb.blade.
                     @endforeach
 
                     {{-- Hover zóny --}}
-                    @foreach($this->xLabels as $i => $lbl)
+                    @foreach($chart['xLabels'] as $i => $lbl)
                         @php
                             $x = $chart['xCoords'][$i];
                             $w = $chart['N'] > 1 ? $chart['IW'] / ($chart['N'] - 1) : $chart['IW'];
                         @endphp
-                        <rect x="{{ $x - $chart['xHalf'] }}" y="{{ $MT }}"
+                        <rect x="{{ $x - $chart['xHalf'] }}" y="{{ self::MT }}"
                               width="{{ $w }}" height="{{ $chart['IH'] }}"
                               fill="transparent" style="cursor:crosshair"
                               @mouseenter="tooltipIdx = {{ $i }}"
@@ -1201,29 +1000,19 @@ const CODE_VYVOJ_TRZEB_BLADE = `{{-- resources/views/livewire/vyvoj-trzeb.blade.
 
                     {{-- Vertikální linka --}}
                     <line x-show="tooltipIdx !== null"
-                          :x1="xCoords[tooltipIdx]" y1="{{ $MT }}"
-                          :x2="xCoords[tooltipIdx]" y2="{{ $MT + $chart['IH'] }}"
+                          :x1="xCoords[tooltipIdx]" y1="{{ self::MT }}"
+                          :x2="xCoords[tooltipIdx]" y2="{{ self::MT + $chart['IH'] }}"
                           stroke="#64748b" stroke-width="1" stroke-dasharray="3 2" opacity="0.4"/>
 
                     {{-- X popisky --}}
-                    @foreach($this->xLabels as $i => $lbl)
-                        <text x="{{ $chart['xCoords'][$i] }}" y="{{ $MT + $chart['IH'] + 22 }}"
+                    @foreach($chart['xLabels'] as $i => $lbl)
+                        <text x="{{ $chart['xCoords'][$i] }}" y="{{ self::MT + $chart['IH'] + 22 }}"
                               text-anchor="middle" font-size="9"
                               :fill="tooltipIdx === {{ $i }} ? '#313b5e' : '#9097a7'"
                               :font-weight="tooltipIdx === {{ $i }} ? '700' : '400'">
                             {{ $lbl }}
                         </text>
                     @endforeach
-
-                    {{-- Speciální popisky pro 2026 --}}
-                    @if($this->mode === 'roky' && $chart['N'] > 0)
-                        <text x="{{ $chart['xCoords'][$chart['N'] - 1] }}" y="{{ $MT + $chart['IH'] + 34 }}"
-                              text-anchor="middle" font-size="8" fill="#9097a7">*led–dub</text>
-                    @endif
-                    @if($this->mode === 'rok-mesice' && $this->year === 2026)
-                        <text x="{{ $chart['xCoords'][3] }}" y="{{ $MT + $chart['IH'] + 34 }}"
-                              text-anchor="middle" font-size="8" fill="#9097a7">*17 dní</text>
-                    @endif
                 </svg>
 
                 {{-- Tooltip — řízeno Alpine.js --}}
@@ -1235,111 +1024,7 @@ const CODE_VYVOJ_TRZEB_BLADE = `{{-- resources/views/livewire/vyvoj-trzeb.blade.
             </div>
         @endif
     </div>
-
-    {{-- Tabulka pod grafem (analogie React RocniVyvojTable) --}}
-    <div class="border-top px-3 py-2 d-flex align-items-center gap-2">
-        <span class="text-uppercase fw-semibold text-muted small">
-            @if($this->mode === 'roky') Přehled po rocích
-            @elseif($this->mode === 'rok-mesice') Přehled po měsících · {{ $this->year }}
-            @else Přehled po rocích · {{ \\App\\Livewire\\VyvojTrzeb::MONTH_FULL[$this->month - 1] }}
-            @endif
-        </span>
-        @if($this->mode === 'roky')
-            <span class="text-muted small">· {{ $this->fromYear }}–2026 · *duben = leden–duben</span>
-        @endif
-    </div>
-    <div class="trzby-detail-wrap">
-        @include('livewire.vyvoj-trzeb-tabulka')
-    </div>
 </div>
-`;
-
-const CODE_TABULKA_PARTIAL_BLADE = `{{-- resources/views/livewire/vyvoj-trzeb-tabulka.blade.php --}}
-{{-- Tabulka pod grafem — sloupce dle módu (roky / měsíce / roky) --}}
-@php
-    use App\\Support\\TrzbyHelper;
-    $cols = match($this->mode) {
-        'roky' => array_map(fn ($y) => [
-            'key' => (string)$y, 'label' => (string)$y,
-            'sub' => $y === 2026 ? '*led–dub' : null,
-        ], range($this->fromYear, 2026)),
-        'rok-mesice' => collect(\\App\\Livewire\\VyvojTrzeb::MONTH_LABELS)->map(fn ($lbl, $i) => [
-            'key' => (string)($i + 1), 'label' => $lbl,
-            'sub' => $this->year === 2026 && $i === 3 ? '*17 dní' : null,
-        ])->all(),
-        'mesic-roky' => array_map(fn ($y) => [
-            'key' => (string)$y, 'label' => (string)$y,
-            'sub' => $y === 2026 ? '*17 dní' : null,
-        ], range($this->mesicRokyFromYear, 2026)),
-    };
-    $getValue = function ($prov, string $colKey): int {
-        return match ($this->mode) {
-            'roky'       => TrzbyHelper::genAnnualRevenue((int)$colKey, $prov['id']),
-            'rok-mesice' => TrzbyHelper::genMonthRevenue($this->year, (int)$colKey, $prov['id']),
-            'mesic-roky' => TrzbyHelper::genMonthRevenue((int)$colKey, $this->month, $prov['id']),
-        };
-    };
-@endphp
-@if(empty($this->chartProvs))
-    <div class="p-4 text-center text-muted">Vyberte provozovny v grafu výše.</div>
-@else
-    <table class="trzby-detail-table">
-        <thead>
-            <tr>
-                <th class="trzby-col-date trzby-sticky-l" style="min-width:130px;max-width:160px">Provozovna</th>
-                @foreach($cols as $col)
-                    <th class="trzby-col-prov" style="min-width:90px;text-align:right" wire:key="hd-{{ $col['key'] }}">
-                        <span style="display:block;line-height:1.2">{{ $col['label'] }}</span>
-                        @if($col['sub'])
-                            <span style="display:block;font-size:9px;font-weight:400;color:var(--bs-secondary-color)">{{ $col['sub'] }}</span>
-                        @endif
-                    </th>
-                @endforeach
-            </tr>
-        </thead>
-        <tbody>
-            @foreach($this->chartProvs as $prov)
-                @php $fy = TrzbyHelper::FOUNDING_YEAR[$prov['id']] ?? 2022; @endphp
-                <tr wire:key="rw-{{ $prov['id'] }}">
-                    <td class="trzby-col-date trzby-sticky-l">
-                        <div class="d-flex align-items-center gap-1" style="min-width:0">
-                            <span class="rounded-circle flex-shrink-0 d-inline-block"
-                                  style="width:7px;height:7px;background:{{ $prov['color'] }}"></span>
-                            <span class="fw-semibold" style="font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0">
-                                {{ $prov['shortName'] }}
-                            </span>
-                        </div>
-                        <div class="text-muted" style="font-size:10px;padding-left:11px">od {{ $fy }}</div>
-                    </td>
-                    @foreach($cols as $col)
-                        @php $v = $getValue($prov, $col['key']); @endphp
-                        <td class="trzby-col-prov text-end" wire:key="cl-{{ $prov['id'] }}-{{ $col['key'] }}">
-                            @if($v > 0)
-                                <span class="czk-num fw-semibold" style="font-size:12px">{{ TrzbyHelper::fCzk($v) }}</span>
-                            @else
-                                <span class="text-muted" style="font-size:12px">—</span>
-                            @endif
-                        </td>
-                    @endforeach
-                </tr>
-            @endforeach
-        </tbody>
-        <tfoot>
-            <tr>
-                <td class="trzby-col-date trzby-sticky-l fw-bold" style="font-size:12px">Celkem</td>
-                @foreach($cols as $col)
-                    @php
-                        $sum = 0;
-                        foreach ($this->chartProvs as $p) $sum += $getValue($p, $col['key']);
-                    @endphp
-                    <td class="trzby-col-prov text-end czk-num fw-bold" style="font-size:12px" wire:key="ft-{{ $col['key'] }}">
-                        @if($sum > 0) {{ TrzbyHelper::fCzk($sum) }} @else <span class="text-muted">—</span> @endif
-                    </td>
-                @endforeach
-            </tr>
-        </tfoot>
-    </table>
-@endif
 `;
 
 const CODE_CSS = `/* resources/css/trzby.css */
@@ -1563,20 +1248,19 @@ window.vyvojChart = function (config) {
 
 const CODE_ROUTES_PHP = `<?php
 // routes/web.php — registrace stránky Tržby
-use App\\Livewire\\TrzbyDetail;
-use App\\Livewire\\VyvojTrzeb;
 use Illuminate\\Support\\Facades\\Route;
 
-Route::view('/trzby', 'trzby.index')->name('trzby.index');
+Route::view('/trzby', 'trzby.index')
+    ->middleware(['auth'])
+    ->name('trzby.index');
 
-// V Livewire v4 se komponenty registrují automaticky podle jmenného prostoru.
-// Pokud chceš ručně:
-// Livewire::component('trzby-detail', TrzbyDetail::class);
-// Livewire::component('vyvoj-trzeb', VyvojTrzeb::class);
+// Volt komponenty jsou auto-discoverované z resources/views/livewire/.
+// Vkládají se do Blade jako <livewire:trzby-detail /> nebo zkr. <livewire:trzby-detail />.
+// Pokud používáš jiný directory, registruj v config/livewire.php.
 `;
 
 const CODE_LAYOUT_BLADE = `{{-- resources/views/trzby/index.blade.php --}}
-{{-- Hlavní stránka Tržby. Obě sekce jako Livewire komponenty. --}}
+{{-- Hlavní stránka Tržby. Obě sekce jako Volt komponenty (auto-loadované). --}}
 @extends('layouts.app')
 
 @section('title', 'Tržby')
@@ -1606,51 +1290,25 @@ type AccItem  = { id: string; title: string; description: string; files: CodeFil
 
 const ACCORDION: AccItem[] = [
   {
-    id: 'shared-helpers',
-    title: '1 — Sdílené: helpery a mock data',
-    description: 'PHP třídy s daty provozoven a generátory tržeb. Použito oběma Livewire komponentami.',
+    id: 'trzby-detail-volt',
+    title: '1 — Tržby detail: Volt single-file komponenta',
+    description: 'Anonymní třída + Blade v jednom souboru. Eloquent query přes Branch + DailyClosingRow. Inspirováno kodérovou sales-sum.blade.php.',
     files: [
-      { path: 'app/Support/Provozovny.php',  lang: 'php', code: CODE_PROVOZOVNY_PHP },
-      { path: 'app/Support/TrzbyHelper.php', lang: 'php', code: CODE_TRZBY_HELPER_PHP },
+      { path: 'resources/views/livewire/trzby-detail.blade.php', lang: 'blade', code: CODE_TRZBY_DETAIL_VOLT },
     ],
   },
   {
-    id: 'trzby-detail-php',
-    title: '2 — Tržby detail: Livewire komponenta',
-    description: 'PHP třída s computed properties (řádky, sloupce, single/multi venue mód).',
+    id: 'vyvoj-trzeb-volt',
+    title: '2 — Vývoj tržeb: Volt single-file komponenta',
+    description: 'SVG graf rendrovaný server-side + Alpine.js tooltip. Eloquent agregace po měsících/letech. 3 módy: Roky / Rok › měsíce / Měsíc › roky.',
     files: [
-      { path: 'app/Livewire/TrzbyDetail.php', lang: 'php', code: CODE_TRZBY_DETAIL_PHP },
-    ],
-  },
-  {
-    id: 'trzby-detail-blade',
-    title: '3 — Tržby detail: Blade šablona',
-    description: 'HTML s wire:model / wire:click + sticky tabulka pro single venue (Kuchyň/Bar/Celkem) a multi venue.',
-    files: [
-      { path: 'resources/views/livewire/trzby-detail.blade.php', lang: 'blade', code: CODE_TRZBY_DETAIL_BLADE },
-    ],
-  },
-  {
-    id: 'vyvoj-trzeb-php',
-    title: '4 — Vývoj tržeb: Livewire komponenta',
-    description: 'Server-side výpočet SVG bodů, smooth path a tabulky pod grafem. 3 módy: Roky / Rok › měsíce / Měsíc › roky.',
-    files: [
-      { path: 'app/Livewire/VyvojTrzeb.php', lang: 'php', code: CODE_VYVOJ_TRZEB_PHP },
-    ],
-  },
-  {
-    id: 'vyvoj-trzeb-blade',
-    title: '5 — Vývoj tržeb: Blade šablona + Alpine.js',
-    description: 'SVG graf rendrovaný server-side + tooltip ovládaný klientsky přes Alpine.js (hover přes neviditelné rect zóny).',
-    files: [
-      { path: 'resources/views/livewire/vyvoj-trzeb.blade.php',          lang: 'blade', code: CODE_VYVOJ_TRZEB_BLADE },
-      { path: 'resources/views/livewire/vyvoj-trzeb-tabulka.blade.php',  lang: 'blade', code: CODE_TABULKA_PARTIAL_BLADE },
-      { path: 'resources/js/vyvoj-chart.js',                              lang: 'js',    code: CODE_ALPINE_JS },
+      { path: 'resources/views/livewire/vyvoj-trzeb.blade.php', lang: 'blade', code: CODE_VYVOJ_TRZEB_VOLT },
+      { path: 'resources/js/vyvoj-chart.js',                    lang: 'js',    code: CODE_ALPINE_JS },
     ],
   },
   {
     id: 'css',
-    title: '6 — CSS (sdílené pro obě sekce)',
+    title: '3 — CSS (sdílené pro obě sekce)',
     description: 'Plain CSS: sticky sloupce, live tečka pulzace, segment buttons, toggle tlačítka v grafu.',
     files: [
       { path: 'resources/css/trzby.css', lang: 'css', code: CODE_CSS },
@@ -1658,10 +1316,10 @@ const ACCORDION: AccItem[] = [
   },
   {
     id: 'integration',
-    title: '7 — Routing a layout (jak to zapojit)',
-    description: 'Sample route + Blade layout, který vloží obě Livewire komponenty na jednu stránku.',
+    title: '4 — Routing a layout (jak to zapojit)',
+    description: 'Sample route + Blade layout, který vloží obě Volt komponenty na jednu stránku.',
     files: [
-      { path: 'routes/web.php',                       lang: 'php',   code: CODE_ROUTES_PHP },
+      { path: 'routes/web.php',                        lang: 'php',   code: CODE_ROUTES_PHP },
       { path: 'resources/views/trzby/index.blade.php', lang: 'blade', code: CODE_LAYOUT_BLADE },
     ],
   },
@@ -1779,30 +1437,47 @@ export default function KodView() {
           <div>
             <h4 className="mb-1">Kód pro backend implementaci</h4>
             <div className="text-muted fs-13">
-              Podklady pro kodéra — segmenty <strong>Tržby detail</strong> a <strong>Vývoj tržeb</strong> přepsané do Laravel / Livewire v4 / Alpine.js
+              Podklady pro kodéra — segmenty <strong>Tržby detail</strong> a <strong>Vývoj tržeb</strong> napojené na reálná Eloquent data (Branch + DailyClosingRow) v Livewire Volt
             </div>
           </div>
           <div className="d-flex gap-2 ms-auto flex-wrap">
             <span className="badge bg-primary-subtle text-primary">PHP 8.2+</span>
             <span className="badge bg-info-subtle text-info">Laravel 11+</span>
-            <span className="badge bg-success-subtle text-success">Livewire v4</span>
+            <span className="badge bg-success-subtle text-success">Livewire Volt</span>
             <span className="badge bg-warning-subtle text-warning">Alpine.js 3</span>
-            <span className="badge bg-secondary-subtle text-secondary">plain JS + CSS</span>
+            <span className="badge bg-secondary-subtle text-secondary">Eloquent · plain JS + CSS</span>
           </div>
         </div>
       </div>
 
       {/* Info banner */}
-      <div className="alert alert-info d-flex align-items-start gap-2 mb-4">
+      <div className="alert alert-info d-flex align-items-start gap-2 mb-3">
         <iconify-icon icon="solar:info-circle-bold-duotone" className="fs-5 flex-shrink-0" />
         <div className="fs-13">
           <strong>Cíl:</strong> zachovat 1:1 vizuál Tržby (sekce „Vývoj tržeb" a „Tržby detail") z aktuálního React/TS prototypu.
           <br />
-          <strong>Stack:</strong> Laravel 11+ s Livewire v4 (server-side state + re-renders), Alpine.js 3 (klientská interaktivita — tooltip),
-          plain CSS (sticky sloupce, animace), plain JS (formátování čísel).
+          <strong>Stack:</strong> Laravel 11+ s <strong>Livewire Volt</strong> (single-file komponenty s anonymní třídou + Blade v jednom souboru),
+          Alpine.js 3 (klientská interaktivita — tooltip), plain CSS, plain JS.
           <br />
-          <strong>Mock data:</strong> všechny generátory v <code className="bg-light px-1 rounded">TrzbyHelper.php</code> jsou pure-functions —
-          stejné vstupy → stejné výstupy. V produkci nahradit DB dotazy.
+          <strong>Reálná data:</strong> všechny query přes Eloquent — <code className="bg-light px-1 rounded">Branch</code> a <code className="bg-light px-1 rounded">DailyClosingRow</code>.
+          Tržba = <code className="bg-light px-1 rounded">SUM(value)</code> pro <code>type_id IN [SALES, SALE_MANUAL]</code>.
+          Multi-tenancy přes <code>auth()-&gt;user()-&gt;activeBranch()</code> + <code>mainBranchGet()</code>.
+          <br />
+          <strong>Styl podle vzoru:</strong> inspirováno kodérovým <code>sales-sum.blade.php</code> — <code>#[Defer]</code> lazy loading,
+          <code>@placeholder</code> UI, <code>formatMoney($n, false)</code> helper, <code>&lt;x-input&gt;</code> Blade komponenty.
+        </div>
+      </div>
+
+      {/* TODO/Otázky banner */}
+      <div className="alert alert-warning d-flex align-items-start gap-2 mb-4">
+        <iconify-icon icon="solar:question-circle-bold-duotone" className="fs-5 flex-shrink-0" />
+        <div className="fs-13">
+          <strong>Otevřené otázky pro kodéra (vyznačeno TODO komentáři v kódu):</strong>
+          <ol className="mb-0 mt-1" style={{ paddingLeft: 18 }}>
+            <li><strong>Kuchyň/Bar split</strong> — single-venue mód v „Tržby detail" zatím zobrazuje jen sloupec „Celkem". Existují konstanty jako <code>DailyClosingRow::SALES_KITCHEN</code> / <code>SALES_BAR</code>? Pokud ano, rozšíříme.</li>
+            <li><strong>Historické agregace (Vývoj tržeb)</strong> — pro 10+ let × 15 provozoven je každé renderování přes <code>daily_closings</code> drahé. Existuje aggregate tabulka (<code>monthly_summaries</code> / <code>branch_yearly_revenue</code>)? Jinak doporučuji <code>Cache::remember(...)</code>.</li>
+            <li><strong>Rok vzniku provozovny</strong> — pro „Vše" period filter potřebujeme nejstarší rok mezi vybranými branches. Existuje <code>branches.opened_at</code> / <code>founded_year</code>? Fallback = <code>MIN(daily_closings.date)</code>.</li>
+          </ol>
         </div>
       </div>
 
@@ -1868,11 +1543,13 @@ export default function KodView() {
       <div className="alert alert-light border mt-3 mb-4 fs-12 text-muted">
         <strong>Poznámky pro implementaci:</strong>
         <ul className="mb-0 mt-1" style={{ paddingLeft: 18 }}>
-          <li>Číselný formát používá <code>U+202F</code> (narrow no-break space) jako oddělovač tisíců — viz <code>TrzbyHelper::fCzk()</code> a <code>window.fCzk()</code>.</li>
-          <li>Mock data jsou deterministická — funkce <code>detRand()</code> používá hash, ne <code>random()</code>. To zajistí stabilní výstup mezi requesty.</li>
-          <li>SVG je rendrované server-side v PHP (smooth Catmull-Rom path). Alpine.js obsluhuje jen hover state pro tooltip.</li>
-          <li>Bootstrap 5 utility třídy (<code>.d-flex</code>, <code>.gap-2</code>, <code>.badge</code>, <code>.card</code>…) předpokládám už zavedené v projektu.</li>
-          <li>Ikony — používá se webový komponent <code>&lt;iconify-icon&gt;</code> s ikonami sady Solar. Nainstaluj přes <code>npm i iconify-icon</code>.</li>
+          <li><strong>Volt single-file</strong> — anonymní třída <code>{'new #[Defer] class extends Component { ... }'}</code> + Blade v jednom <code>.blade.php</code> souboru. Žádný oddělený <code>app/Livewire/*.php</code>.</li>
+          <li><strong>Eloquent</strong> — všechny query přes <code>Branch</code> + <code>DailyClosingRow</code>. Žádné mock generators, žádné hash funkce, žádné slugy provozoven. <code>$branch-&gt;id</code> je integer, <code>$branch-&gt;name</code> string.</li>
+          <li><strong>Tržba</strong> = <code>SUM(daily_closing_rows.value)</code> pro <code>type_id IN [DailyClosingRow::SALES, DailyClosingRow::SALE_MANUAL]</code>. JOIN přes <code>daily_closings</code> pro <code>branch_id</code> a <code>date</code>.</li>
+          <li><strong>Helper</strong> <code>formatMoney($n, false)</code> — globální funkce kodéra (asi v <code>app/helpers.php</code>). Druhý parametr <code>false</code> = bez haléřů.</li>
+          <li><strong>Multi-tenancy</strong> — pokud <code>auth()-&gt;user()-&gt;activeBranch()-&gt;id == mainBranchGet()</code>, uživatel vidí všechny <code>Branch::all()</code>. Jinak jen tu svou (single-venue mód).</li>
+          <li><strong>SVG</strong> je rendrované server-side v PHP (smooth Catmull-Rom path). Alpine.js obsluhuje jen hover state pro tooltip.</li>
+          <li><strong>x-input</strong> — kodérova vlastní Blade komponenta (<code>&lt;x-input label="Od" wire:model="from" type="date" /&gt;</code>). Pokud zatím neexistuje, lze nahradit standardním <code>&lt;input&gt;</code>.</li>
         </ul>
       </div>
     </>
