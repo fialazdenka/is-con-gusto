@@ -300,16 +300,16 @@ const CODE_TRZBY_DETAIL_VOLT = `<?php
 //   - Branch                       (Eloquent model, branches table)
 //   - DailyClosing                 (daily_closings)
 //   - DailyClosingRow              (daily_closing_rows, type_id, value)
-//   - DailyClosingRow::SALES       — běžné tržby
+//   - DailyClosingRow::SALES       — generická tržba (pro provoz bez K/B rozlišení)
+//   - DailyClosingRow::SALES_K     — tržba kuchyně
+//   - DailyClosingRow::SALES_B     — tržba baru
 //   - DailyClosingRow::SALE_MANUAL — manuálně dorovnané tržby
 //
 // Multi-tenancy: auth()->user()->activeBranch() + mainBranchGet()
-//   - když user je na "main" pobočce → vidí všechny branches (multi-venue režim)
-//   - jinak → vidí jen svou pobočku (single-venue režim)
+//   - když user je na "main" pobočce → vidí všechny branches (multi-venue režim, jen Celkem)
+//   - jinak → vidí jen svou pobočku (single-venue režim, navíc Kuchyň / Bar sloupce)
 //
 // TODO (kodér):
-//   - Kuchyň / Bar split — zatím jen sloupec "Celkem". Až bude rozlišení
-//     v daily_closing_rows (např. další type_id konstanty), rozšířit single-venue mód.
 //   - vs. D-7 (% změna oproti minulému týdnu) — zatím vynecháno.
 
 use Livewire\\Volt\\Component;
@@ -397,13 +397,16 @@ new #[Defer] class extends Component
             ];
         }
 
-        // Query: agregace daily_closing_rows.value GROUP BY branch + date
+        // Query: agregace daily_closing_rows.value GROUP BY branch + date + type_id
+        // Type_id rozlišuje SALES (generická) / SALES_K (kuchyň) / SALES_B (bar) / SALE_MANUAL.
+        // V single-venue módu rozdělíme Kuchyň vs. Bar; v multi-venue jen sečteme.
         $branchIds = $this->branches->pluck('id')->all();
 
         $salesRows = DailyClosingRow::query()
             ->selectRaw('
                 daily_closings.branch_id,
                 DATE(daily_closings.date) as closing_date,
+                daily_closing_rows.type_id,
                 SUM(daily_closing_rows.value) as sales
             ')
             ->join(
@@ -416,17 +419,22 @@ new #[Defer] class extends Component
             ->whereBetween('daily_closings.date', [$from, $to])
             ->whereIn('daily_closing_rows.type_id', [
                 DailyClosingRow::SALES,
+                DailyClosingRow::SALES_K,
+                DailyClosingRow::SALES_B,
                 DailyClosingRow::SALE_MANUAL,
             ])
             ->groupBy(
                 'daily_closings.branch_id',
-                'closing_date'
+                'closing_date',
+                'daily_closing_rows.type_id'
             )
             ->get();
 
-        $indexed = $salesRows->keyBy(function ($row) {
-            return $row->branch_id . '_' . $row->closing_date;
-        });
+        // Indexace: $indexed[branchId][dateKey][typeId] => sales
+        $indexed = [];
+        foreach ($salesRows as $row) {
+            $indexed[$row->branch_id][$row->closing_date][$row->type_id] = (float) $row->sales;
+        }
 
         // Sestavení datové struktury per branch
         $data = [];
@@ -435,21 +443,30 @@ new #[Defer] class extends Component
                 'id'    => $branch->id,
                 'name'  => $branch->name,
                 'color' => $branch->color,
-                'data'  => [],
+                'data'  => [],        // per-date: celkem (K + B + generická + manuál)
+                'dataK' => [],        // per-date: jen kuchyň (single-venue mód)
+                'dataB' => [],        // per-date: jen bar (single-venue mód)
                 'sum'   => 0,
+                'sumK'  => 0,
+                'sumB'  => 0,
             ];
 
             foreach ($days as $dateKey => $_day) {
-                $indexKey = $branch->id . '_' . $dateKey;
-                $sales = isset($indexed[$indexKey])
-                    ? (float) $indexed[$indexKey]->sales
-                    : null;
+                $rows = $indexed[$branch->id][$dateKey] ?? [];
 
-                $value['data'][$dateKey] = $sales;
+                $k     = $rows[DailyClosingRow::SALES_K] ?? null;
+                $b     = $rows[DailyClosingRow::SALES_B] ?? null;
+                $total = ! empty($rows) ? array_sum($rows) : null; // všechny typy dohromady
 
-                if ($sales !== null) {
-                    $value['sum'] += $sales;
-                    $days[$dateKey]['sum'] += $sales;
+                $value['dataK'][$dateKey] = $k;
+                $value['dataB'][$dateKey] = $b;
+                $value['data'][$dateKey]  = $total;
+
+                if ($k     !== null) $value['sumK'] += $k;
+                if ($b     !== null) $value['sumB'] += $b;
+                if ($total !== null) {
+                    $value['sum'] += $total;
+                    $days[$dateKey]['sum'] += $total;
                 }
             }
             $data[] = $value;
@@ -459,7 +476,11 @@ new #[Defer] class extends Component
 
         $this->data       = $data;
         $this->days       = $days;
-        $this->singleData = ['fullSum' => $fullSum];
+        $this->singleData = [
+            'fullSum' => $fullSum,
+            'sumK'    => array_sum(array_column($data, 'sumK')),
+            'sumB'    => array_sum(array_column($data, 'sumB')),
+        ];
     }
 
     public function isSingleVenue(): bool
@@ -524,59 +545,130 @@ new #[Defer] class extends Component
 
         @if ($data != [])
             <div class="table-responsive" wire:loading.remove wire:target="loadData">
-                <table class="table align-middle mb-0 table-hover table-centered trzby-detail-table">
-                    <thead class="bg-light">
-                        <tr>
-                            <th class="trzby-col-date trzby-sticky-l" style="min-width:120px;">Datum</th>
-                            @foreach ($data as $branchH)
-                                <th style="min-width:140px; text-align:right;">
-                                    <div class="d-flex gap-1 align-items-center justify-content-end">
-                                        <div style="width:8px; height:8px; border-radius:50%; background-color:{{ $branchH['color'] }};"></div>
-                                        <span class="mb-0">{{ $branchH['name'] }}</span>
+
+                @if($this->isSingleVenue())
+                    {{-- ── Single-venue: Datum · Kuchyň · Bar · Celkem ── --}}
+                    @php $branch = $data[0]; @endphp
+                    <table class="table align-middle mb-0 table-hover table-centered trzby-detail-table">
+                        <thead class="bg-light">
+                            <tr>
+                                <th class="trzby-col-date trzby-sticky-l" style="min-width:120px;">
+                                    <div class="d-flex align-items-center gap-1">
+                                        <span class="rounded-circle d-inline-block" style="width:8px;height:8px;background:{{ $branch['color'] }}"></span>
+                                        Datum
                                     </div>
                                 </th>
-                            @endforeach
-                            <th class="trzby-sticky-r bg-light" style="min-width:140px; text-align:right;">Celkem</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        @foreach ($days as $keyDay => $day)
-                            <tr wire:key="row-{{ $keyDay }}">
-                                <td class="trzby-sticky-l">
-                                    <strong>{{ $day['label'] }}</strong>
-                                    @if($day['isToday'] ?? false)
-                                        <span class="trzby-live-dot ms-1" style="width:5px;height:5px"></span>
-                                    @endif
-                                </td>
-                                @foreach ($data as $branch)
-                                    <td class="text-end czk-num" wire:key="c-{{ $keyDay }}-{{ $branch['id'] }}">
+                                <th style="min-width:130px; text-align:right; color:#1c84ee;">Kuchyň</th>
+                                <th style="min-width:130px; text-align:right; color:#22c55e;">Bar</th>
+                                <th class="trzby-sticky-r bg-light" style="min-width:140px; text-align:right;">Celkem</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach ($days as $keyDay => $day)
+                                <tr wire:key="row-{{ $keyDay }}">
+                                    <td class="trzby-sticky-l">
+                                        <strong>{{ $day['label'] }}</strong>
+                                        @if($day['isToday'] ?? false)
+                                            <span class="trzby-live-dot ms-1" style="width:5px;height:5px"></span>
+                                        @endif
+                                    </td>
+                                    <td class="text-end czk-num" style="color:#1c84ee;">
+                                        @if(is_null($branch['dataK'][$keyDay]))
+                                            <span class="text-muted">—</span>
+                                        @else
+                                            {{ formatMoney($branch['dataK'][$keyDay], false) }} Kč
+                                        @endif
+                                    </td>
+                                    <td class="text-end czk-num" style="color:#22c55e;">
+                                        @if(is_null($branch['dataB'][$keyDay]))
+                                            <span class="text-muted">—</span>
+                                        @else
+                                            {{ formatMoney($branch['dataB'][$keyDay], false) }} Kč
+                                        @endif
+                                    </td>
+                                    <td class="trzby-sticky-r bg-light-subtle text-end czk-num fw-bold">
                                         @if(is_null($branch['data'][$keyDay]))
                                             <span class="text-muted">—</span>
                                         @else
                                             {{ formatMoney($branch['data'][$keyDay], false) }} Kč
                                         @endif
                                     </td>
-                                @endforeach
-                                <td class="trzby-sticky-r bg-light-subtle text-end czk-num fw-bold">
-                                    {{ formatMoney($day['sum'], false) }} Kč
+                                </tr>
+                            @endforeach
+                        </tbody>
+                        <tfoot>
+                            <tr class="bg-light">
+                                <td class="trzby-sticky-l"><strong>Celkem</strong></td>
+                                <td class="text-end czk-num fw-bold" style="color:#1c84ee;">
+                                    {{ formatMoney($singleData['sumK'] ?? 0, false) }} Kč
+                                </td>
+                                <td class="text-end czk-num fw-bold" style="color:#22c55e;">
+                                    {{ formatMoney($singleData['sumB'] ?? 0, false) }} Kč
+                                </td>
+                                <td class="trzby-sticky-r bg-light text-end czk-num fw-bold">
+                                    {{ formatMoney($branch['sum'], false) }} Kč
                                 </td>
                             </tr>
-                        @endforeach
-                    </tbody>
-                    <tfoot>
-                        <tr class="bg-light">
-                            <td class="trzby-sticky-l"><strong>Celkem</strong></td>
-                            @foreach ($data as $finalBranch)
-                                <td class="text-end czk-num fw-bold">
-                                    {{ formatMoney($finalBranch['sum'], false) }} Kč
-                                </td>
+                        </tfoot>
+                    </table>
+
+                @else
+                    {{-- ── Multi-venue: Datum · per branch sloupce · Celkem ── --}}
+                    <table class="table align-middle mb-0 table-hover table-centered trzby-detail-table">
+                        <thead class="bg-light">
+                            <tr>
+                                <th class="trzby-col-date trzby-sticky-l" style="min-width:120px;">Datum</th>
+                                @foreach ($data as $branchH)
+                                    <th style="min-width:140px; text-align:right;">
+                                        <div class="d-flex gap-1 align-items-center justify-content-end">
+                                            <div style="width:8px; height:8px; border-radius:50%; background-color:{{ $branchH['color'] }};"></div>
+                                            <span class="mb-0">{{ $branchH['name'] }}</span>
+                                        </div>
+                                    </th>
+                                @endforeach
+                                <th class="trzby-sticky-r bg-light" style="min-width:140px; text-align:right;">Celkem</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach ($days as $keyDay => $day)
+                                <tr wire:key="row-{{ $keyDay }}">
+                                    <td class="trzby-sticky-l">
+                                        <strong>{{ $day['label'] }}</strong>
+                                        @if($day['isToday'] ?? false)
+                                            <span class="trzby-live-dot ms-1" style="width:5px;height:5px"></span>
+                                        @endif
+                                    </td>
+                                    @foreach ($data as $branch)
+                                        <td class="text-end czk-num" wire:key="c-{{ $keyDay }}-{{ $branch['id'] }}">
+                                            @if(is_null($branch['data'][$keyDay]))
+                                                <span class="text-muted">—</span>
+                                            @else
+                                                {{ formatMoney($branch['data'][$keyDay], false) }} Kč
+                                            @endif
+                                        </td>
+                                    @endforeach
+                                    <td class="trzby-sticky-r bg-light-subtle text-end czk-num fw-bold">
+                                        {{ formatMoney($day['sum'], false) }} Kč
+                                    </td>
+                                </tr>
                             @endforeach
-                            <td class="trzby-sticky-r bg-light text-end czk-num fw-bold">
-                                {{ formatMoney($singleData['fullSum'] ?? 0, false) }} Kč
-                            </td>
-                        </tr>
-                    </tfoot>
-                </table>
+                        </tbody>
+                        <tfoot>
+                            <tr class="bg-light">
+                                <td class="trzby-sticky-l"><strong>Celkem</strong></td>
+                                @foreach ($data as $finalBranch)
+                                    <td class="text-end czk-num fw-bold">
+                                        {{ formatMoney($finalBranch['sum'], false) }} Kč
+                                    </td>
+                                @endforeach
+                                <td class="trzby-sticky-r bg-light text-end czk-num fw-bold">
+                                    {{ formatMoney($singleData['fullSum'] ?? 0, false) }} Kč
+                                </td>
+                            </tr>
+                        </tfoot>
+                    </table>
+                @endif
+
             </div>
         @else
             <p class="p-3 text-muted">Nenalezena žádná data</p>
@@ -599,21 +691,24 @@ const CODE_VYVOJ_TRZEB_VOLT = `<?php
 //   - 'rok-mesice'  — X osa = 12 měsíců zvoleného roku, Y = měsíční suma
 //   - 'mesic-roky'  — X osa = roky, Y = suma zvoleného měsíce napříč roky
 //
-// OTÁZKY PRO KODÉRA (otevřené):
-//   1) Historické agregace — pro roční přehled (2006–2026) se každé zobrazení
-//      počítá z daily_closings. Při větších datech (10+ let × 15 provozoven)
-//      by mohla být dobrá monthly_summaries / branch_yearly_revenue tabulka.
-//      Existuje něco takového? Jinak by se mělo nacacheovat (Cache::remember).
+// Performance:
+//   - Aggregate tabulka (monthly_summaries / branch_yearly_revenue) zatím neexistuje,
+//     proto agregujeme z daily_closings + Cache::remember (TTL 1h).
+//   - Rok vzniku provozovny: branches nemá opened_at, používáme fallback
+//     MIN(daily_closings.date) per branch (s 24h cache).
 //
-//   2) Rok vzniku provozovny — pro filtr "od roku X" (linie začínají od založení).
-//      Existuje v branches sloupec opened_at / founded_year?
-//      Pokud ne, MIN(daily_closings.date) per branch by mohl být fallback.
+// TODO (kodér):
+//   - Cache invalidace přes Eloquent model events (DailyClosingRow::saved → Cache::forget)
+//   - Až bude monthly_summaries tabulka, přepsat loadChartData na rychlejší query
 
 use Livewire\\Volt\\Component;
 use Livewire\\Attributes\\Defer;
 
 use App\\Models\\Branch;
 use App\\Models\\DailyClosingRow;
+
+use Illuminate\\Support\\Facades\\Cache;
+use Illuminate\\Support\\Facades\\DB;
 
 use Carbon\\Carbon;
 
@@ -676,10 +771,27 @@ new #[Defer] class extends Component
 
     public function fromYear(): int
     {
-        return match ($this->period) {
-            '3'   => 2024, '5' => 2022, '10' => 2017, 'vse' => 2006,
-            default => 2006,
-        };
+        $currentYear = now()->year;
+
+        // Konečné období podle volby
+        if ($this->period === '3')  return $currentYear - 2;   // posledních 3 roky
+        if ($this->period === '5')  return $currentYear - 4;
+        if ($this->period === '10') return $currentYear - 9;
+
+        // 'vse' — od nejstaršího data v daily_closings vybraných branches
+        // Fallback (branches.opened_at v DB neexistuje).
+        if (empty($this->selectedBranchIds)) return $currentYear - 5;
+
+        sort($this->selectedBranchIds);
+        $key = 'vyvoj-trzeb:min-date:' . implode(',', $this->selectedBranchIds);
+
+        $minDate = Cache::remember($key, 86400, function () {
+            return DB::table('daily_closings')
+                ->whereIn('branch_id', $this->selectedBranchIds)
+                ->min('date');
+        });
+
+        return $minDate ? Carbon::parse($minDate)->year : $currentYear - 5;
     }
 
     public function xLabels(): array
@@ -691,62 +803,77 @@ new #[Defer] class extends Component
         };
     }
 
-    // ── Hlavní query ─────────────────────────────────────────────
-    // Vrací: array indexed by [branchId][xLabel] => suma tržeb
-    // TODO: pro větší rozsahy zvážit cache nebo monthly_summaries tabulku
+    // ── Hlavní query (cached) ────────────────────────────────────
+    // Vrací: array indexed by [branchId][periodKey] => suma tržeb.
+    // Cache TTL: 1 hodina. V produkci doporučeno přidat Cache::forget
+    // přes model event DailyClosingRow::saved/deleted pro live invalidaci.
     public function loadChartData(): array
     {
         $branchIds = $this->selectedBranchIds;
         if (empty($branchIds)) return [];
 
-        // Datum range podle módu
-        if ($this->mode === 'roky') {
-            $from = Carbon::create($this->fromYear(), 1, 1);
-            $to   = Carbon::create(now()->year, 12, 31);
-        } elseif ($this->mode === 'rok-mesice') {
-            $from = Carbon::create($this->year, 1, 1);
-            $to   = Carbon::create($this->year, 12, 31);
-        } else { // mesic-roky
-            $from = Carbon::create($this->fromYear(), $this->month, 1);
-            $to   = Carbon::create(now()->year, $this->month, 1)->endOfMonth();
-        }
+        sort($branchIds);
+        $cacheKey = sprintf(
+            'vyvoj-trzeb:%s:%s:%d:%d:%s',
+            $this->mode,
+            $this->period,
+            $this->year,
+            $this->month,
+            implode(',', $branchIds)
+        );
 
-        // Agregace dle módu (year | year+month | year)
-        $groupBy = $this->mode === 'rok-mesice'
-            ? 'MONTH(daily_closings.date)'
-            : 'YEAR(daily_closings.date)';
+        return Cache::remember($cacheKey, 3600, function () use ($branchIds) {
+            // Datum range podle módu
+            if ($this->mode === 'roky') {
+                $from = Carbon::create($this->fromYear(), 1, 1);
+                $to   = Carbon::create(now()->year, 12, 31);
+            } elseif ($this->mode === 'rok-mesice') {
+                $from = Carbon::create($this->year, 1, 1);
+                $to   = Carbon::create($this->year, 12, 31);
+            } else { // mesic-roky
+                $from = Carbon::create($this->fromYear(), $this->month, 1);
+                $to   = Carbon::create(now()->year, $this->month, 1)->endOfMonth();
+            }
 
-        $rows = DailyClosingRow::query()
-            ->selectRaw("
-                daily_closings.branch_id,
-                {$groupBy} as period_key,
-                SUM(daily_closing_rows.value) as sales
-            ")
-            ->join(
-                'daily_closings',
-                'daily_closings.id',
-                '=',
-                'daily_closing_rows.daily_closing_id'
-            )
-            ->whereIn('daily_closings.branch_id', $branchIds)
-            ->whereBetween('daily_closings.date', [$from, $to])
-            // pro mesic-roky filtrovat na zvolený měsíc
-            ->when($this->mode === 'mesic-roky', function ($q) {
-                $q->whereRaw('MONTH(daily_closings.date) = ?', [$this->month]);
-            })
-            ->whereIn('daily_closing_rows.type_id', [
-                DailyClosingRow::SALES,
-                DailyClosingRow::SALE_MANUAL,
-            ])
-            ->groupBy('daily_closings.branch_id', 'period_key')
-            ->get();
+            // Agregace dle módu (year | year+month | year)
+            $groupBy = $this->mode === 'rok-mesice'
+                ? 'MONTH(daily_closings.date)'
+                : 'YEAR(daily_closings.date)';
 
-        // Indexace [branchId][periodKey] => sales
-        $indexed = [];
-        foreach ($rows as $r) {
-            $indexed[$r->branch_id][$r->period_key] = (float) $r->sales;
-        }
-        return $indexed;
+            $rows = DailyClosingRow::query()
+                ->selectRaw("
+                    daily_closings.branch_id,
+                    {$groupBy} as period_key,
+                    SUM(daily_closing_rows.value) as sales
+                ")
+                ->join(
+                    'daily_closings',
+                    'daily_closings.id',
+                    '=',
+                    'daily_closing_rows.daily_closing_id'
+                )
+                ->whereIn('daily_closings.branch_id', $branchIds)
+                ->whereBetween('daily_closings.date', [$from, $to])
+                // pro mesic-roky filtrovat na zvolený měsíc
+                ->when($this->mode === 'mesic-roky', function ($q) {
+                    $q->whereRaw('MONTH(daily_closings.date) = ?', [$this->month]);
+                })
+                ->whereIn('daily_closing_rows.type_id', [
+                    DailyClosingRow::SALES,
+                    DailyClosingRow::SALES_K,
+                    DailyClosingRow::SALES_B,
+                    DailyClosingRow::SALE_MANUAL,
+                ])
+                ->groupBy('daily_closings.branch_id', 'period_key')
+                ->get();
+
+            // Indexace [branchId][periodKey] => sales
+            $indexed = [];
+            foreach ($rows as $r) {
+                $indexed[$r->branch_id][$r->period_key] = (float) $r->sales;
+            }
+            return $indexed;
+        });
     }
 
     // SVG chart payload (rendrované server-side, hover ovládá Alpine.js)
@@ -1468,15 +1595,15 @@ export default function KodView() {
         </div>
       </div>
 
-      {/* TODO/Otázky banner */}
-      <div className="alert alert-warning d-flex align-items-start gap-2 mb-4">
-        <iconify-icon icon="solar:question-circle-bold-duotone" className="fs-5 flex-shrink-0" />
+      {/* Vyřešené body banner */}
+      <div className="alert alert-success d-flex align-items-start gap-2 mb-4">
+        <iconify-icon icon="solar:check-circle-bold-duotone" className="fs-5 flex-shrink-0" />
         <div className="fs-13">
-          <strong>Otevřené otázky pro kodéra (vyznačeno TODO komentáři v kódu):</strong>
+          <strong>Vyřešené body (po feedbacku od kodéra):</strong>
           <ol className="mb-0 mt-1" style={{ paddingLeft: 18 }}>
-            <li><strong>Kuchyň/Bar split</strong> — single-venue mód v „Tržby detail" zatím zobrazuje jen sloupec „Celkem". Existují konstanty jako <code>DailyClosingRow::SALES_KITCHEN</code> / <code>SALES_BAR</code>? Pokud ano, rozšíříme.</li>
-            <li><strong>Historické agregace (Vývoj tržeb)</strong> — pro 10+ let × 15 provozoven je každé renderování přes <code>daily_closings</code> drahé. Existuje aggregate tabulka (<code>monthly_summaries</code> / <code>branch_yearly_revenue</code>)? Jinak doporučuji <code>Cache::remember(...)</code>.</li>
-            <li><strong>Rok vzniku provozovny</strong> — pro „Vše" period filter potřebujeme nejstarší rok mezi vybranými branches. Existuje <code>branches.opened_at</code> / <code>founded_year</code>? Fallback = <code>MIN(daily_closings.date)</code>.</li>
+            <li><strong>Kuchyň/Bar split</strong> — používáme <code>DailyClosingRow::SALES_K</code> (kuchyň) a <code>DailyClosingRow::SALES_B</code> (bar). Single-venue mód v „Tržby detail" má sloupce <em>Datum · Kuchyň · Bar · Celkem</em>.</li>
+            <li><strong>Historické agregace</strong> — aggregate tabulka zatím neexistuje, query přes <code>daily_closings</code> obalená v <code>Cache::remember(...)</code> s TTL 1 hodina. Klíč obsahuje všechny parametry (mode/period/year/month/branchIds).</li>
+            <li><strong>Rok vzniku provozovny</strong> — <code>branches.opened_at</code> v DB není, použit fallback <code>MIN(daily_closings.date)</code> přes <code>DB::table('daily_closings')-&gt;min('date')</code> s 24h cache.</li>
           </ol>
         </div>
       </div>
