@@ -1037,6 +1037,250 @@ new #[Defer] class extends Component
 </script>
 `;
 
+const CODE_VSECHNY_PROVOZY_PATCH = `<?php
+// PATCH pro resources/views/livewire/vyvoj-trzeb.blade.php
+// ───────────────────────────────────────────────────────────
+// Rozšíření existující Volt komponenty o tlačítko "Všechny provozy".
+//
+// Účel:
+//   - exclusive toggle: deaktivuje individuální branches, zobrazí jedinou
+//     zlatou linii reprezentující součet napříč všemi aktivními provozy
+//   - auto-přepne $period na 'vse' → historie celé skupiny od nejstaršího
+//     daily_closing.date napříč všemi branches (Cache::remember 24h)
+//   - druhý klik vrátí default (první 3 branches)
+//
+// Pravidla (kodér chce vše v Volt komponentě, žádné Support třídy):
+//   ✓ Veškerá logika v anonymní třídě komponenty
+//   ✓ Eloquent (Branch, DailyClosingRow) — žádné mock data
+//   ✓ Cache::remember pro agregaci napříč branches
+//   ✓ Konstanta '#c9911a' = Con Gusto gold (lze přesunout do config)
+//
+// Aplikace patche: 4 změny v existující komponentě.
+// ───────────────────────────────────────────────────────────
+
+// ─── 1) ROZŠÍŘENÍ toggleBranch() ───────────────────────────
+// V existující komponentě nahradit metodu toggleBranch:
+
+public function toggleBranch(int|string $id): void
+{
+    if ($id === 'all') {
+        if (in_array('all', $this->selectedBranchIds, true)) {
+            // Druhý klik na "Všechny provozy" → vrátí defaultní 3 branches
+            $this->selectedBranchIds = $this->branches->take(3)->pluck('id')->all();
+        } else {
+            // Exclusive: deaktivuje všechny ostatní, ponechá jen 'all'
+            $this->selectedBranchIds = ['all'];
+            // Auto-switch period → "vse", ať se ukáže historie celé skupiny
+            $this->period = 'vse';
+        }
+        return;
+    }
+
+    // Klik na konkrétní branch → odstraní 'all' pokud byl aktivní
+    $this->selectedBranchIds = array_values(array_filter(
+        $this->selectedBranchIds, fn ($x) => $x !== 'all'
+    ));
+
+    // Normální toggle (kept-original logika)
+    if (in_array($id, $this->selectedBranchIds, true)) {
+        if (count($this->selectedBranchIds) > 1) {
+            $this->selectedBranchIds = array_values(array_filter(
+                $this->selectedBranchIds, fn ($x) => $x !== $id
+            ));
+        }
+    } else {
+        $this->selectedBranchIds[] = $id;
+    }
+}
+
+// ─── 2) ROZŠÍŘENÍ fromYear() ────────────────────────────────
+// V period='vse' použít MIN(date) napříč VŠEMI branches:
+
+public function fromYear(): int
+{
+    $currentYear = now()->year;
+
+    if ($this->period === '3')  return $currentYear - 2;
+    if ($this->period === '5')  return $currentYear - 4;
+    if ($this->period === '10') return $currentYear - 9;
+
+    // period === 'vse'
+    $isAll = in_array('all', $this->selectedBranchIds, true);
+    $branchIds = $isAll
+        ? $this->branches->pluck('id')->all()
+        : $this->selectedBranchIds;
+
+    if (empty($branchIds)) return $currentYear - 5;
+
+    sort($branchIds);
+    $key = $isAll
+        ? 'vyvoj-trzeb:min-date:all'
+        : 'vyvoj-trzeb:min-date:' . implode(',', $branchIds);
+
+    $minDate = Cache::remember($key, 86400, function () use ($branchIds) {
+        return DB::table('daily_closings')
+            ->whereIn('branch_id', $branchIds)
+            ->min('date');
+    });
+
+    return $minDate ? Carbon::parse($minDate)->year : $currentYear - 5;
+}
+
+// ─── 3) ROZŠÍŘENÍ loadChartData() ──────────────────────────
+// Pokud 'all' → query napříč všemi branches + agregace pod klíčem 'all':
+
+public function loadChartData(): array
+{
+    $isAll = in_array('all', $this->selectedBranchIds, true);
+    $branchIds = $isAll
+        ? $this->branches->pluck('id')->all()
+        : $this->selectedBranchIds;
+
+    if (empty($branchIds)) return [];
+
+    sort($branchIds);
+    $cacheKey = sprintf(
+        'vyvoj-trzeb:%s:%s:%d:%d:%s%s',
+        $this->mode,
+        $this->period,
+        $this->year,
+        $this->month,
+        $isAll ? 'all-' : '',
+        implode(',', $branchIds)
+    );
+
+    return Cache::remember($cacheKey, 3600, function () use ($branchIds, $isAll) {
+        // Datum range (původní logika)
+        if ($this->mode === 'roky') {
+            $from = Carbon::create($this->fromYear(), 1, 1);
+            $to   = Carbon::create(now()->year, 12, 31);
+        } elseif ($this->mode === 'rok-mesice') {
+            $from = Carbon::create($this->year, 1, 1);
+            $to   = Carbon::create($this->year, 12, 31);
+        } else {
+            $from = Carbon::create($this->fromYear(), $this->month, 1);
+            $to   = Carbon::create(now()->year, $this->month, 1)->endOfMonth();
+        }
+
+        $groupBy = $this->mode === 'rok-mesice'
+            ? 'MONTH(daily_closings.date)'
+            : 'YEAR(daily_closings.date)';
+
+        $rows = DailyClosingRow::query()
+            ->selectRaw("
+                daily_closings.branch_id,
+                {$groupBy} as period_key,
+                SUM(daily_closing_rows.value) as sales
+            ")
+            ->join('daily_closings', 'daily_closings.id', '=', 'daily_closing_rows.daily_closing_id')
+            ->whereIn('daily_closings.branch_id', $branchIds)
+            ->whereBetween('daily_closings.date', [$from, $to])
+            ->when($this->mode === 'mesic-roky', function ($q) {
+                $q->whereRaw('MONTH(daily_closings.date) = ?', [$this->month]);
+            })
+            ->whereIn('daily_closing_rows.type_id', [
+                DailyClosingRow::SALES,
+                DailyClosingRow::SALES_K,
+                DailyClosingRow::SALES_B,
+                DailyClosingRow::SALE_MANUAL,
+            ])
+            ->groupBy('daily_closings.branch_id', 'period_key')
+            ->get();
+
+        $indexed = [];
+        if ($isAll) {
+            // Agregace přes všechny branches → indexed pod klíčem 'all'
+            foreach ($rows as $r) {
+                $indexed['all'][$r->period_key] = ($indexed['all'][$r->period_key] ?? 0) + (float) $r->sales;
+            }
+        } else {
+            foreach ($rows as $r) {
+                $indexed[$r->branch_id][$r->period_key] = (float) $r->sales;
+            }
+        }
+        return $indexed;
+    });
+}
+
+// ─── 4) ROZŠÍŘENÍ chartData() ──────────────────────────────
+// V chartData připravit jedinou zlatou series pro 'all':
+
+public function chartData(): array
+{
+    $isAll = in_array('all', $this->selectedBranchIds, true);
+    $xLabels = $this->xLabels();
+    $indexed = $this->loadChartData();
+
+    if ($isAll) {
+        $data = [];
+        foreach ($xLabels as $i => $label) {
+            $periodKey = $this->mode === 'rok-mesice' ? ($i + 1) : (int) $label;
+            $data[] = round($indexed['all'][$periodKey] ?? 0);
+        }
+        return [
+            'categories' => $xLabels,
+            'series' => [[
+                'name'  => 'Všechny provozy',
+                'data'  => $data,
+                'color' => '#c9911a',   // Con Gusto gold (config('app.brand_color') by bylo lepší)
+            ]],
+            'subtitle' => 'Celá skupina Con Gusto · ' . $this->fromYear() . '–' . now()->year,
+        ];
+    }
+
+    // Původní per-branch logika (nezměněno)
+    $branches = $this->selectedBranches();
+    $series = [];
+    foreach ($branches as $b) {
+        $data = [];
+        foreach ($xLabels as $i => $label) {
+            $periodKey = $this->mode === 'rok-mesice' ? ($i + 1) : (int) $label;
+            $data[] = round($indexed[$b->id][$periodKey] ?? 0);
+        }
+        $series[] = [
+            'name'  => $b->name,
+            'data'  => $data,
+            'color' => $b->color,
+        ];
+    }
+    return [
+        'categories' => $xLabels,
+        'series'     => $series,
+        'subtitle'   => $this->chartSubtitle(),
+    ];
+}
+?>
+
+{{-- ─── 5) BLADE: přidání tlačítka "Všechny provozy" ─────── --}}
+{{-- V existující sekci s toggle tlačítky doplnit PŘED foreach branches: --}}
+
+<div class="d-flex flex-wrap gap-1">
+    {{-- "Všechny provozy" CTA (Con Gusto gold) --}}
+    @php $isAll = in_array('all', $this->selectedBranchIds, true); @endphp
+    <button class="trzby-chart-toggle"
+            style="background: {{ $isAll ? '#c9911a' : 'white' }};
+                   border-color: #c9911a;
+                   color: {{ $isAll ? 'white' : '#c9911a' }};
+                   font-weight: 600;"
+            wire:click="toggleBranch('all')"
+            title="Zobrazí vývoj celé skupiny Con Gusto (součet všech provozů)">
+        <iconify-icon icon="solar:buildings-bold-duotone" class="me-1"></iconify-icon>
+        Všechny provozy
+    </button>
+    <span class="mx-1 align-self-center text-muted" style="font-size:11px">·</span>
+
+    {{-- Existující řada per-branch tlačítek (nezměněno) --}}
+    @foreach($branches as $b)
+        @php $sel = in_array($b->id, $this->selectedBranchIds, true); @endphp
+        <button class="trzby-chart-toggle"
+                style="{{ $sel ? "background:{$b->color};border-color:{$b->color};color:white" : '' }}"
+                wire:click="toggleBranch({{ $b->id }})">
+            {{ $b->name }}
+        </button>
+    @endforeach
+</div>
+`;
+
 const CODE_CSS = `/* resources/css/trzby.css */
 /* Vlastní styly pro Tržby detail + Vývoj tržeb. */
 /* Předpokládá se globální font 'Acumin Pro' (Book/Semibold/Bold) z @font-face. */
@@ -1396,8 +1640,16 @@ const ACCORDION: AccItem[] = [
     ],
   },
   {
+    id: 'vyvoj-trzeb-vsechny',
+    title: '3 — Vývoj tržeb: rozšíření „Všechny provozy"',
+    description: 'Patch existující Volt komponenty (nepřepisuje původní). Exclusive toggle pro celkový součet napříč všemi branches, auto-switch period na „vse", MIN(date) cache pro celé skupiny. 4 úpravy v komponentě + 1 v Blade.',
+    files: [
+      { path: 'resources/views/livewire/vyvoj-trzeb.blade.php (patch)', lang: 'blade', code: CODE_VSECHNY_PROVOZY_PATCH },
+    ],
+  },
+  {
     id: 'css',
-    title: '3 — CSS (sdílené pro obě sekce)',
+    title: '4 — CSS (sdílené pro obě sekce)',
     description: 'Plain CSS: sticky sloupce, live tečka pulzace, segment buttons, toggle tlačítka v grafu.',
     files: [
       { path: 'resources/css/trzby.css', lang: 'css', code: CODE_CSS },
@@ -1405,7 +1657,7 @@ const ACCORDION: AccItem[] = [
   },
   {
     id: 'integration',
-    title: '4 — Routing a layout (jak to zapojit)',
+    title: '5 — Routing a layout (jak to zapojit)',
     description: 'Sample route + Blade layout, který vloží obě Volt komponenty na jednu stránku.',
     files: [
       { path: 'routes/web.php',                        lang: 'php',   code: CODE_ROUTES_PHP },

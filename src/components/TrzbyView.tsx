@@ -243,7 +243,20 @@ const FOUNDING_YEAR: Record<string, number> = {
   'flank': 2023, 'cg-catering': 2020, 'tackarna-londyn': 2023,
   'tackarna-turanka': 2024, 'tackarna-svedske-valy': 2024,
   'teatr': 2022, 'korek-wines': 2023, 'jime-brno': 2024,
+  'all': 2006,   // synthetic "Všechny provozy" — nejstarší ze všech (Piazza 2006)
 };
+
+// Synthetic "Všechny provozy" provoz pro graf agregace
+const ALL_PROV = {
+  id: 'all',
+  name: 'Všechny provozy',
+  shortName: 'Všechny provozy',
+  color: '#c9911a',          // Con Gusto gold
+  address: '',
+  manager: '',
+  phone: '',
+  status: 'active' as const,
+} satisfies typeof ACTIVE_PROVS[0];
 
 // Roční tržba provozovny (pro historický přehled)
 function genAnnualRevenue(year: number, provId: string): number {
@@ -299,11 +312,25 @@ export default function TrzbyView({ state, update }: Props) {
 
   const toggleChart = (id: string) => setChartIds(prev => {
     const n = new Set(prev);
+    if (id === 'all') {
+      // Klik na "Všechny provozy" → exclusive: vyprázdní ostatní, ponechá jen 'all'
+      // Druhý klik (deselect) → vrátí defaultní 3 podniky
+      if (n.has('all')) return new Set(['cg-brno', 'piazza', 'monte']);
+      // Automaticky přepneme period na "Vše" — ať se ukáže historie celé firmy 2006-2026
+      setChartPeriod('vse');
+      return new Set(['all']);
+    }
+    // Klik na konkrétní podnik → odstraní 'all' pokud byl aktivní
+    n.delete('all');
     if (n.has(id) && n.size > 1) n.delete(id);
     else n.add(id);
+    // Pokud by zůstal prázdný, ponechej alespoň jeden
+    if (n.size === 0) n.add(id);
     return n;
   });
-  const chartProvs = ACTIVE_PROVS.filter(p => chartIds.has(p.id) && (BASE_DAY[p.id] ?? 0) > 0);
+  const chartProvs = chartIds.has('all')
+    ? [ALL_PROV]
+    : ACTIVE_PROVS.filter(p => chartIds.has(p.id) && (BASE_DAY[p.id] ?? 0) > 0);
 
   // Počáteční rok grafu – jen pro mód roky
   const chartFromYear = useMemo(() => {
@@ -707,8 +734,29 @@ export default function TrzbyView({ state, update }: Props) {
               )}
             </div>
           </div>
-          {/* Řádek 2: toggle tlačítka podniků */}
+          {/* Řádek 2: toggle tlačítka podniků + "Všechny provozy" CTA */}
           <div className="d-flex flex-wrap gap-1">
+            {/* "Všechny provozy" — celá firma (exclusive toggle) */}
+            {(() => {
+              const sel = chartIds.has('all');
+              return (
+                <button
+                  className="trzby-chart-toggle"
+                  style={{
+                    background: sel ? ALL_PROV.color : 'white',
+                    borderColor: ALL_PROV.color,
+                    color: sel ? 'white' : ALL_PROV.color,
+                    fontWeight: 600,
+                  }}
+                  onClick={() => toggleChart('all')}
+                  title="Zobrazí vývoj celé skupiny Con Gusto (součet všech provozů)"
+                >
+                  <iconify-icon icon="solar:buildings-bold-duotone" className="me-1" style={{ fontSize: 12 }} />
+                  Všechny provozy
+                </button>
+              );
+            })()}
+            <span className="mx-1 align-self-center text-muted" style={{ fontSize: 11 }}>·</span>
             {ACTIVE_PROVS.filter((p) => BASE_DAY[p.id] > 0).map((p) => {
               const sel = chartIds.has(p.id);
               return (
@@ -898,13 +946,26 @@ function VyvojChart({ provs, mode, fromYear, year, month, mesicRokyFromYear }: {
   const N = xLabels.length;
 
   // Data per provozovna per x-bod
-  const data: number[][] = provs.map((p) =>
-    mode === 'roky'
-      ? xLabels.map((y) => genAnnualRevenue(parseInt(y), p.id))
-      : mode === 'rok-mesice'
-      ? Array.from({ length: 12 }, (_, i) => genMonthRevenue(year, i + 1, p.id))
-      : xLabels.map((y) => genMonthRevenue(parseInt(y), month, p.id))
-  );
+  // Pro prov.id === 'all' agregujeme přes všechny aktivní provozovny
+  const sumAcrossAll = (fn: (provId: string) => number): number =>
+    ACTIVE_PROVS.filter((p) => (BASE_DAY[p.id] ?? 0) > 0).reduce((s, p) => s + fn(p.id), 0);
+
+  const data: number[][] = provs.map((p) => {
+    const isAll = p.id === 'all';
+    if (mode === 'roky') {
+      return xLabels.map((y) => isAll
+        ? sumAcrossAll((pid) => genAnnualRevenue(parseInt(y), pid))
+        : genAnnualRevenue(parseInt(y), p.id));
+    }
+    if (mode === 'rok-mesice') {
+      return Array.from({ length: 12 }, (_, i) => isAll
+        ? sumAcrossAll((pid) => genMonthRevenue(year, i + 1, pid))
+        : genMonthRevenue(year, i + 1, p.id));
+    }
+    return xLabels.map((y) => isAll
+      ? sumAcrossAll((pid) => genMonthRevenue(parseInt(y), month, pid))
+      : genMonthRevenue(parseInt(y), month, p.id));
+  });
 
   const allVals  = data.flatMap((d) => d).filter((v) => v > 0);
   const maxVal   = Math.max(...allVals, 1);
@@ -1075,9 +1136,13 @@ function RocniVyvojTable({ provs, mode, fromYear, year, month, mesicRokyFromYear
         });
 
   function getValue(prov: ChartProv, colKey: string): number {
-    if (mode === 'roky')       return genAnnualRevenue(parseInt(colKey), prov.id);
-    if (mode === 'rok-mesice') return genMonthRevenue(year, parseInt(colKey), prov.id);
-    return genMonthRevenue(parseInt(colKey), month, prov.id);
+    // Pro 'all' agregujeme přes všechny aktivní provozovny
+    const sumAll = (fn: (pid: string) => number) =>
+      ACTIVE_PROVS.filter((p) => (BASE_DAY[p.id] ?? 0) > 0).reduce((s, p) => s + fn(p.id), 0);
+    const isAll = prov.id === 'all';
+    if (mode === 'roky')       return isAll ? sumAll((pid) => genAnnualRevenue(parseInt(colKey), pid)) : genAnnualRevenue(parseInt(colKey), prov.id);
+    if (mode === 'rok-mesice') return isAll ? sumAll((pid) => genMonthRevenue(year, parseInt(colKey), pid)) : genMonthRevenue(year, parseInt(colKey), prov.id);
+    return isAll ? sumAll((pid) => genMonthRevenue(parseInt(colKey), month, pid)) : genMonthRevenue(parseInt(colKey), month, prov.id);
   }
 
   return (
