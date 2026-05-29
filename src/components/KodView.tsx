@@ -31,8 +31,9 @@ const PREVIEW_LIVE: Record<string, boolean> = {
 };
 
 function TrzbyDetailPreview() {
+  // Brand barva = aktuální --prov-color (mění se v sidebaru topbaru podle vybrané provozovny)
   return (
-    <div className="card">
+    <div className="card" style={{ borderTop: '3px solid var(--prov-color, #c9911a)' }}>
       <div className="card-header" style={{ background: '#fff' }}>
         <div className="d-flex align-items-center justify-content-between flex-wrap gap-2">
           <h5 className="card-title mb-0">Tržby detail</h5>
@@ -163,12 +164,15 @@ function VyvojTrzebPreview() {
   };
 
   return (
-    <div className="card">
+    <div className="card" style={{ borderTop: '3px solid var(--prov-color, #c9911a)', width: '100%' }}>
       <div className="card-header" style={{ background: '#fff' }}>
         <div className="d-flex align-items-center justify-content-between flex-wrap gap-2 mb-2">
           <div>
             <h5 className="card-title mb-0">Vývoj tržeb</h5>
             <small className="text-muted fw-normal">Roční přehled · 2022–2026 · *duben 2026</small>
+            <small className="text-muted fw-normal ms-2 fst-italic" style={{ fontSize: 10 }}>
+              (V Laravelu render přes ApexCharts — tady SVG kvůli demonstraci)
+            </small>
           </div>
           <div className="d-flex align-items-center gap-2 flex-wrap">
             <div style={{ display: 'inline-flex', border: '1px solid #dee2e6', borderRadius: 6, overflow: 'hidden', pointerEvents: 'none' }}>
@@ -325,6 +329,7 @@ new #[Defer] class extends Component
 {
     public $branch;
     public $branches;
+    public string $brandColor = '#c9911a';        // Default Con Gusto gold (multi-venue / main branch)
 
     public $from;
     public $to;
@@ -351,9 +356,11 @@ new #[Defer] class extends Component
         if ($this->branch) {
             // Multi-tenancy: "main" branch vidí všechny, ostatní jen sebe
             if ($this->branch->id == mainBranchGet()) {
-                $this->branches = Branch::all();
+                $this->branches   = Branch::all();
+                $this->brandColor = '#c9911a';       // Con Gusto gold (default pro multi-venue)
             } else {
-                $this->branches = Branch::where('id', $this->branch->id)->get();
+                $this->branches   = Branch::where('id', $this->branch->id)->get();
+                $this->brandColor = $this->branch->color ?? '#c9911a';  // brand barva té branche
             }
 
             $this->from = Carbon::now()->subDays(7)->format('Y-m-d');
@@ -501,7 +508,9 @@ new #[Defer] class extends Component
     </div>
 @endplaceholder
 
-<div class="card mb-4">
+{{-- Brand barevný proužek nahoře: 3px border-top barvou aktivní provozovny --}}
+{{-- (multi-venue / main branch = Con Gusto gold #c9911a) --}}
+<div class="card mb-4" style="--prov-color: {{ $brandColor }}; border-top: 3px solid var(--prov-color);">
     <div class="card-header trzby-detail-header-sticky">
         <div class="d-flex align-items-center justify-content-between flex-wrap gap-2">
             <h4 class="card-title mb-0">
@@ -568,6 +577,7 @@ new #[Defer] class extends Component
                                 <tr wire:key="row-{{ $keyDay }}">
                                     <td class="trzby-sticky-l">
                                         <strong>{{ $day['label'] }}</strong>
+                                        {{-- Live tečka: pulzující zelená u dnešního dne (CSS .trzby-live-dot v trzby.css) --}}
                                         @if($day['isToday'] ?? false)
                                             <span class="trzby-live-dot ms-1" style="width:5px;height:5px"></span>
                                         @endif
@@ -634,6 +644,7 @@ new #[Defer] class extends Component
                                 <tr wire:key="row-{{ $keyDay }}">
                                     <td class="trzby-sticky-l">
                                         <strong>{{ $day['label'] }}</strong>
+                                        {{-- Live tečka: pulzující zelená u dnešního dne (CSS .trzby-live-dot v trzby.css) --}}
                                         @if($day['isToday'] ?? false)
                                             <span class="trzby-live-dot ms-1" style="width:5px;height:5px"></span>
                                         @endif
@@ -721,14 +732,10 @@ new #[Defer] class extends Component
     public array  $selectedBranchIds = [];        // multi-select branches v grafu
 
     public $branches;
+    public string $brandColor = '#c9911a';        // Default Con Gusto gold (main branch / multi-venue)
 
     public const MONTH_LABELS = ['Led','Únor','Bře','Dub','Kvě','Čer','Čec','Srp','Zář','Říj','Lis','Pro'];
     public const MONTH_FULL   = ['Leden','Únor','Březen','Duben','Květen','Červen','Červenec','Srpen','Září','Říjen','Listopad','Prosinec'];
-
-    // SVG dimensions
-    public const CW = 700; public const CH = 210;
-    public const ML = 62;  public const MT = 16;
-    public const MR = 16;  public const MB = 38;
 
     public function mount(): void
     {
@@ -736,9 +743,11 @@ new #[Defer] class extends Component
         if (!$branch) return;
 
         if ($branch->id == mainBranchGet()) {
-            $this->branches = Branch::all();
+            $this->branches   = Branch::all();
+            $this->brandColor = '#c9911a';                          // Con Gusto gold (default)
         } else {
-            $this->branches = Branch::where('id', $branch->id)->get();
+            $this->branches   = Branch::where('id', $branch->id)->get();
+            $this->brandColor = $branch->color ?? '#c9911a';        // brand barva té branche
         }
 
         // Default: první 3 branches v grafu
@@ -876,97 +885,42 @@ new #[Defer] class extends Component
         });
     }
 
-    // SVG chart payload (rendrované server-side, hover ovládá Alpine.js)
-    public function chart(): array
+    // ── Data pro ApexCharts (předané jako JSON do Alpine.js) ─────
+    // Vrací: ['categories' => [...], 'series' => [{name, data, color}, ...], 'subtitle' => '...']
+    public function chartData(): array
     {
-        $IW = self::CW - self::ML - self::MR;
-        $IH = self::CH - self::MT - self::MB;
-
         $xLabels  = $this->xLabels();
-        $N        = count($xLabels);
         $branches = $this->selectedBranches();
         $indexed  = $this->loadChartData();
 
-        // Sestav data per branch per x-bod
-        $dataPerBranch = [];
+        $series = [];
         foreach ($branches as $b) {
-            $vals = [];
+            $data = [];
             foreach ($xLabels as $i => $label) {
                 $periodKey = $this->mode === 'rok-mesice' ? ($i + 1) : (int) $label;
-                $vals[] = $indexed[$b->id][$periodKey] ?? 0;
+                $data[] = round($indexed[$b->id][$periodKey] ?? 0);
             }
-            $dataPerBranch[] = ['branch' => $b, 'vals' => $vals];
-        }
-
-        $allVals = [];
-        foreach ($dataPerBranch as $d) foreach ($d['vals'] as $v) if ($v > 0) $allVals[] = $v;
-        $maxVal = !empty($allVals) ? max($allVals) : 1;
-        $yMax = (int) (ceil($maxVal / 1_000_000) * 1_000_000) ?: (int) (ceil($maxVal / 100_000) * 100_000);
-
-        $xPx = fn (int $i) => $N > 1 ? self::ML + ($i / ($N - 1)) * $IW : self::ML + $IW / 2;
-        $yPx = fn (float $v) => self::MT + $IH - ($v / $yMax) * $IH;
-
-        $lines = [];
-        foreach ($dataPerBranch as $d) {
-            $pts = [];
-            foreach ($d['vals'] as $i => $v) {
-                $pts[] = ['x' => $xPx($i), 'y' => $yPx(max($v, 0)), 'v' => $v, 'has' => $v > 0];
-            }
-            $nonZero = array_values(array_filter($pts, fn ($p) => $p['has']));
-            $areaPath = '';
-            if (count($nonZero) > 1) {
-                $smooth = $this->smoothPath($nonZero);
-                $last = end($nonZero); $first = reset($nonZero);
-                $baseLine = self::MT + $IH;
-                $areaPath = "{$smooth} L {$last['x']},{$baseLine} L {$first['x']},{$baseLine} Z";
-            }
-            $lines[] = [
-                'branch'   => $d['branch'],
-                'pts'      => $pts,
-                'linePath' => $this->smoothPath($pts),
-                'areaPath' => $areaPath,
+            $series[] = [
+                'name'  => $b->name,
+                'data'  => $data,
+                'color' => $b->color,
             ];
         }
 
-        $xCoords = array_map(fn ($i) => $xPx($i), array_keys($xLabels));
-
         return [
-            'IW' => $IW, 'IH' => $IH, 'N' => $N, 'yMax' => $yMax,
-            'xLabels'  => $xLabels,
-            'gridVals' => [$yMax * 0.25, $yMax * 0.5, $yMax * 0.75, $yMax],
-            'lines'    => $lines,
-            'xCoords'  => $xCoords,
-            'xHalf'    => $N > 1 ? ($IW / ($N - 1)) / 2 : $IW / 2,
+            'categories' => $xLabels,
+            'series'     => $series,
+            'subtitle'   => $this->chartSubtitle(),
         ];
     }
 
-    // Smooth SVG path (Catmull-Rom přes cubic bezier)
-    public function smoothPath(array $pts): string
+    public function chartSubtitle(): string
     {
-        $n = count($pts);
-        if ($n < 2) return '';
-        $t = 0.25;
-        $d = sprintf('M %s,%s', $pts[0]['x'], $pts[0]['y']);
-        for ($i = 0; $i < $n - 1; $i++) {
-            $p0 = $pts[max(0, $i - 1)];
-            $p1 = $pts[$i];
-            $p2 = $pts[$i + 1];
-            $p3 = $pts[min($n - 1, $i + 2)];
-            $cp1x = $p1['x'] + ($p2['x'] - $p0['x']) * $t;
-            $cp1y = $p1['y'] + ($p2['y'] - $p0['y']) * $t;
-            $cp2x = $p2['x'] - ($p3['x'] - $p1['x']) * $t;
-            $cp2y = $p2['y'] - ($p3['y'] - $p1['y']) * $t;
-            $d .= sprintf(' C %.1f,%.1f %.1f,%.1f %s,%s',
-                $cp1x, $cp1y, $cp2x, $cp2y, $p2['x'], $p2['y']);
-        }
-        return $d;
-    }
-
-    public function fmtY(float $v): string
-    {
-        return $v >= 1_000_000
-            ? sprintf('%.1fM', $v / 1_000_000)
-            : sprintf('%dk', (int) round($v / 1_000));
+        return match ($this->mode) {
+            'roky'       => 'Roční přehled · ' . $this->fromYear() . '–' . now()->year,
+            'rok-mesice' => 'Měsíční přehled · rok ' . $this->year,
+            'mesic-roky' => self::MONTH_FULL[$this->month - 1] . ' · ' . $this->fromYear() . '–' . now()->year,
+        };
     }
 };
 ?>
@@ -983,42 +937,23 @@ new #[Defer] class extends Component
 @endplaceholder
 
 @php
-    $chart = $this->chart();
     $branches = $this->branches;
     $selected = $this->selectedBranches();
 @endphp
 
+{{-- Brand barevný proužek nahoře (stejně jako u Tržby detail) + full-width container --}}
 <div class="card mb-3"
-     x-data="vyvojChart({
-         xCoords: {{ json_encode($chart['xCoords']) }},
-         xLabels: {{ json_encode($chart['xLabels']) }},
-         lines:   {{ json_encode(array_map(fn ($l) => [
-                        'id'    => $l['branch']->id,
-                        'name'  => $l['branch']->name,
-                        'color' => $l['branch']->color,
-                        'vals'  => array_column($l['pts'], 'v'),
-                    ], $chart['lines'])) }},
-         mode:  '{{ $this->mode }}',
-         year:  {{ $this->year }},
-         month: {{ $this->month }},
-         ml:    {{ \\App\\Livewire\\VyvojTrzeb::ML ?? 62 }},
-         iw:    {{ $chart['IW'] }},
-         N:     {{ $chart['N'] }},
-     })">
+     style="--prov-color: {{ $brandColor }}; border-top: 3px solid var(--prov-color); width: 100%;"
+     x-data="vyvojTrzebChart(@js($this->chartData()))"
+     x-init="renderChart()"
+     @chart-data-updated.window="updateChart($event.detail)">
+
     <div class="card-header trzby-detail-header-sticky">
         {{-- Řádek 1: nadpis + mode switcher --}}
         <div class="d-flex align-items-center justify-content-between flex-wrap gap-2 mb-2">
             <div>
                 <h4 class="card-title mb-0">Vývoj tržeb</h4>
-                <small class="text-muted fw-normal">
-                    @if($this->mode === 'roky')
-                        Roční přehled · {{ $this->fromYear() }}–{{ now()->year }}
-                    @elseif($this->mode === 'rok-mesice')
-                        Měsíční přehled · rok {{ $this->year }}
-                    @else
-                        {{ self::MONTH_FULL[$this->month - 1] }} · {{ $this->fromYear() }}–{{ now()->year }}
-                    @endif
-                </small>
+                <small class="text-muted fw-normal">{{ $this->chartSubtitle() }}</small>
             </div>
             <div class="d-flex align-items-center gap-2 flex-wrap">
                 <div class="lk-segment">
@@ -1068,90 +1003,38 @@ new #[Defer] class extends Component
         </div>
     </div>
 
-    <div class="card-body pb-2">
-        <div class="spinner-border text-primary" role="status" wire:loading wire:target="setMode,setPeriod,year,month,toggleBranch">
+    <div class="card-body p-2">
+        <div class="spinner-border text-primary m-3" role="status" wire:loading wire:target="setMode,setPeriod,year,month,toggleBranch">
             <span class="visually-hidden">Loading...</span>
         </div>
 
         @if($selected->isEmpty())
-            <div style="height:230px;display:flex;align-items:center;justify-content:center" class="text-muted">
+            <div style="height:380px;display:flex;align-items:center;justify-content:center" class="text-muted">
                 Vyberte alespoň jeden podnik pomocí tlačítek výše.
             </div>
         @else
-            <div style="position:relative;height:230px" wire:loading.remove>
-                <svg viewBox="0 0 {{ self::CW }} {{ self::CH }}" style="width:100%;height:100%;display:block">
-                    {{-- Grid + osy --}}
-                    @foreach($chart['gridVals'] as $gv)
-                        @php $yp = self::MT + $chart['IH'] - ($gv / $chart['yMax']) * $chart['IH']; @endphp
-                        <line x1="{{ self::ML }}" y1="{{ $yp }}" x2="{{ self::CW - self::MR }}" y2="{{ $yp }}"
-                              stroke="#eaedf1" stroke-width="1" stroke-dasharray="4 3"/>
-                        <text x="{{ self::ML - 6 }}" y="{{ $yp + 4 }}" text-anchor="end" font-size="9" fill="#9097a7">
-                            {{ $this->fmtY($gv) }}
-                        </text>
-                    @endforeach
-                    <line x1="{{ self::ML }}" y1="{{ self::MT + $chart['IH'] }}"
-                          x2="{{ self::CW - self::MR }}" y2="{{ self::MT + $chart['IH'] }}"
-                          stroke="#eaedf1" stroke-width="1"/>
-
-                    {{-- Linie per branch --}}
-                    @foreach($chart['lines'] as $line)
-                        <g>
-                            @if($line['areaPath'])
-                                <path d="{{ $line['areaPath'] }}" fill="{{ $line['branch']->color }}" fill-opacity="0.07"/>
-                            @endif
-                            <path d="{{ $line['linePath'] }}" fill="none"
-                                  stroke="{{ $line['branch']->color }}" stroke-width="2.2" opacity="0.9"/>
-                            @foreach($line['pts'] as $i => $pt)
-                                @if($pt['has'])
-                                    <circle cx="{{ $pt['x'] }}" cy="{{ $pt['y'] }}"
-                                            :r="tooltipIdx === {{ $i }} ? 5.5 : 3.5"
-                                            fill="{{ $line['branch']->color }}" stroke="white" stroke-width="1.5"
-                                            style="transition:r 0.1s"/>
-                                @endif
-                            @endforeach
-                        </g>
-                    @endforeach
-
-                    {{-- Hover zóny --}}
-                    @foreach($chart['xLabels'] as $i => $lbl)
-                        @php
-                            $x = $chart['xCoords'][$i];
-                            $w = $chart['N'] > 1 ? $chart['IW'] / ($chart['N'] - 1) : $chart['IW'];
-                        @endphp
-                        <rect x="{{ $x - $chart['xHalf'] }}" y="{{ self::MT }}"
-                              width="{{ $w }}" height="{{ $chart['IH'] }}"
-                              fill="transparent" style="cursor:crosshair"
-                              @mouseenter="tooltipIdx = {{ $i }}"
-                              @mouseleave="tooltipIdx = null"/>
-                    @endforeach
-
-                    {{-- Vertikální linka --}}
-                    <line x-show="tooltipIdx !== null"
-                          :x1="xCoords[tooltipIdx]" y1="{{ self::MT }}"
-                          :x2="xCoords[tooltipIdx]" y2="{{ self::MT + $chart['IH'] }}"
-                          stroke="#64748b" stroke-width="1" stroke-dasharray="3 2" opacity="0.4"/>
-
-                    {{-- X popisky --}}
-                    @foreach($chart['xLabels'] as $i => $lbl)
-                        <text x="{{ $chart['xCoords'][$i] }}" y="{{ self::MT + $chart['IH'] + 22 }}"
-                              text-anchor="middle" font-size="9"
-                              :fill="tooltipIdx === {{ $i }} ? '#313b5e' : '#9097a7'"
-                              :font-weight="tooltipIdx === {{ $i }} ? '700' : '400'">
-                            {{ $lbl }}
-                        </text>
-                    @endforeach
-                </svg>
-
-                {{-- Tooltip — řízeno Alpine.js --}}
-                <div x-show="tooltipIdx !== null"
-                     :style="tooltipStyle"
-                     x-html="tooltipHtml"
-                     style="position:absolute;top:0;background:#313b5e;color:white;border-radius:8px;padding:9px 13px;font-size:11px;pointer-events:none;z-index:10;min-width:190px;box-shadow:0 4px 20px rgba(0,0,0,0.2)">
-                </div>
+            {{-- ApexCharts kontejner — plná šířka, vlastní implementace v vyvoj-chart.js --}}
+            <div wire:loading.remove wire:target="setMode,setPeriod,year,month,toggleBranch"
+                 wire:ignore  {{-- Livewire nesmí přepisovat ApexCharts DOM --}}
+                 x-ref="chartContainer"
+                 style="width: 100%; min-height: 380px;">
             </div>
         @endif
     </div>
 </div>
+
+{{-- Po každém Livewire re-render → pošli nová data do Alpine přes window event --}}
+<script>
+    document.addEventListener('livewire:initialized', () => {
+        Livewire.hook('morph.updated', ({ component }) => {
+            if (component.name === 'vyvoj-trzeb') {
+                window.dispatchEvent(new CustomEvent('chart-data-updated', {
+                    detail: @json($this->chartData())
+                }));
+            }
+        });
+    });
+</script>
 `;
 
 const CODE_CSS = `/* resources/css/trzby.css */
@@ -1307,9 +1190,13 @@ const CODE_CSS = `/* resources/css/trzby.css */
 `;
 
 const CODE_ALPINE_JS = `// resources/js/vyvoj-chart.js
-// Alpine.js komponent pro hover tooltip v grafu vývoje tržeb.
-// Načti přes \`Alpine.data('vyvojChart', ...)\` v app.js.
+// Alpine.js + ApexCharts inicializace pro graf vývoje tržeb.
+//
+// Závislost: ApexCharts (npm i apexcharts NEBO CDN <script src="...apexcharts...">)
+// Načti přes Alpine.data('vyvojTrzebChart', window.vyvojTrzebChart) v app.js,
+// nebo definuj jako window.* (níže) — pak je dostupné v x-data="vyvojTrzebChart(...)".
 
+// Formátování Kč s narrow no-break space (U+202F)
 window.fCzk = function (n) {
     const sign = n < 0 ? '-' : '';
     const abs  = Math.abs(n);
@@ -1317,57 +1204,129 @@ window.fCzk = function (n) {
     return sign + s + '\\u202FKč';
 };
 
-window.vyvojChart = function (config) {
-    return {
-        tooltipIdx: null,
-        xCoords:    config.xCoords,
-        data:       config.data,
-        provs:      config.provs,
-        xLabels:    config.xLabels,
-        monthLabels: config.monthLabels,
-        mode:       config.mode,
-        year:       config.year,
-        month:      config.month,
-        ml:         config.ml,
-        iw:         config.iw,
-        N:          config.N,
+// Stručná Y-osa: 1.5M, 850k apod.
+window.fmtAxisY = function (v) {
+    if (v >= 1_000_000) return (v / 1_000_000).toFixed(1) + 'M';
+    if (v >= 1_000)     return Math.round(v / 1_000) + 'k';
+    return String(v);
+};
 
-        // Pozice tooltipu (clamp dle šířky containeru)
-        get tooltipStyle() {
-            if (this.tooltipIdx === null) return '';
-            const x   = this.xCoords[this.tooltipIdx];
-            const pct = ((x - this.ml) / this.iw) * 100;
-            return \`left: clamp(10px, \${pct}%, calc(100% - 220px))\`;
+window.vyvojTrzebChart = function (initialData) {
+    return {
+        chart: null,
+        data:  initialData,
+
+        // Inicializace — voláno z x-init="renderChart()"
+        renderChart() {
+            this.chart = new ApexCharts(this.$refs.chartContainer, this.buildOptions());
+            this.chart.render();
         },
 
-        // HTML obsah tooltipu
-        get tooltipHtml() {
-            if (this.tooltipIdx === null) return '';
-            const idx = this.tooltipIdx;
+        // Update z window eventu po Livewire re-renderu
+        updateChart(newData) {
+            this.data = newData;
+            if (!this.chart) return;
+            this.chart.updateOptions({
+                series:      this.data.series.map(s => ({ name: s.name, data: s.data })),
+                colors:      this.data.series.map(s => s.color),
+                xaxis:       { categories: this.data.categories },
+                subtitle:    { text: this.data.subtitle },
+            }, true, true);  // (animate, redrawPaths)
+        },
 
-            // Hlavička (datum / měsíc / rok)
-            let title;
-            if (this.mode === 'rok-mesice') {
-                title = \`\${this.monthLabels[idx]} \${this.year}\`;
-            } else if (this.mode === 'mesic-roky') {
-                title = \`\${this.monthLabels[this.month - 1]} \${this.xLabels[idx]}\`;
-            } else {
-                const suffix = idx === this.N - 1 ? ' *' : '';
-                title = \`\${this.xLabels[idx]}\${suffix}\`;
-            }
-
-            // Řádky per provozovna (jen ne-nulové)
-            const rows = this.provs.map((prov, pi) => {
-                const v = this.data[pi][idx];
-                if (v <= 0) return '';
-                return \`<div style="display:flex;justify-content:space-between;gap:16px;margin-bottom:2px">
-                    <span style="color:\${prov.color}">\${prov.shortName}</span>
-                    <span style="font-weight:600">\${window.fCzk(v)}</span>
-                </div>\`;
-            }).filter(Boolean).join('');
-
-            if (!rows) return '';
-            return \`<div style="font-weight:700;margin-bottom:6px;font-size:12px">\${title}</div>\${rows}\`;
+        // ApexCharts options — zachovává design SVG verze
+        buildOptions() {
+            return {
+                chart: {
+                    type:       'area',
+                    height:     380,
+                    fontFamily: "'Acumin Pro', system-ui, sans-serif",
+                    toolbar:    { show: false },
+                    zoom:       { enabled: false },
+                    animations: { enabled: true, speed: 300 },
+                },
+                series: this.data.series.map(s => ({ name: s.name, data: s.data })),
+                colors: this.data.series.map(s => s.color),
+                stroke: {
+                    curve:  'smooth',   // Catmull-Rom-like smooth lines (jako naše smoothPath)
+                    width:  2.5,
+                    lineCap: 'round',
+                },
+                fill: {
+                    type:     'gradient',
+                    gradient: {
+                        shadeIntensity: 1,
+                        opacityFrom:    0.25,
+                        opacityTo:      0.02,   // jako fill-opacity="0.07" v SVG verzi
+                        stops:          [0, 95, 100],
+                    },
+                },
+                xaxis: {
+                    categories: this.data.categories,
+                    labels: {
+                        style: { fontSize: '11px', colors: '#9097a7', fontWeight: 400 },
+                    },
+                    axisBorder: { color: '#eaedf1' },
+                    axisTicks:  { color: '#eaedf1' },
+                },
+                yaxis: {
+                    labels: {
+                        style:     { fontSize: '11px', colors: '#9097a7' },
+                        formatter: window.fmtAxisY,
+                    },
+                },
+                grid: {
+                    borderColor:     '#eaedf1',
+                    strokeDashArray: 4,           // jako dasharray="4 3" v SVG
+                    yaxis: { lines: { show: true } },
+                    xaxis: { lines: { show: false } },
+                },
+                dataLabels: { enabled: false },
+                legend:     { show: false },      // máme vlastní toggle buttons v Blade
+                markers: {
+                    size:        3.5,
+                    strokeWidth: 1.5,
+                    strokeColors: '#fff',
+                    hover:       { size: 5.5 },
+                },
+                tooltip: {
+                    shared:        true,
+                    intersect:     false,
+                    followCursor:  true,
+                    fillSeriesColor: false,
+                    theme:         'dark',
+                    custom: function ({ series, dataPointIndex, w }) {
+                        const title = w.globals.labels[dataPointIndex];
+                        let rows = '';
+                        series.forEach((seriesData, i) => {
+                            const v = seriesData[dataPointIndex];
+                            if (v <= 0) return;
+                            const name  = w.globals.seriesNames[i];
+                            const color = w.globals.colors[i];
+                            rows += \`
+                                <div style="display:flex;justify-content:space-between;gap:16px;margin-bottom:2px">
+                                    <span style="color:\${color}">\${name}</span>
+                                    <span style="font-weight:600">\${window.fCzk(v)}</span>
+                                </div>
+                            \`;
+                        });
+                        if (!rows) return '';
+                        return \`
+                            <div style="background:#313b5e;color:white;border-radius:8px;padding:9px 13px;font-size:11px;min-width:190px;box-shadow:0 4px 20px rgba(0,0,0,0.2)">
+                                <div style="font-weight:700;margin-bottom:6px;font-size:12px">\${title}</div>
+                                \${rows}
+                            </div>
+                        \`;
+                    },
+                },
+                responsive: [{
+                    breakpoint: 768,
+                    options: {
+                        chart:  { height: 280 },
+                        xaxis:  { labels: { style: { fontSize: '10px' } } },
+                    },
+                }],
+            };
         },
     };
 };
@@ -1401,7 +1360,10 @@ const CODE_LAYOUT_BLADE = `{{-- resources/views/trzby/index.blade.php --}}
 @endsection
 
 @push('scripts')
-    {{-- Alpine.js komponent pro tooltip v grafu --}}
+    {{-- ApexCharts knihovna pro graf vývoje tržeb (CDN nebo npm install apexcharts) --}}
+    <script src="https://cdn.jsdelivr.net/npm/apexcharts"></script>
+
+    {{-- Alpine.js inicializace ApexCharts + tooltip helpery --}}
     <script src="{{ asset('js/vyvoj-chart.js') }}"></script>
 @endpush
 
@@ -1419,15 +1381,15 @@ const ACCORDION: AccItem[] = [
   {
     id: 'trzby-detail-volt',
     title: '1 — Tržby detail: Volt single-file komponenta',
-    description: 'Anonymní třída + Blade v jednom souboru. Eloquent query přes Branch + DailyClosingRow. Inspirováno kodérovou sales-sum.blade.php.',
+    description: 'Anonymní třída + Blade v jednom souboru. Brand color border-top, live tečka u dnešního dne, Kuchyň/Bar split v single-venue módu. Inspirováno sales-sum.blade.php.',
     files: [
       { path: 'resources/views/livewire/trzby-detail.blade.php', lang: 'blade', code: CODE_TRZBY_DETAIL_VOLT },
     ],
   },
   {
     id: 'vyvoj-trzeb-volt',
-    title: '2 — Vývoj tržeb: Volt single-file komponenta',
-    description: 'SVG graf rendrovaný server-side + Alpine.js tooltip. Eloquent agregace po měsících/letech. 3 módy: Roky / Rok › měsíce / Měsíc › roky.',
+    title: '2 — Vývoj tržeb: Volt single-file + ApexCharts',
+    description: 'ApexCharts area chart na plnou šířku, brand color border-top, smooth lines + gradient fill. Volt vrací chartData() jako JSON, Alpine.js inicializuje chart a reaguje na Livewire eventy.',
     files: [
       { path: 'resources/views/livewire/vyvoj-trzeb.blade.php', lang: 'blade', code: CODE_VYVOJ_TRZEB_VOLT },
       { path: 'resources/js/vyvoj-chart.js',                    lang: 'js',    code: CODE_ALPINE_JS },
@@ -1564,7 +1526,7 @@ export default function KodView() {
           <div>
             <h4 className="mb-1">Kód pro backend implementaci</h4>
             <div className="text-muted fs-13">
-              Podklady pro kodéra — segmenty <strong>Tržby detail</strong> a <strong>Vývoj tržeb</strong> napojené na reálná Eloquent data (Branch + DailyClosingRow) v Livewire Volt
+              Podklady pro kodéra — <strong>Tržby detail</strong> (Volt + brand color + live tečka) a <strong>Vývoj tržeb</strong> (Volt + ApexCharts na celou šířku). Reálná Eloquent data.
             </div>
           </div>
           <div className="d-flex gap-2 ms-auto flex-wrap">
@@ -1572,7 +1534,8 @@ export default function KodView() {
             <span className="badge bg-info-subtle text-info">Laravel 11+</span>
             <span className="badge bg-success-subtle text-success">Livewire Volt</span>
             <span className="badge bg-warning-subtle text-warning">Alpine.js 3</span>
-            <span className="badge bg-secondary-subtle text-secondary">Eloquent · plain JS + CSS</span>
+            <span className="badge bg-danger-subtle text-danger">ApexCharts</span>
+            <span className="badge bg-secondary-subtle text-secondary">Eloquent · CSS</span>
           </div>
         </div>
       </div>
@@ -1604,6 +1567,9 @@ export default function KodView() {
             <li><strong>Kuchyň/Bar split</strong> — používáme <code>DailyClosingRow::SALES_K</code> (kuchyň) a <code>DailyClosingRow::SALES_B</code> (bar). Single-venue mód v „Tržby detail" má sloupce <em>Datum · Kuchyň · Bar · Celkem</em>.</li>
             <li><strong>Historické agregace</strong> — aggregate tabulka zatím neexistuje, query přes <code>daily_closings</code> obalená v <code>Cache::remember(...)</code> s TTL 1 hodina. Klíč obsahuje všechny parametry (mode/period/year/month/branchIds).</li>
             <li><strong>Rok vzniku provozovny</strong> — <code>branches.opened_at</code> v DB není, použit fallback <code>MIN(daily_closings.date)</code> přes <code>DB::table('daily_closings')-&gt;min('date')</code> s 24h cache.</li>
+            <li><strong>Brand barvy (border-top karet)</strong> — public <code>$brandColor</code> property nastavená v <code>mount()</code>. Multi-venue / main branch = Con Gusto gold <code>#c9911a</code>, single-venue = <code>$branch-&gt;color</code> z DB. V Blade jako <code>{'<div style="--prov-color: {{ $brandColor }}; border-top: 3px solid var(--prov-color);">'}</code>.</li>
+            <li><strong>Live tečka</strong> — pulzující zelená <code>.trzby-live-dot</code> (CSS animace v <code>trzby.css</code>). Zobrazena vedle dnešního data v tabulce přes <code>{'@if($day[\'isToday\']) <span class="trzby-live-dot"></span>'}</code>.</li>
+            <li><strong>ApexCharts + plná šířka</strong> — graf Vývoj tržeb přepsán z SVG na ApexCharts. Volt vrací data přes <code>chartData()</code>, Alpine.js inicializuje chart, Livewire eventy invokují <code>updateOptions()</code>. Container <code>width: 100%</code>, responsive breakpoint pro mobil.</li>
           </ol>
         </div>
       </div>
