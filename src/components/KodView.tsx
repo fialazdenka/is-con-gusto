@@ -135,8 +135,8 @@ const CHART_DATA = [
 function VyvojTrzebPreview() {
   const [hoverIdx, setHoverIdx] = useState<number | null>(null);
 
-  // SVG dimensions
-  const CW = 700, CH = 210, ML = 62, MT = 16, MR = 16, MB = 38;
+  // SVG dimensions — wide aspect ratio (5:1) tak, aby graf zabral plnou šířku karty
+  const CW = 1400, CH = 280, ML = 62, MT = 16, MR = 16, MB = 38;
   const IW = CW - ML - MR;
   const IH = CH - MT - MB;
   const N = CHART_YEARS.length;
@@ -207,7 +207,7 @@ function VyvojTrzebPreview() {
       </div>
 
       <div className="card-body pb-2">
-        <div style={{ position: 'relative', height: 230 }}>
+        <div style={{ position: 'relative', width: '100%', aspectRatio: `${CW} / ${CH}`, minHeight: 200, maxHeight: 360 }}>
           <svg viewBox={`0 0 ${CW} ${CH}`} style={{ width: '100%', height: '100%', display: 'block' }}>
             {/* Grid */}
             {[7.5, 15, 22.5, 30].map((gv, gi) => (
