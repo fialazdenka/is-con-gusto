@@ -10,6 +10,7 @@ export type SidebarSection =
   | 'faktury'
   | 'pohledavky'
   | 'platby'
+  | 'banka'
   | 'reporty'
   | 'nastaveni'
   | 'komponenty'

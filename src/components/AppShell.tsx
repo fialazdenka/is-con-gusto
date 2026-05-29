@@ -18,6 +18,7 @@ import PlaceholderView from './PlaceholderView';
 import ProvozovnaDrawer from './ProvozovnaDrawer';
 import ComponentReference from './ComponentReference';
 import KodView from './KodView';
+import BankaView from './BankaView';
 import TrzbyView from './TrzbyView';
 import FakturyView from './FakturyView';
 import PohledavkyView from './PohledavkyView';
@@ -89,6 +90,8 @@ export default function AppShell({ state, update }: Props) {
         return <CashflowView state={state} update={update} />;
       case 'platby':
         return <PlatbyView state={state} update={update} />;
+      case 'banka':
+        return <BankaView state={state} update={update} />;
       case 'provozovny':
         return <ProvozovnyView />;
       case 'komponenty':

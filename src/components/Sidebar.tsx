@@ -43,6 +43,7 @@ const FINANCE_ITEMS: NavItem[] = [
   { id: 'faktury',     label: 'Faktury',     icon: 'solar:bill-list-bold-duotone', badge: 1 },
   { id: 'pohledavky',  label: 'Pohledávky',  icon: 'solar:money-bag-bold-duotone', badge: 2 },
   { id: 'platby',      label: 'Platby',      icon: 'solar:card-send-bold-duotone' },
+  { id: 'banka',       label: 'Banka',       icon: 'solar:wallet-bold-duotone' },
 ];
 
 const SYSTEM_ITEMS: NavItem[] = [

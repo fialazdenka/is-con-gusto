@@ -29,6 +29,7 @@ src/
   platbyData.ts         # faktury, platby, BANKOVNI_UCTY, PRAVNI_ENTITA, MATCHING_DATA, FakturaForma
   pohledavkyData.ts     # pohledávky, aging, STAV_META_POH
   cashflowData.ts       # týdenní cashflow, KPI, kategorie, transakce, prognóza
+  bankaData.ts          # BankaUcet, BankaTransakce, helpers (sumForMena, timeAgo, STAV_META, TRANS_STAV_META)
   duplicateDetection.ts # detectDuplicates() – pure function (VS / číslo / dodavatel+částka+měsíc)
   dodaciListyData.ts    # mock dodací listy (DodaciList, DLPolozka, getDodaciList/y)
   fakturaPolozkyUtils.ts# generateFakturaPolozky(), DPH_SAZBA, getDiffStav(), DIFF_META, tolerance prahy
@@ -45,6 +46,7 @@ src/
     FakturySidePanel.tsx # sticky right panel: detail, forma, matching, příloha, audit, komunikace
     DLMatchingDetail.tsx # diff tabulka faktura vs DL, editovatelné DL, "Spustit párování" s callback
     DuplicateDetail.tsx  # side-by-side comparison "Tato faktura" vs "Originál" s red highlighty
+    BankaView.tsx        # banka: konsolidované + single-venue účty, smart alerts s akcemi, sparkline, transakce
     PlatbyView.tsx       # platební dashboard: právní entity, stavový filtr, auto-výběr faktur
     PlatbyDetailPanel.tsx # offcanvas drawer: detail + audit + pozastavení s poznámkou + náhled faktury
     PlatbyKPIStrip.tsx   # 4× KPI karta platby (zůstatek/schváleno/po-splatnosti/splatné)
@@ -324,6 +326,76 @@ CG Brno, Piazza (+ EUR účet), Monte, U Čápa, KOREK WB, U Kohoutů, Nad Hladi
 - **Ke schválení** – warning, click → `setStavFilters(new Set(['nova', 'ke-schvaleni']))`
 - **Splatné tento týden** – info, click → `setPresetFilters(new Set(['tydni']))`
 
+## Banka (BankaView) – přehled bankovních účtů + transakce
+
+Sidebar → **Finance → Banka** (`selectedSection: 'banka'`). Cílový uživatel: majitel / finanční ředitel.
+
+### Datový model (`bankaData.ts`)
+- `BankaUcet` — id, nazev, iban, banka, mena (CZK/EUR), **provozovny: string[]** (může být víc — budoucnost multi-venue), ucetniBalance, dostupniProstredky, lastSync (ISO), syncStav, **stav** (BankaUcetStav), **historieBalance: number[]** (37 hodnot: 30 minulých + dnes + 6 budoucích), predikceKonecTydne, predikceKonecMesice
+- `BankaTransakce` — id, ucetId, typ (prichoz/odchozi), datum, castka (záporná=odchozí), firma, poznamka, vs?, stav, parovanaSId?
+- `BankaUcetStav` — `'ok' | 'low-balance' | 'critical-balance' | 'sync-error'`
+- `BankaTransStav` — `'paired' | 'unpaired' | 'pending' | 'error'`
+- Helpers: `getUctyForProvozovna`, `getProvozovnyForUcet`, `sumForMena`, `timeAgo`, `STAV_META` (label + labelLong + bg + color + icon), `TRANS_STAV_META`
+
+### Mock data
+- **13 účtů**: 4 konsolidované (Hlavní účet / Mzdy a HR / CG Marketing / CG Catering — multi-venue), 8 single-venue, 1 EUR (Piazza EUR), 2 „Bez názvu" (unassigned + critical/low balance)
+- **30 transakcí** napříč všemi účty (mix paired/pending/unpaired/error)
+
+### Layout (3 sekce + side-panel + drawer + modaly)
+1. **Smart Alerts strip** — 4 typy:
+   - 🔴 Critical balance — „Bez názvu pod kritickou hranicí"
+   - 🔴 Sync error — „Nad Hladinkou chyba synchronizace"
+   - 🟡 Low balance — „U Čápa, Bez názvu 2"
+   - 🔵 Unassigned — „Bez názvu — neznámý účel"
+   - Každý alert obsahuje **inline klikatelné chipy** pro každý problémový účet
+   - **Chip má 2 části**: scroll-to-card (oko ikona + název) + akce (Převést / Resync / Přiřadit)
+2. **Top summary banner** (zelený) — Zůstatek celkem CZK + EUR + trend % vs. minulý týden + počet účtů
+3. **AutoSyncBar** — interval, poslední/příští běh, ve frontě na párování, tlačítka „Živě" + „Znovu"
+4. **Karty účtů — 2 sekce:**
+   - **Konsolidované účty** (multi-venue, provozovny.length > 1)
+   - **Účty provozoven** (single-venue + unassigned)
+   - Grid: `col-12 col-sm-6 col-lg-4 col-xl-3` (1/2/3/4 per row dle viewport)
+5. **Tabulka transakcí** — full-width default, **zúží se na col-xl-8 jen po výběru** transakce
+6. **Side-panel detail transakce** (sticky right column) — zobrazí se pouze po výběru
+7. **Drawer detail účtu** (offcanvas vpravo, ~540px) — klik na celou kartu → otevře drawer s velkou sparkline, predikcemi, transakcemi, akcemi
+
+### Karta účtu — kompaktní layout (BankaCard / UcetCard)
+- **Brand color border-top**: 1 provoz → barva té branche, multi → Con Gusto gold `#c9911a`, žádná → šedá `#9097a7`
+- **Hover efekt**: `translateY(-2px)` + cursor pointer
+- **Header (kompaktní)**: jméno + měna badge + stav badge (zkrácený label, plný v `title` tooltipu) → IBAN + „před X min" → banka
+- **Balance** ve formátu `Účetní bilance: 261 772,24 Kč` + `Dostupní prostředky: ...` (jako ve starém systému)
+- **Sparkline** — 37 bodů (30 minulých solid + dnes circle + 7 budoucích dashed), area fill 0.08 opacity
+- **Predikce čísla** — `Týden: 845 200 Kč` + `Měsíc: 920 100 Kč ↑` (barva dle isPredikceUp)
+- **Provozovny badges** — max 5 viditelných + „+N dalších" s tooltipem (jinak by Hlavní účet s 15 branches zabíral hodně místa)
+- **Akční tlačítka** (jen pro problémové): Převést / Resync (s `.spin` animací) / Přiřadit
+
+### Akce (4 typy) — všechny mají vlastní handler v BankaView
+- **🔄 Převod mezi účty** (modal): Z účtu (default Hlavní) → Na účet (pre-fill z alertu) → Částka → Datum → Poznámka. Validace: stejný účet, dostatek prostředků. Po submit: bilance se opravdu změní v UI, toast „Převod odeslán"
+- **♻️ Re-sync** (inline): Klik → ikona se točí 2s → `localUcty[id] = { syncStav: 'synced', stav: 'ok' }` → alert zmizí, toast
+- **🏷️ Přiřadit provoz** (modal): tlačítkový grid 15 aktivních provozoven s checkbox toggle → uložení změní `localUcty[id].provozovny` → účet se případně přesune mezi „Konsolidované" / „Účty provozoven"
+- **📊 Detail účtu** (drawer/offcanvas): velká sparkline + provozovny + akce + posledních 10 transakcí pro daný účet
+
+### State pattern (BankaView)
+- `localUcty: Record<string, Partial<BankaUcet>>` — session-local změny (převody, přiřazení, resync)
+- `mergedUcty = filteredUcty.map(u => ({...u, ...localUcty[u.id]}))` — komponenty pracují s merged daty
+- Změny se okamžitě projeví: alert zmizí pokud problém vyřešen, karta má novou bilanci, summary se přepočítá
+- `syncingIds: Set<string>` — který účet právě syncuje
+- `detailUcetId` — který účet má otevřený drawer
+- `modalState: { type: 'prevod' | 'prirazeni', targetId? }` — state machine pro modaly
+- `highlightedUcetId` — žluté pulzování karty po kliknutí na alert chip
+- `ucetRefs: Map<string, HTMLDivElement>` — refs pro scroll-to-card přes `scrollIntoView`
+- `toast: string | null` — fixed-position notifikace v pravém horním rohu (3s timeout)
+
+### CSS (custom.css)
+- `.banka-card-highlight` + `@keyframes banka-pulse` — žluté pulzování karty (2 pulzy 1s každý) po scroll-to-card z alertu
+
+### Responzivita (laptop 1366×768)
+- Card grid `col-12 col-sm-6 col-lg-4 col-xl-3` → 3 karty per row na 1366px (lg)
+- Stav badge labels: zkrácené (`Kritický` místo `Kritický zůstatek`) + plné v title attr
+- Predikce: `Týden:` / `Měsíc:` místo „Konec týdne (19.4.):"
+- Alert chipy mají `text-nowrap` aby se nelomily napůl
+- AutoSyncBar: zkrácené texty + `flex-wrap row-gap-2`
+
 ## Kód (KodView) – podklady pro kodéra
 
 Samostatná podstránka v sidebaru → **Dev → Kód** (`selectedSection: 'kod'`).
@@ -429,6 +501,7 @@ Admin sekce (sidebar → Provoz → Provozovny), 3 záložky:
 | `pohledavky` | PohledavkyView |
 | `cashflow` | CashflowView |
 | `platby` | PlatbyView |
+| `banka` | BankaView |
 | `provozovny` | ProvozovnyView |
 | `komponenty` | ComponentReference |
 | `kod` | KodView |
@@ -454,5 +527,6 @@ Piazza otevřena 2006 (potvrzeno majitelem).
 - **v3 s11**: Sekce **Kód** refaktor #1 — kodér chce vše inline v komponentě bez Helper/Support tříd. Smazány `app/Support/Provozovny.php` a `app/Support/TrzbyHelper.php` jako samostatné soubory. Všechna mock data (PROVOZOVNY, BASE_SPLIT, DOW_MULT, UCTY_MOCK, SEASONAL, FOUNDING_YEAR) + helpery (detRand, baseDay, getDowFactor, genDayData, genDayDataSplit, genD7Split, genMonthRevenue, genAnnualRevenue, smoothPath, fCzk, getDatesInRange) přesunuty do class body `TrzbyDetail.php` a `VyvojTrzeb.php` jako public metody (volatelné z Blade přes `$this->...`). Accordion redukován ze 7 na 6 sekcí (bez Sdílené helpery). Sed script + Python regex pro hromadné `TrzbyHelper::` → `$this->` replace v Blade konstantách (38 substitucí).
 - **v3 s12**: Sekce **Kód** refaktor #2 — kodér poslal vzorovou `sales-sum.blade.php`, přechod na **Livewire Volt** + **Eloquent**. Class-based `app/Livewire/*.php` přepsány na **Volt single-file** (`resources/views/livewire/*.blade.php` s anonymní třídou `new #[Defer] class extends Component {}`). Žádné mock generators — query přes `Branch::all()` + `DailyClosingRow` (`SUM(value)` pro `type_id IN [SALES, SALE_MANUAL]`). `formatMoney($n, false)` místo `fCzk()`, `<x-input>` Blade komponenta místo standardních inputů, multi-tenancy přes `auth()->user()->activeBranch()` + `mainBranchGet()`. Accordion redukován na 4 sekce. Žluté otázky pro kodéra: K/B split, historické agregace, opened_at.
 - **v3 s13**: Sekce **Kód** refaktor #3 — odpovědi od kodéra zapracovány. **Kuchyň/Bar split** přes `DailyClosingRow::SALES_K` + `SALES_B` (query rozšířena o `GROUP BY type_id`, indexace `[branchId][date][typeId]`, single-venue tabulka Datum/Kuchyň/Bar/Celkem). **Cache::remember** pro `loadChartData()` (TTL 1h, klíč s mode/period/year/month/branchIds). **MIN(daily_closings.date)** fallback pro `fromYear()` při `period='vse'` (24h cache). Vyřešené body z žlutého varování přesunuty do zeleného success banneru.
+- **v3 s15**: Nová sekce **Banka** (`/banka`) — kompletní finanční přehled pro majitele / fin. ředitele. `bankaData.ts` (BankaUcet + BankaTransakce typy + 13 mock účtů + 30 mock transakcí + helpery STAV_META/TRANS_STAV_META). 3 sekce v layoutu: Smart Alerts (4 typy: critical/sync-error/low-balance/unassigned) s **klikatelnými chipy** s inline akcemi (Převést/Resync/Přiřadit) — chip má 2 části: scroll-to-card + akce. Top summary banner (Zůstatek celkem CZK+EUR, trend %). AutoSyncBar (cron readiness pattern z Faktur). Karty účtů ve 2 sekcích: **Konsolidované účty** (multi-venue, 4 účty: Hlavní/Mzdy/Marketing/Catering) + **Účty provozoven** (single-venue). Grid `col-12 col-sm-6 col-lg-4 col-xl-3`. Karta obsahuje: brand color border-top (1 provoz → její barva, multi → gold), kompaktní header s currency+stav badges (zkrácené labely + title tooltip), Účetní bilance / Dostupní prostředky (jako ve starém systému), **sparkline 30 dní zpět solid + 7 dní budoucích dashed**, predikce Týden/Měsíc s barvou dle trendu, max 5 badges provozoven + „+N dalších", akční tlačítka pro problémové účty (Převést/Resync/Přiřadit). Klik na kartu → drawer detail účtu (velká sparkline + posledních 10 transakcí + akce). Tabulka transakcí full-width default, zúží se na col-xl-8 jen po výběru. Side-panel detail transakce sticky right (pattern z Faktur). **4 akce**: PrevodModal (Z účtu → Na účet → Částka, validace dostatečných prostředků, opravdu mění bilanci), Re-sync inline (spin 2s → 'ok'), PrirazeniModal (multi-checkbox grid 15 provoz), UcetDetailDrawer (offcanvas 540px). State pattern: `localUcty: Record<id, Partial<BankaUcet>>` + `mergedUcty` — změny se okamžitě projeví napříč UI. Toast notifikace top-right (3s).
 - **v3 s14**: Sekce **Kód** refaktor #4 — 3 nové vylepšení od kodéra. **Brand barvy karet** přes `public string $brandColor` property v Volt komponentě (`#c9911a` pro main, `$branch->color` jinak); v Blade jako CSS variable `--prov-color` + `border-top: 3px solid var(--prov-color)`. **Live tečka** dovysvětlená komentáři v Blade (CSS pulse animace `.trzby-live-dot` v `trzby.css`). **ApexCharts + plná šířka** — kompletní přepis grafu Vývoj tržeb z server-side SVG na ApexCharts; Volt vrací `chartData()` jako JSON, Alpine.js plugin `vyvojTrzebChart` inicializuje chart přes `new ApexCharts($refs.chartContainer, options)`; smooth curve, gradient fill, dark tooltip s naším designem, width 100%, responsive breakpoint 768; Livewire eventy → `chart.updateOptions()` přes window CustomEvent `chart-data-updated`. ApexCharts CDN přidán do layout. Náhledy v KodView preview komponentách: brand color border-top, **padding-bottom 20% trick** pro full-width SVG (CSS `aspect-ratio` se v některých layoutech nerespektoval a graf se centroval místo aby vyplnil kartu).
 - **v3 s9**: Faktury workflow dashboard (body 1–12 z checklistu) – `MATCHING_DATA` oddělené od FAKTURY_PLATBY (API-ready), `MatchingStav` (6 stavů), `getVS()`/`deriveVS()`, `FakturaForma` (standard/zálohová/dobropis/offset) s `spojenaSId`, 2-col layout (tabulka + sticky FakturySidePanel místo offcanvas drawer), DLMatchingDetail (editovatelné DL, diff tabulka s tolerance prahy ≤1 Kč/≤5%/>5%, „Spustit párování" s `onRematch` callback), DuplicateDetail (side-by-side s red highlighty), `duplicateDetection.ts` pure function (VS/číslo/dodavatel+částka+měsíc, critical/warning), `dodaciListyData.ts` (7 mock DL), `fakturaPolozkyUtils.ts` shared utility, AutoStatusBar (cron readiness indikátor), 4 řady multiselect chip filtrů (Stav/Párování/Forma + presety), Set\<T\>+toggleSet pattern, sortovatelné hlavičky tabulky (↑↓), částka range filter, audit log s 8 typovými badgemi (`SessionAuditEntry.typ`), interní komunikační vlákno (Účetní/Provoz/Management mock thread), Přílohy sekce (mock PDF), session entries pro schválení/zamítnutí/odložení/rematch/komentář, mock data pro speciální formy (fp43 ZAL, fp44 DOB −3 400 Kč, fp45 OFF), záporné částky červeně napříč UI

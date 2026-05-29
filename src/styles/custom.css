@@ -1206,3 +1206,15 @@ tfoot .trzby-sticky-r {
 
 .spin { animation: spin 1s linear infinite; display: inline-block; }
 @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+
+/* ============================================================
+   BANKA — highlight efekt karty po kliknutí na alert chip
+   ============================================================ */
+.banka-card-highlight {
+  box-shadow: 0 0 0 3px #ffc107, 0 8px 24px rgba(255, 193, 7, 0.4) !important;
+  animation: banka-pulse 1s ease-in-out 2;
+}
+@keyframes banka-pulse {
+  0%, 100% { box-shadow: 0 0 0 3px #ffc107, 0 8px 24px rgba(255, 193, 7, 0.4); }
+  50%      { box-shadow: 0 0 0 6px rgba(255, 193, 7, 0.6), 0 12px 32px rgba(255, 193, 7, 0.6); }
+}

@@ -20,6 +20,7 @@ const META: Record<SidebarSection, { icon: string; title: string; desc: string }
   faktury:     { icon: 'solar:bill-list-bold-duotone',        title: 'Faktury',          desc: 'Přijaté a vydané faktury' },
   pohledavky:  { icon: 'solar:money-bag-bold-duotone',        title: 'Pohledávky',       desc: 'Vydané faktury a sledování úhrad' },
   platby:      { icon: 'solar:card-send-bold-duotone',        title: 'Platby',           desc: 'Přehled plateb a transakcí' },
+  banka:       { icon: 'solar:wallet-bold-duotone',           title: 'Banka',            desc: 'Bankovní účty a transakce' },
   reporty:    { icon: 'solar:graph-bold-duotone',            title: 'Reporty',          desc: 'Exporty a analytické reporty' },
   nastaveni:  { icon: 'solar:settings-bold-duotone',         title: 'Nastavení',        desc: 'Konfigurace systému' },
   komponenty: { icon: 'solar:layers-bold-duotone',           title: 'Mapa komponent',   desc: 'Dev reference' },

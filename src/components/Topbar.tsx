@@ -38,6 +38,7 @@ const SECTION_LABELS: Record<SidebarSection, string> = {
   faktury:    'Faktury',
   pohledavky: 'Pohledávky',
   platby:     'Platby',
+  banka:      'Banka',
   reporty:    'Reporty',
   nastaveni:  'Nastavení',
   komponenty: 'Mapa komponent',
@@ -48,6 +49,7 @@ const SECTION_LABELS: Record<SidebarSection, string> = {
 const BREADCRUMB_PARENT: Partial<Record<SidebarSection, { label: string; section: SidebarSection }>> = {
   faktury:    { label: 'Finance', section: 'dashboard' },
   platby:     { label: 'Finance', section: 'dashboard' },
+  banka:      { label: 'Finance', section: 'dashboard' },
   pohledavky: { label: 'Finance', section: 'dashboard' },
   cashflow:   { label: 'Finance', section: 'dashboard' },
   zavierky:   { label: 'Provoz',  section: 'dashboard' },
