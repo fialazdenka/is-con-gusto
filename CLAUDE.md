@@ -331,35 +331,55 @@ Samostatná podstránka v sidebaru → **Dev → Kód** (`selectedSection: 'kod'
 ### Účel
 Příprava backend implementace pro vývojáře pracujícího v jiném stacku. Aktuálně obsahuje dva segmenty
 ze sekce Tržby (`Tržby detail` a `Vývoj tržeb`) přepsané do:
-- **PHP** (jazyk)
-- **Laravel 11+** (framework)
-- **Livewire v4** (server-side state + reactive re-renders, `#[Computed]` attributes, `wire:click`, `wire:model.live`)
-- **Alpine.js 3** (klientská interaktivita — hover tooltip v grafu)
+- **PHP 8.2+** + **Laravel 11+**
+- **Livewire Volt** (single-file komponenty — `new #[Defer] class extends Component { ... }` + Blade v jednom `.blade.php` souboru)
+- **Alpine.js 3** (klientská interaktivita — ApexCharts inicializace + tooltip)
+- **ApexCharts** (graf vývoje tržeb, npm/CDN)
 - **plain JavaScript + plain CSS** (žádný React/Vue/Tailwind/SCSS)
+- **Eloquent ORM** — `Branch` + `DailyClosingRow` (žádné mock generators, žádné slugy)
 
-### Struktura stránky (3 skupiny)
-1. **Tržby detail** — modrý box „Náhled" s interaktivní mock tabulkou (5 dní × 5 provozoven, sticky první + poslední sloupec, live tečka u dnešního dne) + 2 rozbalovací sekce (Livewire komponenta, Blade šablona)
-2. **Vývoj tržeb** — modrý box „Náhled" s interaktivním SVG grafem (3 linie přes 5 let, hover tooltip, smooth Catmull-Rom path, area fill) + 2 rozbalovací sekce (Livewire komponenta, Blade + Alpine.js)
-3. **Sdílené** — bez náhledu (helpery, CSS, routing/layout)
+### Datový model (kodérova konvence)
+- `Branch` (Eloquent model, `branches` table: id, name, color)
+- `DailyClosing` (`daily_closings`: id, branch_id, date)
+- `DailyClosingRow` (`daily_closing_rows`: id, daily_closing_id, type_id, value)
+- `DailyClosingRow::SALES` — generická tržba (provoz bez K/B rozlišení)
+- `DailyClosingRow::SALES_K` — tržba **kuchyně** (single-venue mód)
+- `DailyClosingRow::SALES_B` — tržba **baru** (single-venue mód)
+- `DailyClosingRow::SALE_MANUAL` — manuálně dorovnaná tržba
+- **Multi-tenancy:** `auth()->user()->activeBranch()` + `mainBranchGet()` (main branch = vidí všechny, jinak jen sebe)
+- **Helper:** `formatMoney($value, false)` — globální (asi `app/helpers.php`, druhý arg `false` = bez haléřů)
+- **Custom Blade komponenta:** `<x-input label="..." wire:model="..." type="..." wire:input="..." margin="..." />`
 
-### Code samples v accordionu (kód jako konstanty v KodView.tsx)
-Každá rozbalovací sekce obsahuje 1–3 soubory s tlačítkem „Kopírovat":
-- `app/Support/Provozovny.php` — statický seznam provozoven s brand barvami
-- `app/Support/TrzbyHelper.php` — pure-function helpery: `detRand()`, `getDowFactor()`, `genDayData()`, `genDayDataSplit()`, `genD7Split()`, `genMonthRevenue()`, `genAnnualRevenue()`, `smoothPath()`, `fCzk()` s U+202F
-- `app/Livewire/TrzbyDetail.php` + `resources/views/livewire/trzby-detail.blade.php`
-- `app/Livewire/VyvojTrzeb.php` + `resources/views/livewire/vyvoj-trzeb.blade.php` + `resources/views/livewire/vyvoj-trzeb-tabulka.blade.php` + `resources/js/vyvoj-chart.js`
-- `resources/css/trzby.css` — sticky cols, pulse animace, segment buttons
-- `routes/web.php` + `resources/views/trzby/index.blade.php` — sample routing a layout
+### Struktura stránky
+1. **Header** s badges: PHP 8.2+ · Laravel 11+ · Livewire Volt · Alpine.js 3 · **ApexCharts** · Eloquent · CSS
+2. **Info banner** (modrý) — cíl, stack, vysvětlení Volt + Eloquent + styl podle vzoru
+3. **Vyřešené body** (zelený alert) — 6 bodů po feedbacku od kodéra
+4. **Skupina 1 — Tržby detail** — náhled mock tabulky s brand color border-top + accordion s Volt komponentou
+5. **Skupina 2 — Vývoj tržeb** — náhled grafu (5:1 aspect) + accordion s Volt komponentou + Alpine.js (ApexCharts)
+6. **Skupina 3 — Sdílené** — CSS + Routing/layout
 
-### Mock data v náhledech
-- `PREVIEW_PROVS` — 5 ukázkových provozoven s brand barvami
-- `PREVIEW_ROWS` — 5 dní (po–pá 13.4.–17.4.) × 5 provozoven, hardcoded částky
-- `PREVIEW_LIVE` — `isLive` flag per provozovna
-- `CHART_DATA` — 3 provozovny × 5 let (2022–2026), hardcoded miliónové hodnoty
-- Mock data jsou pouze pro vizuální náhled. Plně funkční verze v sekci **Tržby** v levém menu.
+### 4 sekce v accordionu
+- `1` — Tržby detail: `resources/views/livewire/trzby-detail.blade.php` (Volt, brand color, live tečka, K/B split)
+- `2` — Vývoj tržeb: `resources/views/livewire/vyvoj-trzeb.blade.php` + `resources/js/vyvoj-chart.js` (Volt + ApexCharts)
+- `3` — CSS: `resources/css/trzby.css`
+- `4` — Routing + layout: `routes/web.php` + `resources/views/trzby/index.blade.php` (s ApexCharts CDN)
+
+### Vyřešené technické body (po feedbacku kodéra)
+1. **Kuchyň/Bar split** — query rozšířena o `SALES_K` + `SALES_B`, indexace `[branchId][dateKey][typeId]`. Single-venue tabulka má sloupce **Datum · Kuchyň · Bar · Celkem** (modrá / zelená).
+2. **Historické agregace** — `loadChartData()` obalená v `Cache::remember(...)` s TTL 1h, klíč obsahuje `mode:period:year:month:branchIds`. Pro budoucí monthly_summaries tabulku TODO komentář.
+3. **Rok vzniku provozovny** — `branches.opened_at` neexistuje, fallback `MIN(daily_closings.date)` přes `DB::table()->min('date')` s 24h cache (`vyvoj-trzeb:min-date:branchIds`).
+4. **Brand barvy** — `public string $brandColor` property v Volt komponentě. V `mount()`: `#c9911a` pro main/multi-venue, `$branch->color` pro single. V Blade: `style="--prov-color: {{ $brandColor }}; border-top: 3px solid var(--prov-color);"`.
+5. **Live tečka** — `.trzby-live-dot` (CSS pulse animace v `trzby.css`). V Blade: `@if($day['isToday']) <span class="trzby-live-dot"></span> @endif`.
+6. **ApexCharts + plná šířka** — SVG kompletně odstraněn. Volt vrací `chartData()` jako JSON (`{categories, series, subtitle}`), Alpine.js inicializuje chart přes `window.vyvojTrzebChart(initialData)`. Smooth curve, gradient fill (0.25→0.02 opacity), dark tooltip, width 100%, responsive breakpoint 768px. Livewire eventy → `chart.updateOptions()` přes window CustomEvent.
+
+### Náhledy v KodView.tsx (mock React komponenty)
+- `TrzbyDetailPreview` — mock tabulka 5 dní × 5 provozoven, sticky cols, live tečka, brand color border-top přes `var(--prov-color)`
+- `VyvojTrzebPreview` — SVG mock graf (5:1 aspect ratio přes **padding-bottom 20% trick** — bullet-proof pro full-width), brand color border-top, hover tooltip
+  - **Důležité:** preview je v SVG (ne ApexCharts) kvůli demonstraci v React projektu. Aspect ratio container používá padding-bottom procentní trick (NE CSS `aspect-ratio` property — ta se v některých layoutech nerespektuje a graf zůstával centrovaný).
+- Mock data: `PREVIEW_PROVS` (5 provoz), `PREVIEW_ROWS` (5 dní), `CHART_DATA` (3 linie × 5 let)
 
 ### Klíčový princip
-**TrzbyView.tsx zůstává nedotčený** — náhledy v KodView jsou nezávislé mock komponenty `TrzbyDetailPreview` a `VyvojTrzebPreview` s vlastními daty a state. Vizuálně match 1:1 (sticky cols, live dot pulse, smooth SVG path, tooltip).
+**TrzbyView.tsx zůstává nedotčený** — náhledy v KodView jsou nezávislé mock komponenty s vlastními daty a state.
 
 ## Provozovny (ProvozovnyView)
 
@@ -431,4 +451,8 @@ Piazza otevřena 2006 (potvrzeno majitelem).
 - **v3 s7**: Dashboard aktualizace (nové KPIStrip Dnes/Včera/Týden/Měsíc, PlatbyKPIStrip)
 - **v3 s8**: Platby UX – oddělovač tisíců (U+202F), czk-num třída místo font-monospace, celoplošný Acumin Pro, pozastavení s poznámkou, InvoicePreview, DalsiPlatbyPanel read-only, BalancePanel per-provozovna účty bez checkboxů, EUR účet Piazza, FutureRevMode jako { karty, odhad }, per-provozovna breakdown budoucích tržeb, auto-výběr schválených faktur, mock data pro 6 nových provozoven, dynamický getZustatek napříč dashboardem
 - **v3 s10**: Sekce **Kód** (`/kod`) – podklady pro backend kodéra (PHP/Laravel 11+/Livewire v4/Alpine.js 3/plain JS+CSS). 3 skupiny: Tržby detail (mock tabulka 5×5 se sticky cols + live tečka + Livewire/Blade kód), Vývoj tržeb (interaktivní SVG graf s tooltipem + Livewire/Blade/Alpine kód), Sdílené (helpery `TrzbyHelper.php` s `detRand`/`smoothPath`/`fCzk(U+202F)`, CSS, routing). Accordion s „Kopírovat" tlačítkem, code v dark theme `<pre>`. TrzbyView.tsx nedotčen — `TrzbyDetailPreview` a `VyvojTrzebPreview` jsou nezávislé mock komponenty.
+- **v3 s11**: Sekce **Kód** refaktor #1 — kodér chce vše inline v komponentě bez Helper/Support tříd. Smazány `app/Support/Provozovny.php` a `app/Support/TrzbyHelper.php` jako samostatné soubory. Všechna mock data (PROVOZOVNY, BASE_SPLIT, DOW_MULT, UCTY_MOCK, SEASONAL, FOUNDING_YEAR) + helpery (detRand, baseDay, getDowFactor, genDayData, genDayDataSplit, genD7Split, genMonthRevenue, genAnnualRevenue, smoothPath, fCzk, getDatesInRange) přesunuty do class body `TrzbyDetail.php` a `VyvojTrzeb.php` jako public metody (volatelné z Blade přes `$this->...`). Accordion redukován ze 7 na 6 sekcí (bez Sdílené helpery). Sed script + Python regex pro hromadné `TrzbyHelper::` → `$this->` replace v Blade konstantách (38 substitucí).
+- **v3 s12**: Sekce **Kód** refaktor #2 — kodér poslal vzorovou `sales-sum.blade.php`, přechod na **Livewire Volt** + **Eloquent**. Class-based `app/Livewire/*.php` přepsány na **Volt single-file** (`resources/views/livewire/*.blade.php` s anonymní třídou `new #[Defer] class extends Component {}`). Žádné mock generators — query přes `Branch::all()` + `DailyClosingRow` (`SUM(value)` pro `type_id IN [SALES, SALE_MANUAL]`). `formatMoney($n, false)` místo `fCzk()`, `<x-input>` Blade komponenta místo standardních inputů, multi-tenancy přes `auth()->user()->activeBranch()` + `mainBranchGet()`. Accordion redukován na 4 sekce. Žluté otázky pro kodéra: K/B split, historické agregace, opened_at.
+- **v3 s13**: Sekce **Kód** refaktor #3 — odpovědi od kodéra zapracovány. **Kuchyň/Bar split** přes `DailyClosingRow::SALES_K` + `SALES_B` (query rozšířena o `GROUP BY type_id`, indexace `[branchId][date][typeId]`, single-venue tabulka Datum/Kuchyň/Bar/Celkem). **Cache::remember** pro `loadChartData()` (TTL 1h, klíč s mode/period/year/month/branchIds). **MIN(daily_closings.date)** fallback pro `fromYear()` při `period='vse'` (24h cache). Vyřešené body z žlutého varování přesunuty do zeleného success banneru.
+- **v3 s14**: Sekce **Kód** refaktor #4 — 3 nové vylepšení od kodéra. **Brand barvy karet** přes `public string $brandColor` property v Volt komponentě (`#c9911a` pro main, `$branch->color` jinak); v Blade jako CSS variable `--prov-color` + `border-top: 3px solid var(--prov-color)`. **Live tečka** dovysvětlená komentáři v Blade (CSS pulse animace `.trzby-live-dot` v `trzby.css`). **ApexCharts + plná šířka** — kompletní přepis grafu Vývoj tržeb z server-side SVG na ApexCharts; Volt vrací `chartData()` jako JSON, Alpine.js plugin `vyvojTrzebChart` inicializuje chart přes `new ApexCharts($refs.chartContainer, options)`; smooth curve, gradient fill, dark tooltip s naším designem, width 100%, responsive breakpoint 768; Livewire eventy → `chart.updateOptions()` přes window CustomEvent `chart-data-updated`. ApexCharts CDN přidán do layout. Náhledy v KodView preview komponentách: brand color border-top, **padding-bottom 20% trick** pro full-width SVG (CSS `aspect-ratio` se v některých layoutech nerespektoval a graf se centroval místo aby vyplnil kartu).
 - **v3 s9**: Faktury workflow dashboard (body 1–12 z checklistu) – `MATCHING_DATA` oddělené od FAKTURY_PLATBY (API-ready), `MatchingStav` (6 stavů), `getVS()`/`deriveVS()`, `FakturaForma` (standard/zálohová/dobropis/offset) s `spojenaSId`, 2-col layout (tabulka + sticky FakturySidePanel místo offcanvas drawer), DLMatchingDetail (editovatelné DL, diff tabulka s tolerance prahy ≤1 Kč/≤5%/>5%, „Spustit párování" s `onRematch` callback), DuplicateDetail (side-by-side s red highlighty), `duplicateDetection.ts` pure function (VS/číslo/dodavatel+částka+měsíc, critical/warning), `dodaciListyData.ts` (7 mock DL), `fakturaPolozkyUtils.ts` shared utility, AutoStatusBar (cron readiness indikátor), 4 řady multiselect chip filtrů (Stav/Párování/Forma + presety), Set\<T\>+toggleSet pattern, sortovatelné hlavičky tabulky (↑↓), částka range filter, audit log s 8 typovými badgemi (`SessionAuditEntry.typ`), interní komunikační vlákno (Účetní/Provoz/Management mock thread), Přílohy sekce (mock PDF), session entries pro schválení/zamítnutí/odložení/rematch/komentář, mock data pro speciální formy (fp43 ZAL, fp44 DOB −3 400 Kč, fp45 OFF), záporné částky červeně napříč UI
