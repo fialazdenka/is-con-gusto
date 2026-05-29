@@ -207,8 +207,8 @@ function VyvojTrzebPreview() {
       </div>
 
       <div className="card-body pb-2">
-        <div style={{ position: 'relative', width: '100%', aspectRatio: `${CW} / ${CH}`, minHeight: 200, maxHeight: 360 }}>
-          <svg viewBox={`0 0 ${CW} ${CH}`} style={{ width: '100%', height: '100%', display: 'block' }}>
+        <div style={{ position: 'relative', width: '100%', paddingBottom: `${(CH / CW * 100).toFixed(2)}%` }}>
+          <svg viewBox={`0 0 ${CW} ${CH}`} style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', display: 'block' }}>
             {/* Grid */}
             {[7.5, 15, 22.5, 30].map((gv, gi) => (
               <g key={gi}>
