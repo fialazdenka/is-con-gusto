@@ -1218,3 +1218,57 @@ tfoot .trzby-sticky-r {
   0%, 100% { box-shadow: 0 0 0 3px #ffc107, 0 8px 24px rgba(255, 193, 7, 0.4); }
   50%      { box-shadow: 0 0 0 6px rgba(255, 193, 7, 0.6), 0 12px 32px rgba(255, 193, 7, 0.6); }
 }
+
+/* ============================================================
+   TRŽBY — horizontální scroll pro řadu toggle podniků
+   ============================================================ */
+.trzby-chart-toggles {
+  scrollbar-width: thin;
+  scrollbar-color: #c9c9c9 transparent;
+}
+.trzby-chart-toggles::-webkit-scrollbar {
+  height: 4px;
+}
+.trzby-chart-toggles::-webkit-scrollbar-track {
+  background: transparent;
+}
+.trzby-chart-toggles::-webkit-scrollbar-thumb {
+  background: #d1d5db;
+  border-radius: 2px;
+}
+.trzby-chart-toggles::-webkit-scrollbar-thumb:hover {
+  background: #9ca3af;
+}
+
+/* ============================================================
+   RESPONZIVITA TABLET (768–991px) — fixy
+   ============================================================ */
+@media (min-width: 768px) and (max-width: 991.98px) {
+  /* KPI boxíky: menší padding na tabletu */
+  .trzby-box {
+    padding: 12px;
+  }
+  .trzby-box-value {
+    font-size: 18px !important;
+  }
+  
+  /* Card-header sticky pozice: redukovat výšku */
+  .card-header.trzby-detail-header-sticky {
+    padding: 10px 14px !important;
+  }
+}
+
+/* ============================================================
+   RESPONZIVITA UŽŠÍ NEŽ 1200px (lg a níže)
+   ============================================================ */
+@media (max-width: 1199.98px) {
+  /* Sticky-r v tabulkách: zachovat z-index, ale na úzkém scroll může překrývat */
+  .trzby-sticky-r {
+    box-shadow: -2px 0 4px rgba(0,0,0,0.05);
+  }
+  
+  /* Banka karta: lehce kompaktnější padding */
+  .card-body.p-3 {
+    /* Bootstrap default zůstává; tady jen pro reference */
+  }
+}

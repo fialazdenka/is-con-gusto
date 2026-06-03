@@ -682,8 +682,8 @@ export default function TrzbyView({ state, update }: Props) {
       {/* ═══ SEKCE 3: Graf vývoje ════════════════════════════════ */}
       <div className="card mb-3">
         <div className="card-header trzby-detail-header-sticky">
-          {/* Řádek 1: název + přepínače */}
-          <div className="d-flex align-items-center justify-content-between flex-wrap gap-2 mb-2">
+          {/* Řádek 1: název + přepínače (stack na md, side-by-side na lg+) */}
+          <div className="d-flex align-items-start align-items-lg-center justify-content-between flex-column flex-lg-row gap-2 mb-2">
             <div>
               <h5 className="card-title mb-0">Vývoj tržeb</h5>
               <small className="text-muted fw-normal">
@@ -734,14 +734,16 @@ export default function TrzbyView({ state, update }: Props) {
               )}
             </div>
           </div>
-          {/* Řádek 2: toggle tlačítka podniků + "Všechny provozy" CTA */}
-          <div className="d-flex flex-wrap gap-1">
+          {/* Řádek 2: toggle tlačítka — horizontální scroll na úzkých obrazovkách
+              (místo wrap na 3-4 řádky tlačítek) */}
+          <div className="trzby-chart-toggles d-flex flex-nowrap gap-1 align-items-center"
+            style={{ overflowX: 'auto', paddingBottom: 2 }}>
             {/* "Všechny provozy" — celá firma (exclusive toggle) */}
             {(() => {
               const sel = chartIds.has('all');
               return (
                 <button
-                  className="trzby-chart-toggle"
+                  className="trzby-chart-toggle flex-shrink-0"
                   style={{
                     background: sel ? ALL_PROV.color : 'white',
                     borderColor: ALL_PROV.color,
@@ -756,13 +758,13 @@ export default function TrzbyView({ state, update }: Props) {
                 </button>
               );
             })()}
-            <span className="mx-1 align-self-center text-muted" style={{ fontSize: 11 }}>·</span>
+            <span className="mx-1 align-self-center text-muted flex-shrink-0" style={{ fontSize: 11 }}>·</span>
             {ACTIVE_PROVS.filter((p) => BASE_DAY[p.id] > 0).map((p) => {
               const sel = chartIds.has(p.id);
               return (
                 <button
                   key={p.id}
-                  className="trzby-chart-toggle"
+                  className="trzby-chart-toggle flex-shrink-0"
                   style={sel ? { background: p.color, borderColor: p.color, color: 'white' } : {}}
                   onClick={() => toggleChart(p.id)}
                 >

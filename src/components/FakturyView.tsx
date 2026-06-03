@@ -251,9 +251,11 @@ export default function FakturyView({ state, update }: Props) {
   return (
     <>
       {/* ACTION BAR – SOURCE: Larkon .page-title-box (title odstraněn, zobrazen v topbaru) */}
+      {/* Layout: levá skupina (Období) + pravá skupina (akční tlačítka) — wrap-row na úzkých */}
       <div className="page-title-box">
-        <div className="d-flex align-items-center gap-2 flex-wrap">
-          <div className="d-flex align-items-center gap-2">
+        <div className="d-flex align-items-center justify-content-between flex-wrap gap-2 row-gap-2">
+          {/* Levá: Období */}
+          <div className="d-flex align-items-center gap-2 flex-wrap">
             <span className="text-muted fs-13">Období:</span>
             <input
               type="date"
@@ -271,27 +273,30 @@ export default function FakturyView({ state, update }: Props) {
               style={{ width: 140 }}
             />
           </div>
-          {keSchvaleni.length > 0 && (
-            <button
-              className="btn btn-warning btn-sm fw-semibold"
-              onClick={spustitSchvalovani}
-            >
-              <iconify-icon icon="solar:check-circle-bold-duotone" className="me-1" style={{ fontSize: 16 }} />
-              Spustit schvalování ({keSchvaleni.length})
+          {/* Pravá: akční tlačítka — zůstanou pohromadě, wrapnou jako blok */}
+          <div className="d-flex align-items-center gap-2 flex-wrap">
+            {keSchvaleni.length > 0 && (
+              <button
+                className="btn btn-warning btn-sm fw-semibold"
+                onClick={spustitSchvalovani}
+              >
+                <iconify-icon icon="solar:check-circle-bold-duotone" className="me-1" style={{ fontSize: 16 }} />
+                Spustit schvalování ({keSchvaleni.length})
+              </button>
+            )}
+            <button className="btn btn-light btn-sm" onClick={() => {
+              setNovaFa((f) => ({ ...f, provozovna: selectedProvozovna === 'all' ? 'cg-brno' : selectedProvozovna }));
+              setShowNovaFaktura(true);
+            }}>
+              Nová faktura
             </button>
-          )}
-          <button className="btn btn-light btn-sm" onClick={() => {
-            setNovaFa((f) => ({ ...f, provozovna: selectedProvozovna === 'all' ? 'cg-brno' : selectedProvozovna }));
-            setShowNovaFaktura(true);
-          }}>
-            Nová faktura
-          </button>
-          <button
-            className="btn btn-primary btn-sm"
-            onClick={() => update({ selectedSection: 'platby' })}
-          >
-            Přejít na platby →
-          </button>
+            <button
+              className="btn btn-primary btn-sm"
+              onClick={() => update({ selectedSection: 'platby' })}
+            >
+              Přejít na platby →
+            </button>
+          </div>
         </div>
       </div>
 
@@ -607,7 +612,7 @@ export default function FakturyView({ state, update }: Props) {
 
       {/* ── 2-sloupcový layout: seznam vlevo, side panel vpravo ── */}
       <div className="row g-4 align-items-start">
-        <div className="col-xl-7 col-lg-8">
+        <div className="col-xl-7 col-lg-7">
           <FakturyTable
             provozovna={selectedProvozovna as ProvozovnaId}
             periodOd={periodOd}
@@ -641,7 +646,7 @@ export default function FakturyView({ state, update }: Props) {
             }}
           />
         </div>
-        <div className="col-xl-5 col-lg-4">
+        <div className="col-xl-5 col-lg-5">
           <FakturySidePanel
             faktura={drawerFaktura}
             effectiveStav={drawerFaktura ? (localStavy[drawerFaktura.id] ?? drawerFaktura.stav) : 'nova'}

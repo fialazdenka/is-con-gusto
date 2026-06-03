@@ -223,41 +223,41 @@ function AutoSyncBar({ pendingCount }: { pendingCount: number }) {
   return (
     <div className="d-flex align-items-center gap-2 flex-wrap row-gap-2 px-3 py-2 mb-3 rounded"
       style={{ background: '#f8f9fa', border: '1px solid #e9ecef', fontSize: 12 }}>
-      {/* Status */}
+      {/* Status — vždy viditelný */}
       <div className="d-flex align-items-center gap-2 flex-shrink-0">
         <span className="rounded-circle d-inline-block" style={{ width: 8, height: 8, background: '#198754', boxShadow: '0 0 0 3px rgba(25,135,84,0.15)' }} />
-        <span className="fw-semibold">Auto-sync banka</span>
+        <span className="fw-semibold">Auto-sync</span>
         <span className="badge bg-success-subtle text-success" style={{ fontSize: 10 }}>Aktivní</span>
       </div>
-      {/* Metriky */}
-      <div className="d-flex align-items-center gap-1 text-muted flex-shrink-0">
+      {/* Metriky — text-popisky se schovají pod md, ikony zůstávají */}
+      <div className="d-flex align-items-center gap-1 text-muted flex-shrink-0" title="Interval synchronizace">
         <iconify-icon icon="solar:refresh-circle-bold-duotone" style={{ fontSize: 13 }} />
         <span>15 min</span>
       </div>
-      <div className="d-flex align-items-center gap-1 text-muted flex-shrink-0">
+      <div className="d-flex align-items-center gap-1 text-muted flex-shrink-0" title="Poslední synchronizace">
         <iconify-icon icon="solar:clock-circle-bold-duotone" style={{ fontSize: 13 }} />
-        <span>Poslední:</span>
+        <span className="d-none d-md-inline">Poslední:</span>
         <span className="fw-semibold text-dark czk-num">14:32</span>
       </div>
-      <div className="d-flex align-items-center gap-1 text-muted flex-shrink-0">
+      <div className="d-flex align-items-center gap-1 text-muted flex-shrink-0" title="Příští synchronizace">
         <iconify-icon icon="solar:alarm-bold-duotone" style={{ fontSize: 13 }} />
-        <span>Příští:</span>
+        <span className="d-none d-md-inline">Příští:</span>
         <span className="fw-semibold text-dark czk-num">14:47</span>
       </div>
       {pendingCount > 0 && (
-        <div className="d-flex align-items-center gap-1 flex-shrink-0">
+        <div className="d-flex align-items-center gap-1 flex-shrink-0" title="Transakce čekající na párování">
           <iconify-icon icon="solar:hourglass-bold-duotone" style={{ fontSize: 13, color: '#0dcaf0' }} />
-          <span className="text-muted">Ve frontě:</span>
+          <span className="text-muted d-none d-md-inline">Ve frontě:</span>
           <span className="fw-bold" style={{ color: '#0dcaf0' }}>{pendingCount}</span>
         </div>
       )}
-      {/* Akce — vždy na pravé straně, vlastní wrap-row pokud nestačí */}
+      {/* Akce — vždy vpravo, blok zůstane pohromadě */}
       <div className="d-flex align-items-center gap-2 ms-auto flex-shrink-0">
-        <button className="btn btn-light btn-sm py-1 px-2" style={{ fontSize: 11 }}>
+        <button className="btn btn-light btn-sm py-1 px-2" style={{ fontSize: 11 }} title="Načíst aktuální data z banky">
           <iconify-icon icon="solar:refresh-bold-duotone" className="me-1" />
           Živě
         </button>
-        <button className="btn btn-warning btn-sm py-1 px-2" style={{ fontSize: 11 }}>
+        <button className="btn btn-warning btn-sm py-1 px-2" style={{ fontSize: 11 }} title="Znovu načíst všechny transakce">
           <iconify-icon icon="solar:download-minimalistic-bold-duotone" className="me-1" />
           Znovu
         </button>
@@ -1209,7 +1209,7 @@ export default function BankaView({ state }: Props) {
                 </h5>
                 <div className="row g-3">
                   {multi.map((u) => (
-                    <div key={u.id} className="col-12 col-sm-6 col-lg-4 col-xl-3">
+                    <div key={u.id} className="col-12 col-sm-6 col-lg-4 col-xxl-3">
                       <UcetCard
                         ucet={u}
                         allBranches={allBranches}
@@ -1235,7 +1235,7 @@ export default function BankaView({ state }: Props) {
                 </h5>
                 <div className="row g-3">
                   {single.map((u) => (
-                    <div key={u.id} className="col-12 col-sm-6 col-lg-4 col-xl-3">
+                    <div key={u.id} className="col-12 col-sm-6 col-lg-4 col-xxl-3">
                       <UcetCard
                         ucet={u}
                         allBranches={allBranches}
