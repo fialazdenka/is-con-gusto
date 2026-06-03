@@ -43,7 +43,7 @@ interface Props {
   matchingFilter?: MatchingStav | 'all';                // legacy single-select
   matchingFilters?: Set<MatchingStav>;                  // nový multiselect
   formaFilters?: Set<FakturaForma>;                     // speciální účetní formy (zálohová / dobropis / offset)
-  presetFilters?: Set<'po-splatnosti' | 'tydni'>;       // preset filtry (po splatnosti, tento týden)
+  presetFilters?: Set<'po-splatnosti' | 'tydni' | 'uzamcene'>;       // preset filtry (po splatnosti, tento týden, uzamčené)
   castkaOd?: string;
   castkaDo?: string;
   sortBy?: SortCol;
@@ -142,7 +142,9 @@ export default function FakturyTable({
 
   const filtered = vsechny.filter((f) => {
     // Zaplacené / odeslané skrýt, pokud uživatel je explicitně nezvolil
-    if ((f.stav === 'zaplacena' || f.stav === 'odeslana') && !showZaplacene && !stavFilters?.has(f.stav)) return false;
+    // VÝJIMKA: pokud je aktivní preset "uzamcene", vždy ukazujeme i zaplacené
+    const isUzamceneFilter = presetFilters?.has('uzamcene') ?? false;
+    if ((f.stav === 'zaplacena' || f.stav === 'odeslana') && !showZaplacene && !stavFilters?.has(f.stav) && !isUzamceneFilter) return false;
 
     if (typDokladu !== 'all' && f.typDokladu !== typDokladu) return false;
     if (kategorieFilter !== 'all' && f.kategorie !== kategorieFilter) return false;
@@ -165,6 +167,7 @@ export default function FakturyTable({
     // ── Preset filtry ──
     if (presetFilters?.has('po-splatnosti') && !isPoSplatnosti(f.splatnost)) return false;
     if (presetFilters?.has('tydni') && !isSplatneVObdobi(f.splatnost, periodOd, periodDo)) return false;
+    if (presetFilters?.has('uzamcene') && !f.isLocked) return false;
 
     // ── Účetní forma (zálohová / dobropis / offset) ──
     if (formaFilters && formaFilters.size > 0) {
@@ -327,9 +330,17 @@ export default function FakturyTable({
                     </div>
                     <div className="text-muted fs-11 czk-num" style={{ color: '#adb5bd' }}>VS: {getVS(f)}</div>
                   </td>
-                  <td>
-                    <div className="fw-semibold">{f.dodavatel}</div>
-                    {f.poznamka && <div className="text-muted fs-12">{f.poznamka}</div>}
+                  <td style={{ width: 220, maxWidth: 220, minWidth: 140 }}>
+                    <div style={{ maxWidth: '100%', overflow: 'hidden' }}>
+                      <div className="fw-semibold text-truncate" title={f.dodavatel}>
+                        {f.dodavatel}
+                      </div>
+                      {f.poznamka && (
+                        <div className="text-muted fs-12 text-truncate" title={f.poznamka}>
+                          {f.poznamka}
+                        </div>
+                      )}
+                    </div>
                   </td>
                   {showExtraCols && (
                     <td>
@@ -388,7 +399,16 @@ export default function FakturyTable({
                     </td>
                   )}
                   <td>
-                    <span className={`badge ${cls}`}>{label}</span>
+                    <div className="d-flex align-items-center gap-1">
+                      <span className={`badge ${cls}`}>{label}</span>
+                      {f.isLocked && (
+                        <iconify-icon
+                          icon="solar:lock-keyhole-bold-duotone"
+                          title="Faktura uzamčena (uzavřené účetní období)"
+                          style={{ fontSize: 14, color: '#6f42c1' }}
+                        />
+                      )}
+                    </div>
                   </td>
                   {showMatching && (
                     <td>

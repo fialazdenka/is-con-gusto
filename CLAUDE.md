@@ -259,6 +259,39 @@ CG Brno, Piazza (+ EUR účet), Monte, U Čápa, KOREK WB, U Kohoutů, Nad Hladi
 - `sortBy: SortCol | null`, `sortDir: 'asc' | 'desc'`, `handleSort(col)` toggle pattern
 - `STAV_ORDER` mapa pro semantické řazení stavů (nová → ke-schválení → schválená → …)
 
+### Locking + Cost category audit (uzavřená účetní období)
+- `isLocked?: boolean` flag v `FakturaPlatby` (paralelně s workflow stavem — typicky `zaplacena` + `isLocked: true`)
+- Mock data: `fp14` Metro AG · CG Brno · březen, `fp46` Makro · Piazza · březen, `fp47` E.ON · Monte · březen
+- V `FakturyTable`: 🔒 fialová ikona (`solar:lock-keyhole-bold-duotone`) vedle stav-badge + tooltip „Faktura uzamčena"
+- Nový quick filter chip „🔒 Uzamčené (X)" — preset `'uzamcene'` v `presetFilters: Set<'po-splatnosti' | 'tydni' | 'uzamcene'>`; filter logika v `FakturyTable` zahrnuje i `zaplacena` (jinak skryté) když je `isUzamceneFilter` aktivní
+- V `FakturySidePanel`: fialový alert nahoře, **nová sekce „Účetní kategorie"** s editovatelným `<select>` (jen kategorie!), workflow akce skryté (`isAprovable = !isLocked && ...`), poznámka `readOnly` s šedým pozadím
+- Změna kategorie → callback `onKategorieChange(id, oldKat, newKat)` v `FakturyView` → `pushAudit` s `typ: 'editace'`, fialová ikona pera, text „Kategorie změněna: Zboží → Energie"
+- `localKategorie: Record<id, FakturaKategorie>` state v `FakturyView`, předáno do panelu jako `effectiveKategorie`
+
+### Rounding correction workflow (DL diff ≤ 1 Kč)
+- V `DLMatchingDetail`: detekce `isRoundingCase = 0 < |totalDiff| <= 1`
+- V zeleném boxu Celkem: tlačítko **„Schválit zaokrouhlení"** s info textem „Odchylka je v toleranci ≤ 1 Kč"
+- Po schválení: stav „✓ Zaokrouhlení schváleno — odchylka +1 Kč odepsána"
+- `localRoundingApproved: Record<id, boolean>` v `FakturyView` → audit `typ: 'parovani'`, zelená barva, ikona verified-check
+- Mock: `fp01` Makro · 45 201 Kč (DL = 45 200 → diff +1 Kč) pro demo
+
+### Recheck matching (vícenásobné pokusy)
+- `localRecheckCount: Record<id, number>` v `FakturyView` (počet pokusů per faktura)
+- Tlačítko v `DLMatchingDetail` mění label: „Spustit párování" → „Znovu párovat 1×" → „2×" → ...
+- Bílý badge počtu v tlačítku; `btn-primary` při neukončeném párování, `btn-outline-primary` když sparovana
+- Tooltip „Doteď X pokusů o přepárování"
+- Audit zápis: „První / Druhý / Třetí pokus o přepárování — vyhodnoceno: spárováno ✓ / neshoda s DL / částečně spárováno / detekována duplicita / čeká na DL / bez DL"
+
+### Saved filter presets (uložené filtry)
+- Type `FilterPreset = { id, name, icon?, snapshot: { kategorieFilter, stavFilters[], matchingFilters[], formaFilters[], presetFilters[], castkaOd, castkaDo, search } }`
+- `savedPresets: FilterPreset[]` state v `FakturyView` + 2 výchozí demo: **Denní review** (Stav: Nová + Ke schválení) a **K vyřešení** (Párování: Nesedí DL + Duplicita · Po splatnosti)
+- Nový řádek nahoře v filter baru: „🔖 Moje filtry: [chipy] [+ Uložit aktuální]" s oddělovačem
+- Klik na chip → `applyPreset` přepíše všechny filtry + označí preset jako aktivní (`activePresetId`, modré pozadí chipu)
+- × ikona u každého chipu → confirm → `deletePreset`
+- „Uložit aktuální" → `window.prompt` na název → `saveCurrentAsPreset` snapshot
+- Tlačítko disabled když `!hasAnyFilter` (žádný filtr aktivní)
+- „Zrušit filtry ×" také čistí `activePresetId`
+
 ### Speciální účetní formy (FakturaForma)
 - `FakturaForma = 'standard' | 'zalohova' | 'dobropis' | 'offset'`
 - `FORMA_LABELS` v platbyData.ts + `FORMA_META` (badge styly) v FakturyTable + `FORMA_INFO` (info sekce) v FakturySidePanel
@@ -288,17 +321,24 @@ CG Brno, Piazza (+ EUR účet), Monte, U Čápa, KOREK WB, U Kohoutů, Nad Hladi
 - Critical = VS/číslo match → blokuje schválení; warning = částka+dodavatel match → upozornění
 - `DuplicateDetail` komponenta: side-by-side comparison s **červeně zvýrazněnými shodnými poli**
 
-### FakturySidePanel sekce (top → bottom)
-1. **Header** – status badges (effectiveStav + matching stav)
-2. **Mismatch / duplicate alert** – warning (nesedí DL) nebo danger (duplicita)
-3. **Key details** – Částka (negativní červeně) · Splatnost · VS · Číslo · DL badges · Přiřazeno · Schválil · Poznámka
-4. **Účetní forma** *(jen pokud forma ≠ 'standard')* – info banner + spojená faktura link
-5. **Párování s DL** – DLMatchingDetail nebo DuplicateDetail (dle stavu)
-6. **Náhled faktury** – collapsible InvoicePreview
-7. **Přílohy** – mock PDF + upload placeholder
-8. **Workflow akce** – Schválit / Odložit / Zamítnout, blokováno při duplicitě
-9. **Historie (audit log)** – timeline s typovými badgemi
-10. **Interní komunikace** – thread s avatary, role badges (Účetní/Provoz/Management), input
+### FakturySidePanel — 4 záložky (tabs) namísto endless scrollu
+
+**Vždy nahoře viditelné** (nad záložkami):
+- **Header** – status badges (effectiveStav + matching stav) + 🔒 lock indicator + dodavatel + číslo
+- **Alerty** – Locked (fialový) / Mismatch (warning) / Duplicate (danger) — zobrazují se podle stavu
+
+**Záložky (klik mění obsah, hlavička zůstává):**
+1. **📄 Detail** (default) — Key details (částka, splatnost, VS, číslo, DL badges, přiřazeno, schválil, poznámka) · **Účetní kategorie** (jen pokud isLocked — editovatelný dropdown s audit zápisem) · **Účetní forma** (jen pokud ≠ 'standard') · **Náhled faktury** (collapsible InvoicePreview) · **Přílohy** (mock PDF + upload placeholder) · **Workflow akce** (Schválit / Odložit / Zamítnout, blokováno při duplicitě, skryté při isLocked) + Poznámka textarea (read-only při isLocked)
+2. **🔗 Párování DL** — DLMatchingDetail (pro nesedi-dl / castecne-sparovana / sparovana) / DuplicateDetail (pro duplikat) / „Bez DL" stav. Obsahuje **Rounding correction workflow** (tlačítko „Schválit zaokrouhlení" když diff ≤ 1 Kč) a **Recheck matching** („Znovu párovat 3×" s počtem v badgi)
+3. **💬 Komunikace** — Internal communication thread (Účetní / Provoz / Management mock + input)
+4. **🕐 Historie** — Audit timeline s 8 typovými badgemi
+
+**Sticky pozice:** `top: calc(var(--bs-topbar-height) + 16px)`, `maxHeight: calc(100vh - var(--bs-topbar-height) - 32px)` — správně pod topbarem, využije celou výšku viewportu
+
+### Layout chování
+- **Bez výběru faktury:** tabulka přes `col-12` (full-width)
+- **Po výběru:** tabulka `col-xl-7 col-lg-7`, panel `col-xl-5 col-lg-5` se objeví vpravo
+- **Po zavření panelu** (× nebo opakovaný klik): tabulka zpět full-width
 
 ### Audit log (SessionAuditEntry)
 - `typ?: 'schvaleni' | 'editace' | 'parovani' | 'komunikace' | 'stav' | 'priloha' | 'zadani' | 'prirazeni'`
@@ -534,6 +574,7 @@ Piazza otevřena 2006 (potvrzeno majitelem).
 - **v3 s11**: Sekce **Kód** refaktor #1 — kodér chce vše inline v komponentě bez Helper/Support tříd. Smazány `app/Support/Provozovny.php` a `app/Support/TrzbyHelper.php` jako samostatné soubory. Všechna mock data (PROVOZOVNY, BASE_SPLIT, DOW_MULT, UCTY_MOCK, SEASONAL, FOUNDING_YEAR) + helpery (detRand, baseDay, getDowFactor, genDayData, genDayDataSplit, genD7Split, genMonthRevenue, genAnnualRevenue, smoothPath, fCzk, getDatesInRange) přesunuty do class body `TrzbyDetail.php` a `VyvojTrzeb.php` jako public metody (volatelné z Blade přes `$this->...`). Accordion redukován ze 7 na 6 sekcí (bez Sdílené helpery). Sed script + Python regex pro hromadné `TrzbyHelper::` → `$this->` replace v Blade konstantách (38 substitucí).
 - **v3 s12**: Sekce **Kód** refaktor #2 — kodér poslal vzorovou `sales-sum.blade.php`, přechod na **Livewire Volt** + **Eloquent**. Class-based `app/Livewire/*.php` přepsány na **Volt single-file** (`resources/views/livewire/*.blade.php` s anonymní třídou `new #[Defer] class extends Component {}`). Žádné mock generators — query přes `Branch::all()` + `DailyClosingRow` (`SUM(value)` pro `type_id IN [SALES, SALE_MANUAL]`). `formatMoney($n, false)` místo `fCzk()`, `<x-input>` Blade komponenta místo standardních inputů, multi-tenancy přes `auth()->user()->activeBranch()` + `mainBranchGet()`. Accordion redukován na 4 sekce. Žluté otázky pro kodéra: K/B split, historické agregace, opened_at.
 - **v3 s13**: Sekce **Kód** refaktor #3 — odpovědi od kodéra zapracovány. **Kuchyň/Bar split** přes `DailyClosingRow::SALES_K` + `SALES_B` (query rozšířena o `GROUP BY type_id`, indexace `[branchId][date][typeId]`, single-venue tabulka Datum/Kuchyň/Bar/Celkem). **Cache::remember** pro `loadChartData()` (TTL 1h, klíč s mode/period/year/month/branchIds). **MIN(daily_closings.date)** fallback pro `fromYear()` při `period='vse'` (24h cache). Vyřešené body z žlutého varování přesunuty do zeleného success banneru.
+- **v3 s18**: **Faktury — 5 nových features per spec** (operational invoice workflow dashboard). **1) Locking + Cost category audit**: nový flag `isLocked?: boolean` v `FakturaPlatby` (paralelně s workflow stavem). 3 mock faktury locked (fp14 Metro AG, fp46 Makro, fp47 E.ON — z března/dubna, zaplacené, uzavřené účetní období). V tabulce 🔒 fialová ikona vedle stav-badge + tooltip. V side panelu fialový alert „Faktura uzamčena", nová sekce „Účetní kategorie" s editovatelným dropdown (jen kategorie editovatelná, ostatní read-only), workflow akce skryté, poznámka read-only s šedým pozadím. Změna kategorie → audit zápis `typ: 'editace'`. Nový quick filter chip „🔒 Uzamčené (3)" který zahrnuje i zaplacené (jinak skryté). **2) Rounding correction workflow**: pro diff DL ≤ 1 Kč nové tlačítko „Schválit zaokrouhlení" v zeleném boxu DLMatchingDetail; po schválení změna stavu na „✓ Zaokrouhlení schváleno" + audit zápis `typ: 'parovani'`. Mock data: fp01.castka 45 200 → 45 201 (vytvoří diff +1 Kč pro demo). **3) Recheck matching vylepšení**: počet pokusů per faktura (`localRecheckCount: Record<id, number>`), tlačítko mění label (Spustit párování → Znovu párovat 1× → 2× → 3×) + počet v bílém badgi, primary modré při neukončeném párování, outline-primary když sparovana. Audit zápisy s ordinálním číslem („Druhý pokus o přepárování — vyhodnoceno: spárováno ✓") + výsledný stav matching. **4) Saved filter states**: state `savedPresets: FilterPreset[]` se snapshot všech filtrů (kategorie/stav/párování/forma/preset/částka/search). Nový řádek nahoře v filter baru „🔖 Moje filtry: [chipy] [+ Uložit aktuální]". 2 výchozí demo presety (Denní review / K vyřešení). Klik na chip načte snapshot, ×  smaže, „Uložit aktuální" prompts na název, „Zrušit filtry" zruší active preset. **5) Tabs v side panelu**: nahrazuje endless scroll. 4 záložky (Detail / Párování / Komunikace / Historie), modrý underline na aktivní, ikony Solar. Header (status badges + dodavatel) a alerty (Locked / Mismatch / Duplicita) vždy viditelné. Mostly jen jedna sekce najednou — žádné dlouhé scroll. **Plus layout vylepšení**: tabulka full-width (`col-12`) když není faktura vybraná, panel (`col-xl-5 col-lg-5`) se zobrazí až po výběru (jako v Bance). Dodavatel sloupec `width: 220px` + `text-truncate` + tooltip. Tabbed panel `top: calc(var(--bs-topbar-height) + 16px)` + `maxHeight: calc(100vh - var(--bs-topbar-height) - 32px)` (správně pod topbarem). Removed nested scroll v komentářích.
 - **v3 s17**: **Responzivita pass #1** — analýza + 7 fixů ve 3 souborech. **Faktury layout**: panel z `col-lg-4` na `col-lg-5` (širší při 992–1199px). **Faktury action bar**: rozdělen na 2 logické skupiny (Období \| Akce) přes `justify-content-between`. **Banka AutoSyncBar**: text-popisky („Poslední:", „Příští:", „Ve frontě:") schované pod `md` (`d-none d-md-inline`) + `title` attr pro tooltip. **Banka card grid**: 4-per-row přesunuto z `xl` (1200+) na `xxl` (1400+), takže na 1200–1399 jsou 3-per-row (méně cramped). **Tržby Vývoj tržeb toggle row**: `flex-wrap` (3-4 řádky chaos) → `flex-nowrap` + horizontální scroll (`overflowX: auto` + `flex-shrink-0` na chipech) + tenký scrollbar (`.trzby-chart-toggles` CSS). **Tržby Vývoj tržeb header**: `flex-column flex-lg-row` — title nad kontroly na md (méně tisněné). **CSS media queries** pro tablet (768–991): `.trzby-box` padding 16→12px, `.trzby-box-value` 22→18px, `.card-header.trzby-detail-header-sticky` padding 10/14. Pro <1200: `.trzby-sticky-r` box-shadow pro vizuální oddělení. Nedotčeno: Dashboard layout, PlatbyView, Sidebar mobile overlay, Topbar `d-none d-md-block` shy, Banka Smart Alerts (již `text-nowrap`), Modal sizing (existující `@media` v custom.css).
 - **v3 s16**: Tržby → Vývoj tržeb: **CTA „Všechny provozy"** — synthetic `ALL_PROV` (id `'all'`, Con Gusto gold), exclusive toggle, auto-switch `chartPeriod='vse'` (historie od 2006), agregace přes `ACTIVE_PROVS.filter(BASE_DAY > 0).reduce(...)` v `VyvojChart.data` + `RocniVyvojTable.getValue`. **Kód sekce** rozšířená o accordion entry „3 — Vývoj tržeb: rozšíření Všechny provozy" — patch existující Volt komponenty (nepřepisuje původní): 4 PHP úpravy (`toggleBranch` exclusive, `fromYear` MIN(date) cache pro 'all', `loadChartData` agregace pod klíčem `'all'`, `chartData` single zlatá series) + 1 Blade změna (tlačítko před foreach branches). Dodrženo: Volt syntax, žádné Helper/Support třídy, Eloquent + Cache::remember.
 - **v3 s15**: Nová sekce **Banka** (`/banka`) — kompletní finanční přehled pro majitele / fin. ředitele. `bankaData.ts` (BankaUcet + BankaTransakce typy + 13 mock účtů + 30 mock transakcí + helpery STAV_META/TRANS_STAV_META). 3 sekce v layoutu: Smart Alerts (4 typy: critical/sync-error/low-balance/unassigned) s **klikatelnými chipy** s inline akcemi (Převést/Resync/Přiřadit) — chip má 2 části: scroll-to-card + akce. Top summary banner (Zůstatek celkem CZK+EUR, trend %). AutoSyncBar (cron readiness pattern z Faktur). Karty účtů ve 2 sekcích: **Konsolidované účty** (multi-venue, 4 účty: Hlavní/Mzdy/Marketing/Catering) + **Účty provozoven** (single-venue). Grid `col-12 col-sm-6 col-lg-4 col-xl-3`. Karta obsahuje: brand color border-top (1 provoz → její barva, multi → gold), kompaktní header s currency+stav badges (zkrácené labely + title tooltip), Účetní bilance / Dostupní prostředky (jako ve starém systému), **sparkline 30 dní zpět solid + 7 dní budoucích dashed**, predikce Týden/Měsíc s barvou dle trendu, max 5 badges provozoven + „+N dalších", akční tlačítka pro problémové účty (Převést/Resync/Přiřadit). Klik na kartu → drawer detail účtu (velká sparkline + posledních 10 transakcí + akce). Tabulka transakcí full-width default, zúží se na col-xl-8 jen po výběru. Side-panel detail transakce sticky right (pattern z Faktur). **4 akce**: PrevodModal (Z účtu → Na účet → Částka, validace dostatečných prostředků, opravdu mění bilanci), Re-sync inline (spin 2s → 'ok'), PrirazeniModal (multi-checkbox grid 15 provoz), UcetDetailDrawer (offcanvas 540px). State pattern: `localUcty: Record<id, Partial<BankaUcet>>` + `mergedUcty` — změny se okamžitě projeví napříč UI. Toast notifikace top-right (3s).

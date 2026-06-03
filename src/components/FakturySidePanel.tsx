@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import type { FakturaPlatby, FakturaStavPlatby, MatchingStav, FakturaForma } from '../platbyData';
+import type { FakturaPlatby, FakturaStavPlatby, MatchingStav, FakturaForma, FakturaKategorie } from '../platbyData';
 import InvoicePreview from './InvoicePreview';
 import DLMatchingDetail from './DLMatchingDetail';
 import DuplicateDetail from './DuplicateDetail';
@@ -78,6 +78,7 @@ function getMockKomentare(faktura: FakturaPlatby, matchingStav?: string): Koment
 interface Props {
   faktura: FakturaPlatby | null;
   effectiveStav: FakturaStavPlatby;
+  effectiveKategorie?: FakturaKategorie;     // override kategorie (po editaci u locked faktur)
   localPoznamka: string;
   localSchvalil: string;
   localDatumSchvaleni: string;
@@ -87,10 +88,14 @@ interface Props {
   onZamitout: (id: string) => void;
   onOdlozit: (id: string) => void;
   onPoznamkaChange: (id: string, val: string) => void;
+  onKategorieChange?: (id: string, oldKat: FakturaKategorie, newKat: FakturaKategorie) => void;
   sessionAudit?: SessionAuditEntry[];
   komentare?: KomentarEntry[];
   onAddKomentar?: (id: string, entry: KomentarEntry) => void;
   onRematch?: (id: string) => void;
+  recheckCount?: number;
+  roundingApproved?: boolean;
+  onApproveRounding?: (id: string, diff: number) => void;
 }
 
 // ── Status metadata ────────────────────────────────────────────
@@ -190,6 +195,7 @@ const PANEL_USER = SCHVALOVACI_OSOBY.find((o) => o.role === 'majitel')!;
 export default function FakturySidePanel({
   faktura,
   effectiveStav,
+  effectiveKategorie,
   localPoznamka,
   localSchvalil,
   localDatumSchvaleni,
@@ -199,12 +205,18 @@ export default function FakturySidePanel({
   onZamitout,
   onOdlozit,
   onPoznamkaChange,
+  onKategorieChange,
   sessionAudit = [],
   komentare = [],
   onAddKomentar,
   onRematch,
+  recheckCount = 0,
+  roundingApproved,
+  onApproveRounding,
 }: Props) {
 
+  // Aktivní záložka v panelu (Detail / Párování / Komunikace / Historie)
+  const [activeTab, setActiveTab] = useState<'detail' | 'parovani' | 'komunikace' | 'historie'>('detail');
   const [showAudit, setShowAudit] = useState(true);
   const [showPreview, setShowPreview] = useState(false);
   const [showPrilohy, setShowPrilohy] = useState(true);
@@ -232,9 +244,10 @@ export default function FakturySidePanel({
   const schvalilFinal = localSchvalil || faktura.schvalil || '';
   const datumSchvFinal = localDatumSchvaleni || faktura.datumSchvaleni || '';
 
-  const isAprovable = effectiveStav === 'nova' || effectiveStav === 'ke-schvaleni';
-  const isZastavena = effectiveStav === 'zastavena';
-  const isZamitnuta = effectiveStav === 'zamitnuta';
+  const isLocked    = faktura.isLocked === true;
+  const isAprovable = !isLocked && (effectiveStav === 'nova' || effectiveStav === 'ke-schvaleni');
+  const isZastavena = !isLocked && effectiveStav === 'zastavena';
+  const isZamitnuta = !isLocked && effectiveStav === 'zamitnuta';
   const mismatch    = matching?.stav === 'nesedi-dl';
   const isDuplikat  = matching?.stav === 'duplikat';
   const rozdil      = matching?.dlCastka != null ? faktura.castka - matching.dlCastka : 0; // pro alert banner
@@ -258,7 +271,12 @@ export default function FakturySidePanel({
   }
 
   return (
-    <div style={{ position: 'sticky', top: 24, maxHeight: 'calc(100vh - 48px)', overflowY: 'auto' }}>
+    <div style={{
+      position: 'sticky',
+      top: 'calc(var(--bs-topbar-height, 100px) + 16px)',          // přesně pod topbarem
+      maxHeight: 'calc(100vh - var(--bs-topbar-height, 100px) - 32px)', // zbylá výška viewportu
+      overflowY: 'auto'
+    }}>
       <div className="card">
 
         {/* ── Header ──────────────────────────────────── */}
@@ -282,11 +300,25 @@ export default function FakturySidePanel({
               {' · '}
               {faktura.typDokladu === 'vydana' ? 'Vydaná' : 'Přijatá'}
               {' · '}
-              {KATEGORIE_LABELS[faktura.kategorie]}
+              {KATEGORIE_LABELS[effectiveKategorie ?? faktura.kategorie]}
             </div>
           </div>
           <button className="btn-close flex-shrink-0 mt-1" style={{ fontSize: 11 }} onClick={onClose} />
         </div>
+
+        {/* ── Locked alert (uzavřené účetní období) ─────── */}
+        {isLocked && (
+          <div className="alert d-flex align-items-start gap-2 mx-3 mt-3 mb-0 py-2 px-3"
+            style={{ background: '#f3eaff', borderColor: '#6f42c1', color: '#3d1e7a' }}>
+            <iconify-icon icon="solar:lock-keyhole-bold-duotone" style={{ fontSize: 18, flexShrink: 0, marginTop: 1, color: '#6f42c1' }} />
+            <div className="fs-12">
+              <strong>Faktura uzamčena</strong> — uzavřené účetní období.
+              <div className="mt-1">
+                Editovatelná pouze <strong>kategorie</strong> pro účely přeúčtování. Částka, IBAN, VS a další pole jsou zamknuté.
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* ── Mismatch / duplicate alert ───────────────── */}
         {mismatch && (
@@ -310,7 +342,35 @@ export default function FakturySidePanel({
 
         <div className="card-body p-0">
 
+          {/* ── Tab navigation ──────────────────────────── */}
+          <div className="border-bottom px-2" style={{ background: '#fafbfc' }}>
+            <ul className="nav nav-tabs border-0" style={{ flexWrap: 'nowrap' }}>
+              {([
+                { id: 'detail',     label: 'Detail',     icon: 'solar:document-text-bold-duotone' },
+                { id: 'parovani',   label: 'Párování',   icon: 'solar:link-bold-duotone' },
+                { id: 'komunikace', label: 'Komunikace', icon: 'solar:chat-round-bold-duotone' },
+                { id: 'historie',   label: 'Historie',   icon: 'solar:clock-circle-bold-duotone' },
+              ] as const).map((t) => (
+                <li key={t.id} className="nav-item">
+                  <button
+                    className={`nav-link border-0 px-2 py-2 fs-12 fw-semibold${activeTab === t.id ? ' active text-primary' : ' text-muted'}`}
+                    style={{
+                      background: 'transparent',
+                      borderBottom: activeTab === t.id ? '2px solid var(--bs-primary)' : '2px solid transparent',
+                      borderRadius: 0,
+                    }}
+                    onClick={() => setActiveTab(t.id)}
+                  >
+                    <iconify-icon icon={t.icon} className="me-1" style={{ fontSize: 13 }} />
+                    {t.label}
+                  </button>
+                </li>
+              ))}
+            </ul>
+          </div>
+
           {/* ── Key details ─────────────────────────────── */}
+          {activeTab === 'detail' && (
           <div className="p-3 border-bottom">
             <div className="d-flex align-items-end justify-content-between mb-3">
               <div>
@@ -379,9 +439,40 @@ export default function FakturySidePanel({
               )}
             </div>
           </div>
+          )}
+
+          {/* ── Účetní kategorie (editovatelná i u uzamčené faktury) ── */}
+          {activeTab === 'detail' && isLocked && (
+            <div className="p-3 border-bottom" style={{ background: '#fbfaff' }}>
+              <div className="d-flex align-items-center gap-2 mb-2">
+                <iconify-icon icon="solar:wallet-money-bold-duotone" style={{ fontSize: 14, color: '#6f42c1' }} />
+                <span className="text-muted fs-11 text-uppercase fw-semibold">Účetní kategorie</span>
+                <span className="badge ms-auto" style={{ background: '#e9d8ff', color: '#6f42c1', fontSize: 9 }}>
+                  Editovatelná
+                </span>
+              </div>
+              <select
+                className="form-select form-select-sm"
+                value={effectiveKategorie ?? faktura.kategorie}
+                onChange={(e) => {
+                  const newKat = e.target.value as FakturaKategorie;
+                  const oldKat = (effectiveKategorie ?? faktura.kategorie);
+                  if (newKat !== oldKat) onKategorieChange?.(faktura.id, oldKat, newKat);
+                }}
+              >
+                {(Object.keys(KATEGORIE_LABELS) as FakturaKategorie[]).map((k) => (
+                  <option key={k} value={k}>{KATEGORIE_LABELS[k]}</option>
+                ))}
+              </select>
+              <div className="text-muted fs-11 mt-2" style={{ lineHeight: 1.4 }}>
+                <iconify-icon icon="solar:info-circle-bold-duotone" className="me-1" style={{ fontSize: 11 }} />
+                Změna kategorie je povolena i pro uzamčenou fakturu (přeúčtování). Každá změna se automaticky zapíše do audit logu.
+              </div>
+            </div>
+          )}
 
           {/* ── Účetní forma (zálohová / dobropis / offset) ── */}
-          {faktura.forma && faktura.forma !== 'standard' && (() => {
+          {activeTab === 'detail' && faktura.forma && faktura.forma !== 'standard' && (() => {
             const info = FORMA_INFO[faktura.forma];
             const spojena = faktura.spojenaSId
               ? FAKTURY_PLATBY.find((x) => x.id === faktura.spojenaSId)
@@ -429,7 +520,7 @@ export default function FakturySidePanel({
           })()}
 
           {/* ── Párování s DL ───────────────────────────── */}
-          {matching && (
+          {activeTab === 'parovani' && matching && (
             <div className="p-3 border-bottom">
               <div className="d-flex align-items-center gap-2 mb-3">
                 <span className="text-muted fs-11 text-uppercase fw-semibold">Párování s DL</span>
@@ -449,12 +540,28 @@ export default function FakturySidePanel({
               ) : matching.stav === 'duplikat' ? (
                 <DuplicateDetail faktura={faktura} originalId={matching.duplikatFakturaId} />
               ) : (
-                <DLMatchingDetail faktura={faktura} matching={matching} onRematch={onRematch} />
+                <DLMatchingDetail
+                  faktura={faktura}
+                  matching={matching}
+                  onRematch={onRematch}
+                  recheckCount={recheckCount}
+                  roundingApproved={roundingApproved}
+                  onApproveRounding={onApproveRounding}
+                />
               )}
             </div>
           )}
 
+          {/* Fallback v tabu Párování: žádný matching záznam */}
+          {activeTab === 'parovani' && !matching && (
+            <div className="p-3 border-bottom text-center text-muted fs-12">
+              <iconify-icon icon="solar:document-bold-duotone" style={{ fontSize: 22, color: '#dee2e6' }} className="d-block mx-auto mb-2" />
+              Pro tuto fakturu nemáme záznam o párování s DL.
+            </div>
+          )}
+
           {/* ── Náhled faktury ──────────────────────────── */}
+          {activeTab === 'detail' && (
           <div className="p-3 border-bottom">
             <button
               className="d-flex align-items-center justify-content-between w-100 border-0 bg-transparent p-0"
@@ -472,8 +579,10 @@ export default function FakturySidePanel({
               </div>
             )}
           </div>
+          )}
 
           {/* ── Přílohy ─────────────────────────────────── */}
+          {activeTab === 'detail' && (
           <div className="p-3 border-bottom">
             <button
               className="d-flex align-items-center justify-content-between w-100 border-0 bg-transparent p-0 mb-2"
@@ -522,8 +631,10 @@ export default function FakturySidePanel({
               </div>
             )}
           </div>
+          )}
 
           {/* ── Workflow akce ────────────────────────────── */}
+          {activeTab === 'detail' && (
           <div className="p-3 border-bottom d-flex flex-column gap-2">
             {isAprovable && !isDuplikat && (
               <>
@@ -558,24 +669,35 @@ export default function FakturySidePanel({
                 Přehodnotit
               </button>
             )}
-            {!isAprovable && !isZastavena && !isZamitnuta && (
+            {!isAprovable && !isZastavena && !isZamitnuta && !isLocked && (
               <div className="text-muted fs-12 text-center py-1">Faktura ve stavu: <strong>{stavMeta.label}</strong></div>
             )}
+            {isLocked && (
+              <div className="d-flex align-items-center gap-2 py-2 px-2 rounded" style={{ background: '#f3eaff' }}>
+                <iconify-icon icon="solar:lock-keyhole-bold-duotone" style={{ fontSize: 16, color: '#6f42c1' }} />
+                <span className="fs-12" style={{ color: '#3d1e7a' }}>
+                  <strong>Faktura uzamčena</strong> — schvalovací akce nejsou k dispozici
+                </span>
+              </div>
+            )}
 
-            {/* Poznámka */}
+            {/* Poznámka — read-only u zamčené faktury */}
             <div className="mt-1">
               <textarea
                 className="form-control form-control-sm"
                 rows={2}
-                placeholder="Interní poznámka…"
+                placeholder={isLocked ? '(uzamčeno)' : 'Interní poznámka…'}
                 value={localPoznamka}
+                readOnly={isLocked}
                 onChange={(e) => onPoznamkaChange(faktura.id, e.target.value)}
-                style={{ fontSize: 12, resize: 'none' }}
+                style={{ fontSize: 12, resize: 'none', ...(isLocked ? { background: '#f8f9fa', cursor: 'not-allowed' } : {}) }}
               />
             </div>
           </div>
+          )}
 
           {/* ── Audit timeline ───────────────────────────── */}
+          {activeTab === 'historie' && (
           <div className="p-3 border-bottom">
             <button
               className="d-flex align-items-center justify-content-between w-100 border-0 bg-transparent p-0 mb-2"
@@ -619,8 +741,10 @@ export default function FakturySidePanel({
               </div>
             )}
           </div>
+          )}
 
           {/* ── Interní komunikace ──────────────────────── */}
+          {activeTab === 'komunikace' && (
           <div className="p-3">
             <div className="d-flex align-items-center gap-2 mb-3">
               <span className="text-muted fs-11 text-uppercase fw-semibold">Interní komunikace</span>
@@ -631,8 +755,8 @@ export default function FakturySidePanel({
               )}
             </div>
 
-            {/* Vlákno zpráv */}
-            <div className="d-flex flex-column gap-3 mb-3" style={{ maxHeight: 300, overflowY: 'auto' }}>
+            {/* Vlákno zpráv — bez nested scroll, ať dýchá v rámci panelu */}
+            <div className="d-flex flex-column gap-3 mb-3">
               {allKomentare.map((k) => (
                 <div key={k.id} className="d-flex align-items-start gap-2">
                   <div
@@ -689,6 +813,7 @@ export default function FakturySidePanel({
               </button>
             </div>
           </div>
+          )}
 
         </div>
       </div>

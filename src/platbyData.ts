@@ -99,6 +99,8 @@ export interface FakturaPlatby {
   // Speciální účetní případy (architecture ready)
   forma?: FakturaForma;       // default 'standard'
   spojenaSId?: string;        // zálohová → finální faktura, dobropis → původní faktura, offset → protistrana
+  // Locking pro uzavřená účetní období: zamezí editaci částky, IBAN, VS, ale kategorie zůstává editovatelná pro přeúčtování
+  isLocked?: boolean;
 }
 
 export interface OstatniPlatba {
@@ -242,12 +244,12 @@ export const FAKTURY_PLATBY: FakturaPlatby[] = [
     dodavatel: 'Makro Cash & Carry',
     kategorie: 'zbozi',
     provozovna: 'cg-brno',
-    castka: 45_200,
+    castka: 45_201,                          // 45 201 → DL je 45 200 → diff +1 Kč (rounding)
     datum: '2026-04-10',
     splatnost: '2026-04-14',
     stav: 'schvalena',
     typDokladu: 'prijata',
-    poznamka: 'Nákup 8.4. – týdenní zásoby',
+    poznamka: 'Nákup 8.4. – týdenní zásoby (drobná odchylka 1 Kč k zaokrouhlení)',
     schvalil: 'Petr Dohnal',
     datumSchvaleni: '11. 4. 2026',
   },
@@ -450,6 +452,9 @@ export const FAKTURY_PLATBY: FakturaPlatby[] = [
     splatnost: '2026-04-15',
     stav: 'zaplacena',
     typDokladu: 'prijata',
+    isLocked: true,                  // uzavřené účetní období (březen 2026)
+    schvalil: 'Petr Dohnal',
+    datumSchvaleni: '3. 4. 2026',
   },
   // ── V BANCE ──
   {
@@ -543,6 +548,11 @@ export const FAKTURY_PLATBY: FakturaPlatby[] = [
   { id: 'fp44', cislo: 'DOB-2026-0003', dodavatel: 'Metro AG', kategorie: 'zbozi' as FakturaKategorie, provozovna: 'cg-brno', castka: -3_400, datum: '2026-04-14', splatnost: '2026-04-21', stav: 'ke-schvaleni' as FakturaStavPlatby, typDokladu: 'prijata' as TypDokladu, forma: 'dobropis', spojenaSId: 'fp14', poznamka: 'Vrácené zkažené zboží – ovoce a zelenina', prirazenaOsoba: 'u-martin' },
   // Offset — vzájemný zápočet s odběratelem (CG má jak pohledávku, tak závazek)
   { id: 'fp45', cislo: 'OFF-2026-0001', dodavatel: 'Catering Partners s.r.o.', kategorie: 'sluzby' as FakturaKategorie, provozovna: 'cg-catering', castka: 12_500, datum: '2026-04-12', splatnost: '2026-04-22', stav: 'ke-schvaleni' as FakturaStavPlatby, typDokladu: 'prijata' as TypDokladu, forma: 'offset', spojenaSId: 'fp40', poznamka: 'Vzájemný zápočet – pronájem prostor vs. catering servis' },
+
+  // ── ZAMČENÉ faktury z uzavřeného účetního období (březen 2026) ──
+  // Editovatelná pouze kategorie pro přeúčtování; částka/IBAN/VS jsou zamčené
+  { id: 'fp46', cislo: 'FAK-2026-0021', dodavatel: 'Makro Cash & Carry', kategorie: 'zbozi' as FakturaKategorie, provozovna: 'piazza', castka: 38_900, datum: '2026-03-05', splatnost: '2026-03-12', stav: 'zaplacena' as FakturaStavPlatby, typDokladu: 'prijata' as TypDokladu, isLocked: true, schvalil: 'Petr Dohnal', datumSchvaleni: '6. 3. 2026', poznamka: 'Měsíční nákup březen' },
+  { id: 'fp47', cislo: 'FAK-2026-0024', dodavatel: 'E.ON Energie',       kategorie: 'energie' as FakturaKategorie, provozovna: 'monte', castka: 18_400, datum: '2026-03-10', splatnost: '2026-03-20', stav: 'zaplacena' as FakturaStavPlatby, typDokladu: 'prijata' as TypDokladu, isLocked: true, schvalil: 'Petr Dohnal', datumSchvaleni: '12. 3. 2026' },
 ];
 
 // ─── Ostatní platby v tomto týdnu (13–19.4.) ─────────────────

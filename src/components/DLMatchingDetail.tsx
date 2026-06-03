@@ -14,6 +14,9 @@ interface Props {
   matching: MatchingRecord;
   onDlCislaChange?: (cisla: string[]) => void;
   onRematch?: (id: string) => void;
+  recheckCount?: number;                                   // kolikrát už uživatel rematchnul
+  roundingApproved?: boolean;                              // už schváleno zaokrouhlení?
+  onApproveRounding?: (id: string, diff: number) => void;  // schválit zaokrouhlení
 }
 
 // ── Tolerance legend ──────────────────────────────────────────
@@ -28,7 +31,7 @@ function LegendaDot({ stav, label }: { stav: 'ok' | 'tolerance' | 'problem'; lab
   );
 }
 
-export default function DLMatchingDetail({ faktura, matching, onDlCislaChange, onRematch }: Props) {
+export default function DLMatchingDetail({ faktura, matching, onDlCislaChange, onRematch, recheckCount = 0, roundingApproved, onApproveRounding }: Props) {
   const [editMode,    setEditMode]    = useState(false);
   const [newDlInput,  setNewDlInput]  = useState('');
   const [localDlCisla, setLocalDlCisla] = useState<string[]>(matching.dlCisla ?? []);
@@ -145,30 +148,64 @@ export default function DLMatchingDetail({ faktura, matching, onDlCislaChange, o
       </div>
 
       {/* ── Celkový součet ──────────────────────────────── */}
-      {dlList.length > 0 && (
-        <div className="p-2 rounded mb-3"
-          style={{ background: totalSedi ? '#f0fdf4' : '#fff5f5', border: `1px solid ${totalSedi ? '#bbf7d0' : '#fecaca'}` }}>
-          <div className="d-flex align-items-center gap-2 mb-2">
-            <iconify-icon
-              icon={totalSedi ? 'solar:check-circle-bold-duotone' : 'solar:danger-circle-bold-duotone'}
-              style={{ fontSize: 16, color: totalSedi ? '#198754' : '#dc3545' }} />
-            <span className="fs-12 fw-bold" style={{ color: totalSedi ? '#198754' : '#dc3545' }}>
-              {totalSedi ? 'Celkové částky sedí' : `Rozdíl celkem: ${totalDiff > 0 ? '+' : '−'}${fCzk(Math.abs(totalDiff))}`}
-            </span>
-          </div>
-          <div className="d-flex gap-3" style={{ fontSize: 11 }}>
-            <div>
-              <div className="text-muted">Faktura</div>
-              <div className="fw-bold czk-num">{fCzk(faktura.castka)}</div>
+      {dlList.length > 0 && (() => {
+        // Rounding rule: |diff| > 0 && |diff| <= 1 → drobná odchylka → workflow „Schválit zaokrouhlení"
+        const isRoundingCase = Math.abs(totalDiff) > 0 && Math.abs(totalDiff) <= 1;
+        return (
+          <div className="p-2 rounded mb-3"
+            style={{ background: totalSedi ? '#f0fdf4' : '#fff5f5', border: `1px solid ${totalSedi ? '#bbf7d0' : '#fecaca'}` }}>
+            <div className="d-flex align-items-center gap-2 mb-2">
+              <iconify-icon
+                icon={totalSedi ? 'solar:check-circle-bold-duotone' : 'solar:danger-circle-bold-duotone'}
+                style={{ fontSize: 16, color: totalSedi ? '#198754' : '#dc3545' }} />
+              <span className="fs-12 fw-bold" style={{ color: totalSedi ? '#198754' : '#dc3545' }}>
+                {totalSedi
+                  ? (isRoundingCase ? `Drobná odchylka: ${totalDiff > 0 ? '+' : '−'}${fCzk(Math.abs(totalDiff))}` : 'Celkové částky sedí')
+                  : `Rozdíl celkem: ${totalDiff > 0 ? '+' : '−'}${fCzk(Math.abs(totalDiff))}`}
+              </span>
             </div>
-            <div style={{ color: '#dee2e6', alignSelf: 'center', fontSize: 16 }}>vs</div>
-            <div>
-              <div className="text-muted">DL celkem{dlList.length > 1 ? ` (${dlList.length}×)` : ''}</div>
-              <div className="fw-bold czk-num">{fCzk(dlCelkem)}</div>
+            <div className="d-flex gap-3" style={{ fontSize: 11 }}>
+              <div>
+                <div className="text-muted">Faktura</div>
+                <div className="fw-bold czk-num">{fCzk(faktura.castka)}</div>
+              </div>
+              <div style={{ color: '#dee2e6', alignSelf: 'center', fontSize: 16 }}>vs</div>
+              <div>
+                <div className="text-muted">DL celkem{dlList.length > 1 ? ` (${dlList.length}×)` : ''}</div>
+                <div className="fw-bold czk-num">{fCzk(dlCelkem)}</div>
+              </div>
             </div>
+
+            {/* Rounding correction workflow — viditelné jen u drobné odchylky ≤ 1 Kč */}
+            {isRoundingCase && (
+              <div className="mt-2 pt-2 border-top" style={{ borderColor: '#bbf7d0' }}>
+                {roundingApproved ? (
+                  <div className="d-flex align-items-center gap-2" style={{ fontSize: 11, color: '#198754' }}>
+                    <iconify-icon icon="solar:verified-check-bold-duotone" style={{ fontSize: 14 }} />
+                    <strong>Zaokrouhlení schváleno</strong>
+                    <span className="text-muted">— odchylka {totalDiff > 0 ? '+' : '−'}{fCzk(Math.abs(totalDiff))} odepsána</span>
+                  </div>
+                ) : (
+                  <div className="d-flex align-items-center gap-2 flex-wrap">
+                    <span style={{ fontSize: 11, color: '#198754' }}>
+                      <iconify-icon icon="solar:info-circle-bold-duotone" className="me-1" />
+                      Odchylka je v toleranci ≤ 1 Kč (zaokrouhlení). Lze schválit jedním klikem.
+                    </span>
+                    <button
+                      className="btn btn-success btn-sm ms-auto py-0 px-2"
+                      style={{ fontSize: 11 }}
+                      onClick={() => onApproveRounding?.(faktura.id, totalDiff)}
+                    >
+                      <iconify-icon icon="solar:check-circle-bold-duotone" className="me-1" />
+                      Schválit zaokrouhlení
+                    </button>
+                  </div>
+                )}
+              </div>
+            )}
           </div>
-        </div>
-      )}
+        );
+      })()}
 
       {/* ── Diff tabulka položek ─────────────────────────── */}
       {dlList.length > 0 && (
@@ -267,12 +304,26 @@ export default function DLMatchingDetail({ faktura, matching, onDlCislaChange, o
       )}
 
       {/* ── Akce ─────────────────────────────────────────── */}
-      <div className="d-flex gap-2">
-        <button className="btn btn-light btn-sm flex-grow-1" onClick={handleRematch}
-          disabled={rematch} style={{ fontSize: 12 }}>
+      <div className="d-flex gap-2 align-items-stretch">
+        {/* Rematch — primary když matching není OK; ghost když je sparovana */}
+        <button
+          className={`btn btn-sm flex-grow-1 ${matching.stav === 'sparovana' ? 'btn-outline-primary' : 'btn-primary'}`}
+          onClick={handleRematch}
+          disabled={rematch}
+          style={{ fontSize: 12 }}
+          title={recheckCount > 0 ? `Doteď ${recheckCount} ${recheckCount === 1 ? 'pokus' : recheckCount < 5 ? 'pokusy' : 'pokusů'} o přepárování` : 'Spustí kontrolu párování faktury proti DL'}>
           <iconify-icon icon="solar:refresh-bold-duotone"
             className={`me-1${rematch ? ' spin' : ''}`} style={{ fontSize: 13 }} />
-          {rematch ? 'Párování probíhá…' : 'Spustit párování'}
+          {rematch
+            ? 'Párování probíhá…'
+            : recheckCount === 0
+              ? 'Spustit párování'
+              : 'Znovu párovat'}
+          {recheckCount > 0 && !rematch && (
+            <span className="badge bg-white text-primary ms-2" style={{ fontSize: 10 }}>
+              {recheckCount}×
+            </span>
+          )}
         </button>
         {!totalSedi && dlList.length > 0 && (
           <button className="btn btn-light btn-sm flex-grow-1"

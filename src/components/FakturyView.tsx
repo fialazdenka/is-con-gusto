@@ -89,7 +89,7 @@ export default function FakturyView({ state, update }: Props) {
   const [stavFilters,        setStavFilters]        = useState<Set<FakturaStavPlatby>>(new Set());
   const [matchingFilters,    setMatchingFilters]    = useState<Set<MatchingStav>>(new Set());
   const [formaFilters,       setFormaFilters]       = useState<Set<FakturaForma>>(new Set());
-  const [presetFilters,      setPresetFilters]      = useState<Set<'po-splatnosti' | 'tydni'>>(new Set());
+  const [presetFilters,      setPresetFilters]      = useState<Set<'po-splatnosti' | 'tydni' | 'uzamcene'>>(new Set());
   const [castkaOd,           setCastkaOd]           = useState('');
   const [castkaDo,           setCastkaDo]           = useState('');
   const [sortBy,             setSortBy]             = useState<SortCol>('splatnost');
@@ -135,6 +135,110 @@ export default function FakturyView({ state, update }: Props) {
   const [localDatumSchvaleni, setLocalDatumSchvaleni] = useState<Record<string, string>>({});
   const [localAudit,         setLocalAudit]        = useState<Record<string, SessionAuditEntry[]>>({});
   const [localKomentare,     setLocalKomentare]    = useState<Record<string, KomentarEntry[]>>({});
+  const [localKategorie,     setLocalKategorie]    = useState<Record<string, FakturaKategorie>>({});
+  const [localRoundingApproved, setLocalRoundingApproved] = useState<Record<string, boolean>>({});
+  const [localRecheckCount,     setLocalRecheckCount]     = useState<Record<string, number>>({});
+
+  // ── Saved filter presets ──
+  type FilterPreset = {
+    id: string;
+    name: string;
+    icon?: string;
+    snapshot: {
+      kategorieFilter: string;
+      stavFilters:     string[];
+      matchingFilters: string[];
+      formaFilters:    string[];
+      presetFilters:   string[];
+      castkaOd:        string;
+      castkaDo:        string;
+      search:          string;
+    };
+  };
+  const [savedPresets, setSavedPresets] = useState<FilterPreset[]>([
+    // 2 výchozí demo presety
+    {
+      id: 'p-review',
+      name: 'Denní review',
+      icon: 'solar:clock-circle-bold-duotone',
+      snapshot: {
+        kategorieFilter: 'all',
+        stavFilters:     ['nova', 'ke-schvaleni'],
+        matchingFilters: [],
+        formaFilters:    [],
+        presetFilters:   [],
+        castkaOd:        '',
+        castkaDo:        '',
+        search:          '',
+      },
+    },
+    {
+      id: 'p-problemy',
+      name: 'K vyřešení',
+      icon: 'solar:danger-triangle-bold-duotone',
+      snapshot: {
+        kategorieFilter: 'all',
+        stavFilters:     [],
+        matchingFilters: ['nesedi-dl', 'duplikat'],
+        formaFilters:    [],
+        presetFilters:   ['po-splatnosti'],
+        castkaOd:        '',
+        castkaDo:        '',
+        search:          '',
+      },
+    },
+  ]);
+  const [activePresetId, setActivePresetId] = useState<string | null>(null);
+
+  function applyPreset(p: FilterPreset) {
+    setKategorieFilter(p.snapshot.kategorieFilter);
+    setStavFilters(new Set(p.snapshot.stavFilters as FakturaStavPlatby[]));
+    setMatchingFilters(new Set(p.snapshot.matchingFilters as MatchingStav[]));
+    setFormaFilters(new Set(p.snapshot.formaFilters as FakturaForma[]));
+    setPresetFilters(new Set(p.snapshot.presetFilters as Array<'po-splatnosti' | 'tydni' | 'uzamcene'>));
+    setCastkaOd(p.snapshot.castkaOd);
+    setCastkaDo(p.snapshot.castkaDo);
+    setSearch(p.snapshot.search);
+    setActivePresetId(p.id);
+  }
+
+  function saveCurrentAsPreset() {
+    const name = window.prompt('Název presetu:', 'Můj filtr');
+    if (!name || !name.trim()) return;
+    const id = `p-${Date.now()}`;
+    const newP: FilterPreset = {
+      id,
+      name: name.trim(),
+      icon: 'solar:bookmark-bold-duotone',
+      snapshot: {
+        kategorieFilter,
+        stavFilters:     Array.from(stavFilters),
+        matchingFilters: Array.from(matchingFilters),
+        formaFilters:    Array.from(formaFilters),
+        presetFilters:   Array.from(presetFilters),
+        castkaOd,
+        castkaDo,
+        search,
+      },
+    };
+    setSavedPresets((arr) => [...arr, newP]);
+    setActivePresetId(id);
+  }
+
+  function deletePreset(id: string) {
+    setSavedPresets((arr) => arr.filter((p) => p.id !== id));
+    if (activePresetId === id) setActivePresetId(null);
+  }
+
+  // Hlídací mechanismus: kdykoliv se filtr změní mimo applyPreset, zruš "aktivní preset"
+  // (jednoduchý effect — pokud aktuální filtry neshodují snapshot aktivního presetu)
+  // Pro účely demo: ponecháme jen po explicitním kliku
+  // (kompletní comparison by byl over-engineering pro mock)
+  const hasAnyFilter = (
+    kategorieFilter !== 'all' || stavFilters.size > 0 || matchingFilters.size > 0
+    || formaFilters.size > 0 || presetFilters.size > 0
+    || castkaOd !== '' || castkaDo !== '' || search !== ''
+  );
 
   function pushAudit(id: string, entry: SessionAuditEntry) {
     setLocalAudit((prev) => ({ ...prev, [id]: [entry, ...(prev[id] ?? [])] }));
@@ -199,10 +303,22 @@ export default function FakturyView({ state, update }: Props) {
   }
 
   function handleRematch(id: string) {
+    // Inkrementuj počet pokusů + popis akce zahrnuje pořadí + aktuální matching stav
+    const newCount = (localRecheckCount[id] ?? 0) + 1;
+    setLocalRecheckCount((p) => ({ ...p, [id]: newCount }));
+    const matching = getMatchingData(id);
+    const stavLabel = matching?.stav === 'sparovana'         ? 'spárováno ✓'
+                    : matching?.stav === 'nesedi-dl'         ? 'neshoda s DL'
+                    : matching?.stav === 'castecne-sparovana'? 'částečně spárováno'
+                    : matching?.stav === 'duplikat'          ? 'detekována duplicita'
+                    : matching?.stav === 'ceka-na-sparovani' ? 'čeká na DL'
+                    : matching?.stav === 'bez-dl'            ? 'bez DL'
+                    : 'výsledek čeká';
+    const ordinal = newCount === 1 ? 'První' : newCount === 2 ? 'Druhý' : newCount === 3 ? 'Třetí' : `${newCount}.`;
     pushAudit(id, {
       cas: now(),
       kdo: AKTUALNI_UZIVATEL.jmeno,
-      akce: 'Spuštěno manuální přepárování s DL',
+      akce: `${ordinal} pokus o přepárování — vyhodnoceno: ${stavLabel}`,
       icon: 'solar:refresh-circle-bold-duotone',
       color: '#0dcaf0',
       typ: 'parovani',
@@ -240,6 +356,7 @@ export default function FakturyView({ state, update }: Props) {
   ).length;
   const nesediDLCnt  = allFaktury.filter((f) => getMatchingData(f.id)?.stav === 'nesedi-dl').length;
   const duplikatCnt  = allFaktury.filter((f) => getMatchingData(f.id)?.stav === 'duplikat').length;
+  const lockedCnt    = allFaktury.filter((f) => f.isLocked === true).length;
   const cekaCnt      = allFaktury.filter((f) => getMatchingData(f.id)?.stav === 'ceka-na-sparovani').length;
   // Automatizace (mock cron status — v produkci by jely background workery)
   const CRON_INTERVAL_MIN = 15;
@@ -441,6 +558,54 @@ export default function FakturyView({ state, update }: Props) {
       <div className="card mb-4">
         <div className="card-body py-2 d-flex flex-column gap-2">
 
+          {/* Řádek 0 — Uložené filtry (presety) */}
+          <div className="d-flex align-items-center gap-2 flex-wrap pb-2 border-bottom">
+            <span className="text-muted fs-12 d-flex align-items-center gap-1" style={{ minWidth: 80 }}>
+              <iconify-icon icon="solar:bookmark-bold-duotone" style={{ fontSize: 13 }} />
+              Moje filtry:
+            </span>
+            {savedPresets.length === 0 ? (
+              <span className="text-muted fs-12 fst-italic">Žádné uložené filtry</span>
+            ) : (
+              savedPresets.map((p) => {
+                const active = activePresetId === p.id;
+                return (
+                  <div key={p.id}
+                    className={`badge border d-inline-flex align-items-center gap-1 ${active ? 'bg-primary text-white border-primary' : 'bg-light text-dark border-secondary'}`}
+                    style={{ fontSize: 11, padding: '4px 6px 4px 8px', cursor: 'pointer' }}>
+                    <button
+                      className="btn btn-link p-0 text-decoration-none d-flex align-items-center gap-1"
+                      style={{ fontSize: 11, color: active ? 'white' : '#212529' }}
+                      onClick={() => applyPreset(p)}
+                      title="Načíst tento filtr"
+                    >
+                      <iconify-icon icon={p.icon ?? 'solar:bookmark-bold-duotone'} style={{ fontSize: 12 }} />
+                      {p.name}
+                    </button>
+                    <button
+                      className="btn btn-link p-0"
+                      style={{ fontSize: 11, color: active ? 'white' : '#9097a7' }}
+                      onClick={(e) => { e.stopPropagation(); if (window.confirm(`Smazat preset „${p.name}"?`)) deletePreset(p.id); }}
+                      title="Smazat preset"
+                    >
+                      <iconify-icon icon="solar:close-circle-bold" style={{ fontSize: 13 }} />
+                    </button>
+                  </div>
+                );
+              })
+            )}
+            <button
+              className="btn btn-outline-primary btn-sm py-0 px-2 ms-auto"
+              style={{ fontSize: 11 }}
+              onClick={saveCurrentAsPreset}
+              disabled={!hasAnyFilter}
+              title={hasAnyFilter ? 'Uložit aktuální kombinaci filtrů jako preset' : 'Nejdřív nastav nějaké filtry'}
+            >
+              <iconify-icon icon="solar:add-circle-bold-duotone" className="me-1" />
+              Uložit aktuální
+            </button>
+          </div>
+
           {/* Řádek 1 — search, kategorie, částka, presety, reset */}
           <div className="d-flex align-items-center gap-2 flex-wrap">
             <div className="position-relative">
@@ -499,6 +664,19 @@ export default function FakturyView({ state, update }: Props) {
                 <iconify-icon icon="solar:calendar-bold-duotone" className="me-1" />
                 Tento týden
               </button>
+              {lockedCnt > 0 && (
+                <button className={`badge border-0 ${presetFilters.has('uzamcene')
+                  ? 'text-white' : ''}`}
+                  style={{
+                    cursor: 'pointer',
+                    background: presetFilters.has('uzamcene') ? '#6f42c1' : '#f3eaff',
+                    color: presetFilters.has('uzamcene') ? 'white' : '#6f42c1',
+                  }}
+                  onClick={() => setPresetFilters((p) => toggleSet(p, 'uzamcene'))}>
+                  <iconify-icon icon="solar:lock-keyhole-bold-duotone" className="me-1" />
+                  Uzamčené ({lockedCnt})
+                </button>
+              )}
             </div>
 
             {(kategorieFilter !== 'all' || stavFilters.size > 0 || matchingFilters.size > 0 || formaFilters.size > 0 || presetFilters.size > 0 || castkaOd !== '' || castkaDo !== '' || search !== '') && (
@@ -512,6 +690,7 @@ export default function FakturyView({ state, update }: Props) {
                   setCastkaOd('');
                   setCastkaDo('');
                   setSearch('');
+                  setActivePresetId(null);
                 }}>
                 Zrušit filtry ×
               </button>
@@ -610,9 +789,9 @@ export default function FakturyView({ state, update }: Props) {
         </div>
       </div>
 
-      {/* ── 2-sloupcový layout: seznam vlevo, side panel vpravo ── */}
+      {/* ── Layout: full-width tabulka když není vybrána žádná faktura, jinak 2-col ── */}
       <div className="row g-4 align-items-start">
-        <div className="col-xl-7 col-lg-7">
+        <div className={drawerFaktura ? 'col-xl-7 col-lg-7' : 'col-12'}>
           <FakturyTable
             provozovna={selectedProvozovna as ProvozovnaId}
             periodOd={periodOd}
@@ -646,10 +825,12 @@ export default function FakturyView({ state, update }: Props) {
             }}
           />
         </div>
+        {drawerFaktura && (
         <div className="col-xl-5 col-lg-5">
           <FakturySidePanel
             faktura={drawerFaktura}
             effectiveStav={drawerFaktura ? (localStavy[drawerFaktura.id] ?? drawerFaktura.stav) : 'nova'}
+            effectiveKategorie={drawerFaktura ? (localKategorie[drawerFaktura.id] ?? drawerFaktura.kategorie) : undefined}
             localPoznamka={drawerFaktura ? (localPoznamky[drawerFaktura.id] ?? '') : ''}
             localSchvalil={drawerFaktura ? (localSchvalil[drawerFaktura.id] ?? '') : ''}
             localDatumSchvaleni={drawerFaktura ? (localDatumSchvaleni[drawerFaktura.id] ?? '') : ''}
@@ -659,6 +840,17 @@ export default function FakturyView({ state, update }: Props) {
             onZamitout={handleZamitout}
             onOdlozit={handleOdlozit}
             onPoznamkaChange={(id, val) => setLocalPoznamky((p) => ({ ...p, [id]: val }))}
+            onKategorieChange={(id, oldKat, newKat) => {
+              setLocalKategorie((p) => ({ ...p, [id]: newKat }));
+              pushAudit(id, {
+                cas: now(),
+                kdo: AKTUALNI_UZIVATEL.jmeno,
+                akce: `Kategorie změněna: ${KATEGORIE_LABELS[oldKat]} → ${KATEGORIE_LABELS[newKat]}`,
+                icon: 'solar:pen-bold-duotone',
+                color: '#6f42c1',
+                typ: 'editace',
+              });
+            }}
             sessionAudit={drawerFaktura ? (localAudit[drawerFaktura.id] ?? []) : []}
             komentare={drawerFaktura ? (localKomentare[drawerFaktura.id] ?? []) : []}
             onAddKomentar={(id, entry) => {
@@ -674,8 +866,22 @@ export default function FakturyView({ state, update }: Props) {
               });
             }}
             onRematch={handleRematch}
+            recheckCount={drawerFaktura ? (localRecheckCount[drawerFaktura.id] ?? 0) : 0}
+            roundingApproved={drawerFaktura ? (localRoundingApproved[drawerFaktura.id] ?? false) : false}
+            onApproveRounding={(id, diff) => {
+              setLocalRoundingApproved((p) => ({ ...p, [id]: true }));
+              pushAudit(id, {
+                cas: now(),
+                kdo: AKTUALNI_UZIVATEL.jmeno,
+                akce: `Zaokrouhlení schváleno: ${diff > 0 ? '+' : '−'}${Math.abs(diff).toFixed(2)} Kč (DL ↔ faktura)`,
+                icon: 'solar:verified-check-bold-duotone',
+                color: '#198754',
+                typ: 'parovani',
+              });
+            }}
           />
         </div>
+        )}
       </div>
 
       {/* Sticky bulk akční bar
