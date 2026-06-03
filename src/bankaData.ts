@@ -10,7 +10,42 @@ import type { Provozovna } from './types';
 export type BankaUcetStav  = 'ok' | 'sync-error' | 'critical-balance' | 'low-balance';
 export type BankaSyncStav  = 'synced' | 'syncing' | 'error' | 'pending';
 export type BankaTransTyp  = 'prichoz' | 'odchozi';
-export type BankaTransStav = 'paired' | 'unpaired' | 'pending' | 'error';
+// Rozšířené matching stavy per workflow spec
+//  paired              — Spárováno (s fakturou v systému)
+//  unpaired            — Nespárováno (žádná shoda nenalezena)
+//  waiting-review      — Čeká na kontrolu (auto-match s nízkou jistotou — vyžaduje human review)
+//  multiple-candidates — Více kandidátů (auto-detekce zjistila víc faktur s podobnou shodou)
+//  outside-system      — Spárováno mimo systém (interní převod / půjčka / vklad majitele)
+//  no-invoice          — Bez faktury (bankovní poplatek / úrok / kartový poplatek)
+//  error               — Chyba synchronizace
+export type BankaTransStav = 'paired' | 'unpaired' | 'waiting-review' | 'multiple-candidates' | 'outside-system' | 'no-invoice' | 'error';
+
+// Návrh na spárování s fakturou (z auto-detekce)
+export interface SuggestedMatch {
+  fakturaId: string;       // ID faktury (z FAKTURY_PLATBY)
+  fakturaCislo: string;    // např. "FAK-2026-0042"
+  dodavatel: string;
+  castka: number;
+  matchScore: number;      // 0-100 % shoda
+  duvody: string[];        // ["VS shoda", "Částka přesně", "Dodavatel shoda"]
+}
+
+// Záznam v audit logu transakce
+export interface TransAuditEntry {
+  cas: string;             // ISO timestamp
+  kdo: string;
+  akce: string;
+  icon: string;
+  color: string;
+}
+
+// Provozní poznámka k transakci
+export interface TransNote {
+  id: string;
+  cas: string;
+  kdo: string;
+  text: string;
+}
 
 // ── Bankovní účet (richer než BankovniUcet z platbyData) ──
 export interface BankaUcet {
@@ -43,6 +78,13 @@ export interface BankaTransakce {
   vs?: string;                            // variabilní symbol
   stav: BankaTransStav;
   parovanaSId?: string;                   // ID napárované faktury (z platbyData.FAKTURY_PLATBY)
+  // Rozšíření per workflow spec:
+  candidates?: SuggestedMatch[];          // návrhy spárování (pro 'unpaired' / 'multiple-candidates' / 'waiting-review')
+  outsideReason?: string;                 // pro 'outside-system' (např. "Interní převod")
+  outsideNote?: string;                   // pro 'outside-system' (volitelná podrobnost)
+  noInvoiceReason?: string;               // pro 'no-invoice' (např. "Bankovní poplatek")
+  notes?: TransNote[];                    // provozní poznámky (multi)
+  auditLog?: TransAuditEntry[];           // historie změn
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -320,8 +362,8 @@ export const BANKA_TRANSAKCE: BankaTransakce[] = [
   { id: 'tx09', ucetId: 'ua-cg-brno',        typ: 'odchozi', datum: '2026-04-16T11:20:00', castka:  -8_400, firma: 'E.ON Energie',         poznamka: 'Elektřina březen',       stav: 'paired',   vs: '20260309' },
   { id: 'tx10', ucetId: 'ua-piazza',         typ: 'odchozi', datum: '2026-04-16T11:21:00', castka: -12_300, firma: 'Vodafone',             poznamka: 'Telefon + internet',     stav: 'paired',   vs: '20260411' },
   // Transakce čekající na párování
-  { id: 'tx11', ucetId: 'ua-u-capa',         typ: 'prichoz', datum: '2026-04-17T07:30:00', castka:  18_500, firma: 'GoPay platby',         poznamka: 'Karty U Čápa 16.4.',     stav: 'pending', vs: '20260416' },
-  { id: 'tx12', ucetId: 'ua-korek-wb',       typ: 'prichoz', datum: '2026-04-17T07:31:00', castka:  21_300, firma: 'GoPay platby',         poznamka: 'Karty KOREK 16.4.',      stav: 'pending', vs: '20260416' },
+  { id: 'tx11', ucetId: 'ua-u-capa',         typ: 'prichoz', datum: '2026-04-17T07:30:00', castka:  18_500, firma: 'GoPay platby',         poznamka: 'Karty U Čápa 16.4.',     stav: 'waiting-review', vs: '20260416' },
+  { id: 'tx12', ucetId: 'ua-korek-wb',       typ: 'prichoz', datum: '2026-04-17T07:31:00', castka:  21_300, firma: 'GoPay platby',         poznamka: 'Karty KOREK 16.4.',      stav: 'waiting-review', vs: '20260416' },
   { id: 'tx13', ucetId: 'ua-u-capa',         typ: 'odchozi', datum: '2026-04-15T14:00:00', castka:  -3_240, firma: 'Sodexo',               poznamka: 'Pull. servis',           stav: 'unpaired', vs: '20260301' },
   // Chyba platby
   { id: 'tx14', ucetId: 'ua-nad-hladinkou',  typ: 'odchozi', datum: '2026-04-16T16:00:00', castka: -15_400, firma: 'Plzeňský Prazdroj',    poznamka: 'Vrácená platba — chyba ÚČ',stav: 'error',    vs: '20260423' },
@@ -346,6 +388,45 @@ export const BANKA_TRANSAKCE: BankaTransakce[] = [
   { id: 'tx28', ucetId: 'ua-piazza',         typ: 'odchozi', datum: '2026-04-09T10:20:00', castka:  -7_300, firma: 'Linde Gas',            poznamka: 'CO₂ refill',             stav: 'paired',   vs: '20260306' },
   { id: 'tx29', ucetId: 'ua-cg-marketing',   typ: 'odchozi', datum: '2026-04-09T09:00:00', castka: -15_700, firma: 'Meta Platforms Ireland',poznamka: 'Facebook Ads',          stav: 'paired',   vs: '20260403' },
   { id: 'tx30', ucetId: 'ua-cg-catering',    typ: 'prichoz', datum: '2026-04-08T11:00:00', castka: 145_000, firma: 'XYZ Events s.r.o.',    poznamka: 'Záloha catering svatba', stav: 'paired',   vs: '20260408' },
+
+  // ── Nové stavy per workflow spec ──
+
+  // Multi-kandidát: 2 podobné faktury Metro AG, systém netuší která
+  { id: 'tx31', ucetId: 'ua-cg-brno', typ: 'odchozi', datum: '2026-04-17T08:33:00', castka: -31_200, firma: 'Metro AG', poznamka: 'Týdenní nákup', stav: 'multiple-candidates', vs: '20260043',
+    candidates: [
+      { fakturaId: 'fp14', fakturaCislo: 'FAK-2026-0035', dodavatel: 'Metro AG', castka: 31_400, matchScore: 78, duvody: ['Dodavatel shoda', 'Měsíc shoda', 'Částka ±200 Kč'] },
+      { fakturaId: 'fp01', fakturaCislo: 'FAK-2026-0041', dodavatel: 'Makro Cash & Carry', castka: 45_201, matchScore: 35, duvody: ['Stejné období'] },
+    ]},
+
+  // Unpaired s návrhem 95 % match (čeká na human accept)
+  { id: 'tx32', ucetId: 'ua-piazza', typ: 'odchozi', datum: '2026-04-17T08:35:00', castka: -45_900, firma: 'Plzeňský Prazdroj', poznamka: 'Dodávka pivo Q2', stav: 'unpaired', vs: '20260415',
+    candidates: [
+      { fakturaId: 'fp08', fakturaCislo: 'FAK-2026-0044', dodavatel: 'Plzeňský Prazdroj', castka: 45_900, matchScore: 95, duvody: ['VS shoda 100 %', 'Dodavatel shoda', 'Částka přesně'] },
+    ]},
+
+  // Bez VS — vyžaduje ruční zařazení
+  { id: 'tx33', ucetId: 'ua-cg-brno', typ: 'odchozi', datum: '2026-04-16T09:00:00', castka: -3_240, firma: 'Hyundai Leasing', poznamka: 'Splátka — dodávka (bez VS)', stav: 'unpaired' },
+
+  // Bez VS + bez kontextu (Bez názvu účet)
+  { id: 'tx34', ucetId: 'ua-bez-nazvu-1', typ: 'odchozi', datum: '2026-04-16T12:00:00', castka: -1_200, firma: 'Neznámý odběratel', poznamka: 'Bez VS, bez provozovny', stav: 'unpaired' },
+
+  // Spárováno mimo systém — interní převod
+  { id: 'tx35', ucetId: 'ua-hlavni', typ: 'odchozi', datum: '2026-04-15T08:00:00', castka: -100_000, firma: 'Vlastní účet CG Brno', poznamka: 'Mezi-účetní převod', stav: 'outside-system',
+    outsideReason: 'Interní převod', outsideNote: 'Doplnění hotovosti na účet CG Brno pro odchozí faktury' },
+
+  // Bez faktury — bankovní poplatek
+  { id: 'tx36', ucetId: 'ua-piazza', typ: 'odchozi', datum: '2026-04-16T23:55:00', castka: -180, firma: 'Komerční banka', poznamka: 'Měsíční poplatek za vedení účtu', stav: 'no-invoice',
+    noInvoiceReason: 'Bankovní poplatek' },
+
+  // Bez faktury — úrok
+  { id: 'tx37', ucetId: 'ua-cg-marketing', typ: 'prichoz', datum: '2026-04-16T23:58:00', castka: 42, firma: 'Komerční banka', poznamka: 'Úrok za duben', stav: 'no-invoice',
+    noInvoiceReason: 'Úrok z kreditu' },
+
+  // Čeká na kontrolu — auto-match s nízkou jistotou
+  { id: 'tx38', ucetId: 'ua-monte', typ: 'odchozi', datum: '2026-04-15T15:00:00', castka: -6_900, firma: 'Krušovice s.r.o.', poznamka: 'Dodávka pivo', stav: 'waiting-review', vs: '20260412',
+    candidates: [
+      { fakturaId: 'fp28', fakturaCislo: 'FAK-2026-0060', dodavatel: 'Krušovice s.r.o.', castka: 6_900, matchScore: 88, duvody: ['Dodavatel shoda', 'Částka shoda', 'VS část. shoda'] },
+    ]},
 ];
 
 // ─────────────────────────────────────────────────────────────
@@ -393,11 +474,14 @@ export const STAV_META: Record<BankaUcetStav, { color: string; bg: string; label
 };
 
 /** Transakční stav metadata. */
-export const TRANS_STAV_META: Record<BankaTransStav, { cls: string; label: string; icon: string }> = {
-  paired:   { cls: 'bg-success-subtle text-success',     label: 'Spárováno',           icon: 'solar:check-circle-bold-duotone' },
-  unpaired: { cls: 'bg-warning-subtle text-warning',     label: 'Nespárováno',         icon: 'solar:danger-triangle-bold-duotone' },
-  pending:  { cls: 'bg-info-subtle text-info',           label: 'Čeká na spárování',   icon: 'solar:refresh-circle-bold-duotone' },
-  error:    { cls: 'bg-danger-subtle text-danger',       label: 'Chyba',               icon: 'solar:close-circle-bold-duotone' },
+export const TRANS_STAV_META: Record<BankaTransStav, { cls: string; label: string; icon: string; shortLabel?: string }> = {
+  paired:               { cls: 'bg-success-subtle text-success',      label: 'Spárováno',              icon: 'solar:check-circle-bold-duotone' },
+  unpaired:             { cls: 'bg-warning-subtle text-warning',      label: 'Nespárováno',            icon: 'solar:danger-triangle-bold-duotone' },
+  'waiting-review':     { cls: 'bg-info-subtle text-info',            label: 'Čeká na kontrolu',       icon: 'solar:hourglass-bold-duotone',     shortLabel: 'Čeká' },
+  'multiple-candidates':{ cls: 'border',                              label: 'Více kandidátů',         icon: 'solar:layers-bold-duotone',         shortLabel: 'Více kand.' },
+  'outside-system':     { cls: 'bg-secondary-subtle text-secondary',  label: 'Mimo systém',            icon: 'solar:export-bold-duotone' },
+  'no-invoice':         { cls: 'bg-light text-muted border',          label: 'Bez faktury',            icon: 'solar:document-bold-duotone' },
+  error:                { cls: 'bg-danger-subtle text-danger',        label: 'Chyba',                  icon: 'solar:close-circle-bold-duotone' },
 };
 
 /** Formátování času pro „před X min". */

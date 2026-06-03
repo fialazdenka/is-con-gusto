@@ -7,7 +7,7 @@
 //   – Sparkline mini graf 37 bodů (30 minulých + dnes + 6 budoucích)
 //   – Side-panel detail transakce (sticky right column, pattern z FakturySidePanel)
 
-import { useState, useMemo, useCallback, useRef } from 'react';
+import { useState, useMemo, useCallback, useRef, useEffect } from 'react';
 import type { AppState } from '../types';
 import {
   BANKA_UCTY,
@@ -21,6 +21,9 @@ import {
   type BankaUcet,
   type BankaTransakce,
   type BankaTransStav,
+  type SuggestedMatch,
+  type TransAuditEntry,
+  type TransNote,
 } from '../bankaData';
 import { fCzk, fDate, PROVOZOVNY } from '../data';
 
@@ -166,6 +169,85 @@ function SmartAlerts({ ucty, onGoToUcet, onAction }: {
           </div>
         </div>
       )}
+    </div>
+  );
+}
+
+// Kategorie problému v Work Queue
+type WorkQueueKind = 'unpaired' | 'multiple-candidates' | 'no-vs' | 'no-branch' | 'waiting-review' | 'error';
+
+// ── Work Queue („Vyžaduje pozornost") ─────────────────────────
+// Klikatelné karty: každá filtruje transakční tabulku podle kategorie problému
+function WorkQueue({ transakce, ucty, onSelectQueue, activeQueue }: {
+  transakce: BankaTransakce[];
+  ucty: BankaUcet[];
+  onSelectQueue: (queue: WorkQueueKind | null) => void;
+  activeQueue: WorkQueueKind | null;
+}) {
+  // Compute counts
+  const unpairedCount   = transakce.filter((t) => t.stav === 'unpaired').length;
+  const candidatesCount = transakce.filter((t) => t.stav === 'multiple-candidates').length;
+  const reviewCount     = transakce.filter((t) => t.stav === 'waiting-review').length;
+  const noVsCount       = transakce.filter((t) => !t.vs).length;
+  const noBranchCount   = transakce.filter((t) => {
+    const u = ucty.find((x) => x.id === t.ucetId);
+    return u && u.provozovny.length === 0;
+  }).length;
+  const errorCount      = transakce.filter((t) => t.stav === 'error').length;
+
+  const cards: Array<{ kind: WorkQueueKind; count: number; label: string; icon: string; color: string; bg: string }> = [
+    { kind: 'unpaired',            count: unpairedCount,   label: 'nespárovaných transakcí',  icon: 'solar:danger-triangle-bold-duotone', color: '#ffc107', bg: '#fff3cd' },
+    { kind: 'multiple-candidates', count: candidatesCount, label: 'transakcí s více kandidáty', icon: 'solar:layers-bold-duotone',          color: '#6f42c1', bg: '#f3eaff' },
+    { kind: 'no-vs',               count: noVsCount,       label: 'transakcí bez VS',         icon: 'solar:hashtag-square-bold-duotone',   color: '#fd7e14', bg: '#ffedd5' },
+    { kind: 'no-branch',           count: noBranchCount,   label: 'transakcí bez provozovny', icon: 'solar:buildings-3-bold-duotone',      color: '#9097a7', bg: '#f1f3f5' },
+    { kind: 'waiting-review',      count: reviewCount,     label: 'čekajících na kontrolu',  icon: 'solar:hourglass-bold-duotone',        color: '#0dcaf0', bg: '#e8f7ff' },
+    { kind: 'error',               count: errorCount,      label: 'transakcí s chybou',       icon: 'solar:close-circle-bold-duotone',     color: '#dc3545', bg: '#f8d7da' },
+  ];
+  const visibleCards = cards.filter((c) => c.count > 0);
+  if (visibleCards.length === 0) return null;
+
+  return (
+    <div className="card mb-3" style={{ borderTop: '3px solid var(--prov-color, #c9911a)' }}>
+      <div className="card-body py-3">
+        <div className="d-flex align-items-center gap-2 mb-3">
+          <iconify-icon icon="solar:inbox-bold-duotone" style={{ fontSize: 20, color: 'var(--prov-color, #c9911a)' }} />
+          <h5 className="mb-0">Vyžaduje pozornost</h5>
+          <span className="text-muted fs-12 ms-2">Klikni na kartu pro filtraci tabulky transakcí</span>
+          {activeQueue && (
+            <button className="btn btn-link btn-sm ms-auto text-muted" style={{ fontSize: 12 }}
+              onClick={() => onSelectQueue(null)}>
+              Zrušit filtr ×
+            </button>
+          )}
+        </div>
+        <div className="row g-2">
+          {visibleCards.map((c) => {
+            const active = activeQueue === c.kind;
+            return (
+              <div key={c.kind} className="col-12 col-sm-6 col-lg-4 col-xl-2">
+                <button
+                  className={`w-100 d-flex align-items-center gap-2 p-2 rounded border ${active ? 'shadow-sm' : ''}`}
+                  style={{
+                    background: active ? c.color : c.bg,
+                    color: active ? 'white' : c.color,
+                    borderColor: active ? c.color : c.bg,
+                    transition: 'all 0.15s',
+                    cursor: 'pointer',
+                    textAlign: 'left',
+                  }}
+                  onClick={() => onSelectQueue(active ? null : c.kind)}
+                >
+                  <iconify-icon icon={c.icon} style={{ fontSize: 22, flexShrink: 0 }} />
+                  <div className="min-width-0">
+                    <div className="fw-bold" style={{ fontSize: 18, lineHeight: 1 }}>{c.count}</div>
+                    <div className="fs-11" style={{ lineHeight: 1.2, opacity: active ? 0.95 : 0.85 }}>{c.label}</div>
+                  </div>
+                </button>
+              </div>
+            );
+          })}
+        </div>
+      </div>
     </div>
   );
 }
@@ -427,12 +509,65 @@ function UcetCard({ ucet, allBranches, isHighlighted, isSyncing, cardRef, onOpen
   );
 }
 
+// ── Důvody pro „mimo systém" a „bez faktury" ──────────────────
+const OUTSIDE_REASONS: Array<{ value: string; label: string }> = [
+  { value: 'interni-prevod',     label: 'Interní převod mezi účty' },
+  { value: 'vratka-zakaznik',    label: 'Vratka zákazníkovi' },
+  { value: 'osobni-vyber',       label: 'Osobní výběr majitele' },
+  { value: 'jina-evidence',      label: 'Vedeno v jiné evidenci' },
+  { value: 'jine',               label: 'Jiný důvod' },
+];
+const NO_INVOICE_REASONS: Array<{ value: string; label: string }> = [
+  { value: 'bankovni-poplatek',  label: 'Bankovní poplatek' },
+  { value: 'urok',               label: 'Úrok' },
+  { value: 'pojisteni',          label: 'Pojištění' },
+  { value: 'mzda',               label: 'Mzda / odměna' },
+  { value: 'dane',               label: 'Daň / odvod' },
+  { value: 'pokuta',             label: 'Pokuta' },
+  { value: 'jine',               label: 'Jiné' },
+];
+
+// Sloučená aktivita: poznámky + audit zápisy v chronologickém feedu
+type ActivityEntry =
+  | { type: 'note'; id: string; cas: string; kdo: string; text: string }
+  | { type: 'audit'; id: string; cas: string; kdo: string; akce: string; icon: string; color: string };
+
 // ── Side-panel detail transakce ────────────────────────────────
-function TransakceSidePanel({ transakce, ucty, onClose }: {
+function TransakceSidePanel({ transakce, ucty, onClose, onPatch, onAudit, onNote }: {
   transakce: BankaTransakce | null;
   ucty: BankaUcet[];
   onClose: () => void;
+  onPatch: (id: string, patch: Partial<BankaTransakce>) => void;
+  onAudit: (id: string, entry: TransAuditEntry) => void;
+  onNote:  (id: string, note: TransNote) => void;
 }) {
+  const [noteInput, setNoteInput] = useState('');
+  const [manualMatchInvoice, setManualMatchInvoice] = useState('');
+  // Sjednocený dropdown „Označit jako…": null / 'outside' / 'no-invoice'
+  const [oznacitMode, setOznacitMode] = useState<'outside' | 'no-invoice' | null>(null);
+  const [oznacitReason, setOznacitReason] = useState('');
+  const [oznacitNote, setOznacitNote] = useState('');
+  const [activityCollapsed, setActivityCollapsed] = useState(false);
+  // Mikrofeedback po úspěšné akci (krátký toast in-panel)
+  const [feedback, setFeedback] = useState<string | null>(null);
+
+  // Reset state když se mění transakce
+  useEffect(() => {
+    setNoteInput('');
+    setManualMatchInvoice('');
+    setOznacitMode(null);
+    setOznacitReason('');
+    setOznacitNote('');
+    setFeedback(null);
+  }, [transakce?.id]);
+
+  // Auto-dismiss mikrofeedbacku po 2.5s
+  useEffect(() => {
+    if (!feedback) return;
+    const id = window.setTimeout(() => setFeedback(null), 2500);
+    return () => window.clearTimeout(id);
+  }, [feedback]);
+
   if (!transakce) {
     return (
       <div className="card h-100" style={{ minHeight: 320 }}>
@@ -448,10 +583,152 @@ function TransakceSidePanel({ transakce, ucty, onClose }: {
   const provs = ucet ? getProvozovnyForUcet(ucet) : [];
   const stavMeta = TRANS_STAV_META[transakce.stav];
   const isPrichoz = transakce.typ === 'prichoz';
+  const formatAmount = (n: number) => ucet?.mena === 'EUR' ? `${n.toFixed(2)} €` : fCzk(n);
+
+  // Aktuální čas pro audit/note
+  const nowIso = () => new Date().toISOString().slice(0, 16);
+  const me = 'Petr Dohnal'; // mock přihlášený uživatel
+
+  const handleConfirmManualMatch = () => {
+    const inv = manualMatchInvoice.trim();
+    if (!inv) return;
+    onPatch(transakce.id, { stav: 'paired', parovanaSId: inv });
+    onAudit(transakce.id, {
+      cas: nowIso(), kdo: me,
+      akce: `Manuálně napárováno na fakturu ${inv}`,
+      icon: 'solar:link-bold-duotone', color: '#198754',
+    });
+    setManualMatchInvoice('');
+    setFeedback(`Napárováno na ${inv}`);
+  };
+
+  const handleSelectCandidate = (c: SuggestedMatch) => {
+    onPatch(transakce.id, { stav: 'paired', parovanaSId: c.fakturaCislo });
+    onAudit(transakce.id, {
+      cas: nowIso(), kdo: me,
+      akce: `Napárováno na ${c.fakturaCislo} (kandidát ${c.matchScore} %)`,
+      icon: 'solar:check-circle-bold-duotone', color: '#198754',
+    });
+    setFeedback(`Napárováno na ${c.fakturaCislo}`);
+  };
+
+  const handleRejectCandidate = (c: SuggestedMatch) => {
+    onAudit(transakce.id, {
+      cas: nowIso(), kdo: me,
+      akce: `Kandidát ${c.fakturaCislo} odmítnut`,
+      icon: 'solar:close-circle-bold-duotone', color: '#dc3545',
+    });
+    onPatch(transakce.id, {
+      candidates: (transakce.candidates ?? []).filter((x) => x.fakturaId !== c.fakturaId),
+    });
+  };
+
+  const handleCreateInvoice = () => {
+    const generatedNumber = `FA-2026-${String(Math.floor(Math.random() * 9000) + 1000)}`;
+    onPatch(transakce.id, { stav: 'paired', parovanaSId: generatedNumber });
+    onAudit(transakce.id, {
+      cas: nowIso(), kdo: me,
+      akce: `Vystavena nová faktura ${generatedNumber} a napárována`,
+      icon: 'solar:add-square-bold-duotone', color: '#0d6efd',
+    });
+    setFeedback(`Vystavena ${generatedNumber}`);
+  };
+
+  const handleConfirmOznacit = () => {
+    if (!oznacitMode || !oznacitReason) return;
+    if (oznacitMode === 'outside') {
+      const label = OUTSIDE_REASONS.find((r) => r.value === oznacitReason)?.label ?? oznacitReason;
+      onPatch(transakce.id, {
+        stav: 'outside-system',
+        outsideReason: oznacitReason,
+        outsideNote: oznacitNote,
+      });
+      onAudit(transakce.id, {
+        cas: nowIso(), kdo: me,
+        akce: `Označeno jako mimo systém: ${label}`,
+        icon: 'solar:logout-3-bold-duotone', color: '#6c757d',
+      });
+      setFeedback('Označeno jako mimo systém');
+    } else {
+      const label = NO_INVOICE_REASONS.find((r) => r.value === oznacitReason)?.label ?? oznacitReason;
+      onPatch(transakce.id, {
+        stav: 'no-invoice',
+        noInvoiceReason: oznacitReason,
+      });
+      onAudit(transakce.id, {
+        cas: nowIso(), kdo: me,
+        akce: `Označeno jako bez faktury: ${label}`,
+        icon: 'solar:close-circle-bold-duotone', color: '#fd7e14',
+      });
+      setFeedback('Označeno jako bez faktury');
+    }
+    setOznacitMode(null);
+    setOznacitReason('');
+    setOznacitNote('');
+  };
+
+  const handleUnpair = () => {
+    onPatch(transakce.id, { stav: 'unpaired', parovanaSId: undefined });
+    onAudit(transakce.id, {
+      cas: nowIso(), kdo: me,
+      akce: 'Zrušeno párování',
+      icon: 'solar:link-broken-minimalistic-bold-duotone', color: '#6c757d',
+    });
+    setFeedback('Párování zrušeno');
+  };
+
+  const handleReturnToUnpaired = () => {
+    onPatch(transakce.id, { stav: 'unpaired', outsideReason: undefined, outsideNote: undefined, noInvoiceReason: undefined });
+    onAudit(transakce.id, {
+      cas: nowIso(), kdo: me,
+      akce: 'Vráceno do nespárovaných',
+      icon: 'solar:undo-left-round-bold-duotone', color: '#6c757d',
+    });
+    setFeedback('Vráceno do nespárovaných');
+  };
+
+  const handleAddNote = () => {
+    const txt = noteInput.trim();
+    if (!txt) return;
+    onNote(transakce.id, { id: `n-${Date.now()}`, cas: nowIso(), kdo: me, text: txt });
+    setNoteInput('');
+  };
+
+  // Audit & notes — merged data (mock + session) sloučené chronologicky
+  const auditEntries = transakce.auditLog ?? [];
+  const notes        = transakce.notes ?? [];
+  const candidates   = transakce.candidates ?? [];
+  const hasNoVs      = !transakce.vs;
+  const hasNoBranch  = ucet ? ucet.provozovny.length === 0 : false;
+
+  const activityFeed: ActivityEntry[] = [
+    ...notes.map<ActivityEntry>((n) => ({ type: 'note', id: n.id, cas: n.cas, kdo: n.kdo, text: n.text })),
+    ...auditEntries.map<ActivityEntry>((a, i) => ({ type: 'audit', id: `a-${i}-${a.cas}`, cas: a.cas, kdo: a.kdo, akce: a.akce, icon: a.icon, color: a.color })),
+  ].sort((a, b) => b.cas.localeCompare(a.cas));
+
+  // Potřebuje akci? (stavy které čekají na rozhodnutí)
+  const needsAction = transakce.stav === 'unpaired'
+                   || transakce.stav === 'multiple-candidates'
+                   || transakce.stav === 'waiting-review'
+                   || transakce.stav === 'error';
+
+  const SectionHeading = ({ icon, color, title, right }: { icon: string; color: string; title: string; right?: React.ReactNode }) => (
+    <div className="d-flex align-items-center gap-2 mb-2">
+      <iconify-icon icon={icon} style={{ fontSize: 14, color }} />
+      <div className="fw-semibold fs-12 text-uppercase" style={{ letterSpacing: '0.3px', color: '#495057' }}>{title}</div>
+      {right && <div className="ms-auto">{right}</div>}
+    </div>
+  );
 
   return (
-    <div style={{ position: 'sticky', top: 24, maxHeight: 'calc(100vh - 48px)', overflowY: 'auto' }}>
+    <div style={{
+      position: 'sticky',
+      top: 'calc(var(--bs-topbar-height, 100px) + 16px)',
+      maxHeight: 'calc(100vh - var(--bs-topbar-height, 100px) - 32px)',
+      overflowY: 'auto',
+    }}>
       <div className="card">
+        {/* ── HEADER (vždy viditelný) — typ, stav, dodavatel, částka + datum ── */}
         <div className="card-header d-flex align-items-start gap-2">
           <div className="flex-grow-1 min-width-0">
             <div className="d-flex align-items-center gap-2 flex-wrap mb-1">
@@ -459,48 +736,272 @@ function TransakceSidePanel({ transakce, ucty, onClose }: {
                 <iconify-icon icon={isPrichoz ? 'solar:arrow-down-bold' : 'solar:arrow-up-bold'} className="me-1" />
                 {isPrichoz ? 'Příchozí' : 'Odchozí'}
               </span>
-              <span className={`badge ${stavMeta.cls}`}>
+              <span className={`badge ${stavMeta.cls}`} title={stavMeta.label}>
                 <iconify-icon icon={stavMeta.icon} className="me-1" />
                 {stavMeta.label}
               </span>
             </div>
             <div className="fw-bold fs-14 text-truncate">{transakce.firma}</div>
             <div className="text-muted fs-11">{transakce.poznamka}</div>
+            <div className="d-flex align-items-baseline gap-2 mt-2">
+              <div className={`fw-bold czk-num ${transakce.castka < 0 ? 'text-danger' : 'text-success'}`} style={{ fontSize: 20, lineHeight: 1 }}>
+                {formatAmount(transakce.castka)}
+              </div>
+              <div className="text-muted fs-11">· {fDate(transakce.datum.slice(0, 10))} {transakce.datum.slice(11, 16)}</div>
+            </div>
           </div>
           <button className="btn-close flex-shrink-0 mt-1" style={{ fontSize: 11 }} onClick={onClose} />
         </div>
 
-        <div className="card-body p-0">
-          {/* Částka */}
-          <div className="p-3 border-bottom">
-            <div className="text-muted fs-11 text-uppercase fw-semibold mb-1">Částka</div>
-            <div className={`fw-bold czk-num ${transakce.castka < 0 ? 'text-danger' : 'text-success'}`} style={{ fontSize: 22, lineHeight: 1 }}>
-              {ucet?.mena === 'EUR' ? `${transakce.castka.toFixed(2)} €` : fCzk(transakce.castka)}
-            </div>
+        {/* ── ALERTY (kontextové) + mikrofeedback ── */}
+        {(feedback || hasNoVs || hasNoBranch || transakce.stav === 'error') && (
+          <div className="px-3 pt-3 d-flex flex-column gap-2">
+            {feedback && (
+              <div className="alert alert-success py-2 mb-0 fs-12 d-flex align-items-center gap-2" style={{ borderLeft: '3px solid #198754' }}>
+                <iconify-icon icon="solar:check-circle-bold-duotone" style={{ fontSize: 16 }} />
+                <span>{feedback}</span>
+              </div>
+            )}
+            {hasNoVs && (
+              <div className="alert alert-warning py-2 mb-0 fs-12 d-flex align-items-center gap-2">
+                <iconify-icon icon="solar:hashtag-square-bold-duotone" style={{ fontSize: 16 }} />
+                <span>Transakce nemá VS — automatické párování není možné.</span>
+              </div>
+            )}
+            {hasNoBranch && (
+              <div className="alert alert-secondary py-2 mb-0 fs-12 d-flex align-items-center gap-2">
+                <iconify-icon icon="solar:buildings-3-bold-duotone" style={{ fontSize: 16 }} />
+                <span>Účet nemá přiřazenou provozovnu.</span>
+              </div>
+            )}
+            {transakce.stav === 'error' && (
+              <div className="alert alert-danger py-2 mb-0 fs-12 d-flex align-items-center gap-2">
+                <iconify-icon icon="solar:close-circle-bold-duotone" style={{ fontSize: 16 }} />
+                <span>Při zpracování došlo k chybě.</span>
+              </div>
+            )}
           </div>
+        )}
 
-          {/* Detaily */}
-          <div className="p-3 border-bottom">
+        {/* ═══ SINGLE-SCROLL CONTENT ═══ */}
+        <div className="card-body p-0">
+
+          {/* ── AKČNÍ ZÓNA (vždy nahoře, kontextová podle stavu) ── */}
+          <section className="p-3 border-bottom" style={{ background: '#fafbfc' }}>
+            <SectionHeading icon="solar:bolt-bold-duotone" color="#0d6efd" title="Akce" />
+
+            {/* PAIRED → success card + Unpair */}
+            {transakce.stav === 'paired' && (
+              <div className="alert alert-success py-2 mb-0">
+                <div className="d-flex align-items-center gap-2">
+                  <iconify-icon icon="solar:check-circle-bold-duotone" style={{ fontSize: 18 }} />
+                  <div className="flex-grow-1">
+                    <div className="fw-semibold fs-13">Napárováno</div>
+                    <div className="fs-11">Faktura {transakce.parovanaSId ?? '—'}</div>
+                  </div>
+                  <button className="btn btn-outline-secondary btn-sm" onClick={handleUnpair} title="Zrušit párování">
+                    <iconify-icon icon="solar:link-broken-minimalistic-bold-duotone" />
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* OUTSIDE / NO-INVOICE → info + return */}
+            {(transakce.stav === 'outside-system' || transakce.stav === 'no-invoice') && (
+              <div className="d-flex flex-column gap-2">
+                <div className={`alert ${transakce.stav === 'outside-system' ? 'alert-secondary' : 'alert-warning'} py-2 mb-0 fs-12 d-flex align-items-center gap-2`}>
+                  <iconify-icon icon={transakce.stav === 'outside-system' ? 'solar:logout-3-bold-duotone' : 'solar:close-circle-bold-duotone'} style={{ fontSize: 16 }} />
+                  <span>{transakce.stav === 'outside-system' ? 'Tato transakce je vedena mimo systém.' : 'K této transakci se faktura nevystavuje.'}</span>
+                </div>
+                <button className="btn btn-light btn-sm" onClick={handleReturnToUnpaired}>
+                  <iconify-icon icon="solar:undo-left-round-bold-duotone" className="me-2" />
+                  Vrátit do nespárovaných
+                </button>
+              </div>
+            )}
+
+            {/* NEEDS ACTION → kandidáti + manuální + vystavit + označit jako… */}
+            {needsAction && (
+              <div className="d-flex flex-column gap-3">
+                {/* Kandidáti */}
+                {candidates.length > 0 ? (
+                  <div>
+                    <div className="d-flex align-items-center gap-1 mb-2">
+                      <iconify-icon icon="solar:layers-bold-duotone" style={{ fontSize: 14, color: '#6f42c1' }} />
+                      <div className="fw-semibold fs-12">Navržení kandidáti ({candidates.length})</div>
+                    </div>
+                    <div className="d-flex flex-column gap-2">
+                      {candidates.map((c, idx) => {
+                        const isBest = c.matchScore >= 80 && idx === 0;
+                        return (
+                          <div key={c.fakturaId} className="rounded p-2"
+                               style={{
+                                 background: isBest ? '#eaf7ee' : '#ffffff',
+                                 border: isBest ? '2px solid #198754' : '1px solid #dee2e6',
+                               }}>
+                            <div className="d-flex align-items-start gap-2 mb-2">
+                              <div className="flex-grow-1 min-width-0">
+                                <div className="d-flex align-items-center gap-2 flex-wrap">
+                                  <div className="fw-semibold fs-13 text-truncate">{c.dodavatel}</div>
+                                  {isBest && (
+                                    <span className="badge bg-success" style={{ fontSize: 9 }}>DOPORUČENO</span>
+                                  )}
+                                </div>
+                                <div className="text-muted fs-11 czk-num">{c.fakturaCislo} · {formatAmount(c.castka)}</div>
+                              </div>
+                              <div className="text-end flex-shrink-0">
+                                <div className={`fw-bold fs-14 ${c.matchScore >= 80 ? 'text-success' : c.matchScore >= 50 ? 'text-warning' : 'text-danger'}`}>
+                                  {c.matchScore} %
+                                </div>
+                                <div className="text-muted fs-11">shoda</div>
+                              </div>
+                            </div>
+                            {c.duvody.length > 0 && (
+                              <div className="d-flex flex-wrap gap-1 mb-2">
+                                {c.duvody.map((d, i) => (
+                                  <span key={i} className="badge bg-light text-dark border" style={{ fontSize: 10 }}>{d}</span>
+                                ))}
+                              </div>
+                            )}
+                            <div className="d-flex gap-1">
+                              <button className="btn btn-success btn-sm flex-grow-1" onClick={() => handleSelectCandidate(c)}>
+                                <iconify-icon icon="solar:check-circle-bold-duotone" className="me-1" />
+                                Potvrdit
+                              </button>
+                              <button className="btn btn-outline-secondary btn-sm" onClick={() => handleRejectCandidate(c)} title="Odmítnout">
+                                <iconify-icon icon="solar:close-circle-bold-duotone" />
+                              </button>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                ) : transakce.stav === 'waiting-review' ? (
+                  <div className="alert alert-info py-2 mb-0 fs-12 d-flex align-items-center gap-2">
+                    <iconify-icon icon="solar:hourglass-bold-duotone" style={{ fontSize: 16 }} />
+                    <span>Čeká na automatické párování (auto-sync 15 min).</span>
+                  </div>
+                ) : null}
+
+                {/* Manuální párování (s mock datalist) */}
+                <div>
+                  <div className="d-flex align-items-center gap-1 mb-2">
+                    <iconify-icon icon="solar:link-bold-duotone" style={{ fontSize: 14, color: '#0d6efd' }} />
+                    <div className="fw-semibold fs-12">Napárovat ručně</div>
+                  </div>
+                  <div className="d-flex gap-1">
+                    <input
+                      type="text"
+                      className="form-control form-control-sm"
+                      placeholder="Začni psát VS nebo číslo faktury…"
+                      list="mock-faktury-list"
+                      value={manualMatchInvoice}
+                      onChange={(e) => setManualMatchInvoice(e.target.value)}
+                      style={{ fontSize: 12 }}
+                    />
+                    <datalist id="mock-faktury-list">
+                      <option value="FA-2026-0042" />
+                      <option value="FA-2026-0103" />
+                      <option value="FA-2026-0154" />
+                      <option value="FA-2026-0211" />
+                      <option value="FA-2026-0287" />
+                    </datalist>
+                    <button className="btn btn-primary btn-sm" disabled={!manualMatchInvoice.trim()} onClick={handleConfirmManualMatch}>
+                      Potvrdit
+                    </button>
+                  </div>
+                </div>
+
+                {/* Vystavit fakturu (jen pro příchozí) */}
+                {isPrichoz && (
+                  <button className="btn btn-outline-primary btn-sm w-100 d-flex align-items-center justify-content-center gap-2" onClick={handleCreateInvoice}>
+                    <iconify-icon icon="solar:add-square-bold-duotone" />
+                    Vystavit novou fakturu
+                  </button>
+                )}
+
+                {/* Označit jako… (sloučený workflow) */}
+                {oznacitMode === null ? (
+                  <div>
+                    <div className="text-muted fs-11 mb-1">Nelze napárovat?</div>
+                    <div className="d-flex gap-2">
+                      <button
+                        className="btn btn-outline-secondary btn-sm flex-grow-1"
+                        onClick={() => { setOznacitMode('outside'); setOznacitReason(''); setOznacitNote(''); }}>
+                        <iconify-icon icon="solar:logout-3-bold-duotone" className="me-1" />
+                        Mimo systém
+                      </button>
+                      <button
+                        className="btn btn-outline-warning btn-sm flex-grow-1"
+                        onClick={() => { setOznacitMode('no-invoice'); setOznacitReason(''); }}>
+                        <iconify-icon icon="solar:close-circle-bold-duotone" className="me-1" />
+                        Bez faktury
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="border rounded p-2" style={{ background: 'white' }}>
+                    <div className="fw-semibold fs-12 mb-2">
+                      {oznacitMode === 'outside' ? 'Označit jako mimo systém' : 'Označit jako bez faktury'}
+                    </div>
+                    <select
+                      className="form-select form-select-sm mb-2"
+                      style={{ fontSize: 12 }}
+                      value={oznacitReason}
+                      onChange={(e) => setOznacitReason(e.target.value)}>
+                      <option value="">— vyberte důvod —</option>
+                      {(oznacitMode === 'outside' ? OUTSIDE_REASONS : NO_INVOICE_REASONS).map((r) => (
+                        <option key={r.value} value={r.value}>{r.label}</option>
+                      ))}
+                    </select>
+                    {oznacitMode === 'outside' && (
+                      <textarea
+                        className="form-control form-control-sm mb-2"
+                        style={{ fontSize: 12, resize: 'none' }}
+                        rows={2}
+                        placeholder="Poznámka (nepovinné)"
+                        value={oznacitNote}
+                        onChange={(e) => setOznacitNote(e.target.value)}
+                      />
+                    )}
+                    <div className="d-flex gap-1">
+                      <button
+                        className={`btn btn-sm flex-grow-1 ${oznacitMode === 'outside' ? 'btn-secondary' : 'btn-warning'}`}
+                        disabled={!oznacitReason}
+                        onClick={handleConfirmOznacit}>
+                        Potvrdit
+                      </button>
+                      <button className="btn btn-light btn-sm" onClick={() => { setOznacitMode(null); setOznacitReason(''); setOznacitNote(''); }}>
+                        Zrušit
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+          </section>
+
+          {/* ── DETAIL ── */}
+          <section className="p-3 border-bottom">
+            <SectionHeading icon="solar:document-text-bold-duotone" color="#6c757d" title="Detail" />
             <div className="row g-2">
               <div className="col-6">
-                <div className="text-muted fs-11 text-uppercase fw-semibold mb-1">Datum</div>
-                <div className="fs-13 fw-semibold">{fDate(transakce.datum.slice(0, 10))}</div>
-                <div className="text-muted fs-11">{transakce.datum.slice(11, 16)}</div>
+                <div className="text-muted fs-11 fw-semibold mb-1">VS</div>
+                <div className={`fs-13 czk-num ${!transakce.vs ? 'text-muted' : ''}`}>{transakce.vs ?? '—'}</div>
               </div>
-              {transakce.vs && (
-                <div className="col-6">
-                  <div className="text-muted fs-11 text-uppercase fw-semibold mb-1">VS</div>
-                  <div className="fs-13 czk-num">{transakce.vs}</div>
-                </div>
-              )}
+              <div className="col-6">
+                <div className="text-muted fs-11 fw-semibold mb-1">Datum</div>
+                <div className="fs-13 czk-num">{fDate(transakce.datum.slice(0, 10))} <span className="text-muted">{transakce.datum.slice(11, 16)}</span></div>
+              </div>
               <div className="col-12">
-                <div className="text-muted fs-11 text-uppercase fw-semibold mb-1">Účet</div>
+                <div className="text-muted fs-11 fw-semibold mb-1">Účet</div>
                 <div className="fs-13 fw-semibold">{ucet?.nazev ?? '—'}</div>
                 <div className="text-muted fs-11 czk-num">{ucet?.iban ?? '—'}</div>
               </div>
               {provs.length > 0 && (
                 <div className="col-12">
-                  <div className="text-muted fs-11 text-uppercase fw-semibold mb-1">Provozovny</div>
+                  <div className="text-muted fs-11 fw-semibold mb-1">Provozovny</div>
                   <div className="d-flex flex-wrap gap-1">
                     {provs.map((p) => (
                       <span key={p.id} className="badge bg-light text-dark border d-flex align-items-center gap-1" style={{ fontSize: 11 }}>
@@ -511,51 +1012,86 @@ function TransakceSidePanel({ transakce, ucty, onClose }: {
                   </div>
                 </div>
               )}
-              {transakce.parovanaSId && (
+              {transakce.outsideReason && (
                 <div className="col-12">
-                  <div className="text-muted fs-11 text-uppercase fw-semibold mb-1">Napárováno na fakturu</div>
-                  <span className="badge bg-success-subtle text-success">
-                    <iconify-icon icon="solar:link-bold-duotone" className="me-1" />
-                    {transakce.parovanaSId}
-                  </span>
+                  <div className="text-muted fs-11 fw-semibold mb-1">Mimo systém — důvod</div>
+                  <div className="fs-13">{OUTSIDE_REASONS.find((r) => r.value === transakce.outsideReason)?.label ?? transakce.outsideReason}</div>
+                  {transakce.outsideNote && <div className="text-muted fs-11 fst-italic mt-1">„{transakce.outsideNote}"</div>}
+                </div>
+              )}
+              {transakce.noInvoiceReason && (
+                <div className="col-12">
+                  <div className="text-muted fs-11 fw-semibold mb-1">Bez faktury — důvod</div>
+                  <div className="fs-13">{NO_INVOICE_REASONS.find((r) => r.value === transakce.noInvoiceReason)?.label ?? transakce.noInvoiceReason}</div>
                 </div>
               )}
             </div>
-          </div>
+          </section>
 
-          {/* Akce */}
-          <div className="p-3 d-flex flex-column gap-2">
-            {transakce.stav === 'unpaired' && (
+          {/* ── AKTIVITA (sloučený timeline: audit + poznámky chronologicky) ── */}
+          <section className="p-3">
+            <SectionHeading
+              icon="solar:history-bold-duotone"
+              color="#6c757d"
+              title={`Aktivita (${activityFeed.length})`}
+              right={
+                <button className="btn btn-link btn-sm text-muted p-0 d-flex align-items-center" style={{ textDecoration: 'none' }} onClick={() => setActivityCollapsed(!activityCollapsed)}>
+                  <iconify-icon icon={activityCollapsed ? 'solar:alt-arrow-down-bold' : 'solar:alt-arrow-up-bold'} />
+                </button>
+              }
+            />
+            {!activityCollapsed && (
               <>
-                <button className="btn btn-success btn-sm w-100">
-                  <iconify-icon icon="solar:link-bold-duotone" className="me-2" />
-                  Napárovat na fakturu
-                </button>
-                <button className="btn btn-light btn-sm w-100">
-                  <iconify-icon icon="solar:close-circle-bold-duotone" className="me-2" />
-                  Označit jako bez faktury
-                </button>
+                {activityFeed.length === 0 ? (
+                  <div className="text-muted fs-12 text-center py-2">Žádná aktivita</div>
+                ) : (
+                  <div className="d-flex flex-column gap-2 mb-3">
+                    {activityFeed.map((e) =>
+                      e.type === 'note' ? (
+                        <div key={e.id} className="rounded p-2" style={{ background: '#fff8e1', borderLeft: '3px solid #ffc107' }}>
+                          <div className="d-flex align-items-center justify-content-between mb-1">
+                            <div className="d-flex align-items-center gap-1">
+                              <iconify-icon icon="solar:chat-round-line-bold-duotone" style={{ fontSize: 12, color: '#ad8800' }} />
+                              <div className="fw-semibold fs-12">{e.kdo}</div>
+                            </div>
+                            <div className="text-muted" style={{ fontSize: 10 }}>{fDate(e.cas.slice(0, 10))} {e.cas.slice(11, 16)}</div>
+                          </div>
+                          <div className="fs-12" style={{ whiteSpace: 'pre-wrap' }}>{e.text}</div>
+                        </div>
+                      ) : (
+                        <div key={e.id} className="d-flex align-items-start gap-2">
+                          <span
+                            className="rounded-circle d-flex align-items-center justify-content-center flex-shrink-0 mt-1"
+                            style={{ width: 18, height: 18, background: e.color, color: 'white' }}>
+                            <iconify-icon icon={e.icon} style={{ fontSize: 11 }} />
+                          </span>
+                          <div className="flex-grow-1">
+                            <div className="fs-12">{e.akce}</div>
+                            <div className="text-muted" style={{ fontSize: 10 }}>{e.kdo} · {fDate(e.cas.slice(0, 10))} {e.cas.slice(11, 16)}</div>
+                          </div>
+                        </div>
+                      )
+                    )}
+                  </div>
+                )}
+                {/* Vstup pro novou poznámku (vždy na konci aktivity) */}
+                <div className="border-top pt-2 mt-2">
+                  <textarea
+                    className="form-control form-control-sm mb-2"
+                    style={{ fontSize: 12, resize: 'none' }}
+                    rows={2}
+                    placeholder="Přidat poznámku…"
+                    value={noteInput}
+                    onChange={(e) => setNoteInput(e.target.value)}
+                  />
+                  <button className="btn btn-light btn-sm w-100 d-flex align-items-center justify-content-center gap-1" disabled={!noteInput.trim()} onClick={handleAddNote}>
+                    <iconify-icon icon="solar:add-circle-bold-duotone" />
+                    Přidat poznámku
+                  </button>
+                </div>
               </>
             )}
-            {transakce.stav === 'error' && (
-              <button className="btn btn-warning btn-sm w-100">
-                <iconify-icon icon="solar:refresh-bold-duotone" className="me-2" />
-                Pokusit se znovu
-              </button>
-            )}
-            {transakce.stav === 'pending' && (
-              <div className="alert alert-info py-2 mb-0 fs-12">
-                <iconify-icon icon="solar:hourglass-bold-duotone" className="me-1" />
-                Čeká na automatické párování (auto-sync každých 15 min)
-              </div>
-            )}
-            {transakce.stav === 'paired' && (
-              <button className="btn btn-light btn-sm w-100">
-                <iconify-icon icon="solar:link-broken-minimalistic-bold-duotone" className="me-2" />
-                Zrušit párování
-              </button>
-            )}
-          </div>
+          </section>
         </div>
       </div>
     </div>
@@ -583,7 +1119,10 @@ function TransakceTable({
   const STAV_CHIPS: { value: BankaTransStav; label: string }[] = [
     { value: 'paired',   label: 'Spárováno' },
     { value: 'unpaired', label: 'Nespárováno' },
-    { value: 'pending',  label: 'Čeká' },
+    { value: 'waiting-review',      label: 'Čeká na kontrolu' },
+    { value: 'multiple-candidates', label: 'Více kandidátů' },
+    { value: 'outside-system',      label: 'Mimo systém' },
+    { value: 'no-invoice',          label: 'Bez faktury' },
     { value: 'error',    label: 'Chyba' },
   ];
   return (
@@ -1069,6 +1608,10 @@ export default function BankaView({ state }: Props) {
   const [stavFilters, setStavFilters] = useState<Set<BankaTransStav>>(new Set());
   const [typFilter, setTypFilter] = useState<'all' | 'prichoz' | 'odchozi'>('all');
   const [ucetFilter, setUcetFilter] = useState('all');
+  // Active Work Queue filter (filtruje transakce dle kategorie problému)
+  const [activeQueue, setActiveQueue] = useState<WorkQueueKind | null>(null);
+  // Ref pro scroll do tabulky transakcí (akční zóna v panelu je vždy nahoře)
+  const transTableRef = useRef<HTMLDivElement>(null);
 
   const toggleStav = useCallback((s: BankaTransStav) => {
     setStavFilters((prev) => {
@@ -1078,27 +1621,86 @@ export default function BankaView({ state }: Props) {
     });
   }, []);
 
+  // ── Local state pro reálné změny transakcí (manual match, outside-system, no-invoice, notes, audit) ──
+  const [localTrans, setLocalTrans] = useState<Record<string, Partial<BankaTransakce>>>({});
+
+  // Helper: vrátí transakci s aplikovanou lokální změnou
+  const getMergedTrans = useCallback((t: BankaTransakce): BankaTransakce => {
+    const patch = localTrans[t.id];
+    if (!patch) return t;
+    return {
+      ...t,
+      ...patch,
+      // Audit a notes se appendují, ne přepisují
+      auditLog: [...(t.auditLog ?? []), ...(patch.auditLog ?? [])],
+      notes:    [...(t.notes ?? []),    ...(patch.notes ?? [])],
+    };
+  }, [localTrans]);
+
+  // Helper: append audit entry
+  const pushTransAudit = useCallback((id: string, entry: TransAuditEntry) => {
+    setLocalTrans((prev) => {
+      const cur = prev[id] ?? {};
+      return { ...prev, [id]: { ...cur, auditLog: [...(cur.auditLog ?? []), entry] } };
+    });
+  }, []);
+
+  // Helper: add note
+  const pushTransNote = useCallback((id: string, note: TransNote) => {
+    setLocalTrans((prev) => {
+      const cur = prev[id] ?? {};
+      return { ...prev, [id]: { ...cur, notes: [...(cur.notes ?? []), note] } };
+    });
+  }, []);
+
+  // Helper: change stav (a patch ostatních polí)
+  const patchTrans = useCallback((id: string, patch: Partial<BankaTransakce>) => {
+    setLocalTrans((prev) => {
+      const cur = prev[id] ?? {};
+      return { ...prev, [id]: { ...cur, ...patch } };
+    });
+  }, []);
+
+  // Všechny transakce s aplikovanými lokálními změnami (stav, parovanaSId, …)
+  const mergedAllTransakce = useMemo(() => {
+    return BANKA_TRANSAKCE.map((t) => getMergedTrans(t));
+  }, [getMergedTrans]);
+
   const filteredTransakce = useMemo(() => {
-    return BANKA_TRANSAKCE.filter((t) => {
+    return mergedAllTransakce.filter((t) => {
       // Provozovna filter via account ownership
       if (!filteredUcetIds.has(t.ucetId)) return false;
       if (typFilter !== 'all' && t.typ !== typFilter) return false;
       if (ucetFilter !== 'all' && t.ucetId !== ucetFilter) return false;
       if (stavFilters.size > 0 && !stavFilters.has(t.stav)) return false;
+      // Work Queue filter
+      if (activeQueue) {
+        if (activeQueue === 'no-vs' && t.vs)        return false;
+        if (activeQueue === 'no-branch') {
+          const u = BANKA_UCTY.find((x) => x.id === t.ucetId);
+          if (u && u.provozovny.length > 0) return false;
+        }
+        if (activeQueue === 'unpaired'             && t.stav !== 'unpaired')            return false;
+        if (activeQueue === 'multiple-candidates'  && t.stav !== 'multiple-candidates') return false;
+        if (activeQueue === 'waiting-review'       && t.stav !== 'waiting-review')      return false;
+        if (activeQueue === 'error'                && t.stav !== 'error')               return false;
+      }
       if (search) {
         const q = search.toLowerCase();
         if (!t.firma.toLowerCase().includes(q) && !t.poznamka.toLowerCase().includes(q) && !(t.vs ?? '').includes(q)) return false;
       }
       return true;
     });
-  }, [filteredUcetIds, typFilter, ucetFilter, stavFilters, search]);
+  }, [mergedAllTransakce, filteredUcetIds, typFilter, ucetFilter, stavFilters, search, activeQueue]);
 
+  // Vybraná transakce — hledáme v MERGED ALL (ne filtered), aby panel nezmizel
+  // poté co akce změní stav a transakce propadne aktivním filtrem.
   const selectedTrans = useMemo(
-    () => filteredTransakce.find((t) => t.id === selectedTransId) ?? null,
-    [filteredTransakce, selectedTransId]
+    () => mergedAllTransakce.find((t) => t.id === selectedTransId) ?? null,
+    [mergedAllTransakce, selectedTransId]
   );
 
-  const pendingCount = BANKA_TRANSAKCE.filter((t) => t.stav === 'pending' || t.stav === 'unpaired').length;
+  const pendingCount = mergedAllTransakce.filter((t) => t.stav === 'waiting-review' || t.stav === 'unpaired' || t.stav === 'multiple-candidates').length;
 
   // ── Refs pro scroll-to-card + highlight ──
   const ucetRefs = useRef<Map<string, HTMLDivElement>>(new Map());
@@ -1187,6 +1789,37 @@ export default function BankaView({ state }: Props) {
       {/* Smart Alerts */}
       <SmartAlerts ucty={mergedUcty} onGoToUcet={goToUcet} onAction={handleAction} />
 
+      {/* Work Queue — „Vyžaduje pozornost" */}
+      <WorkQueue
+        transakce={mergedAllTransakce}
+        ucty={mergedUcty}
+        onSelectQueue={(kind) => {
+          // Toggle off → zruš filtr i selekci
+          if (kind === null || kind === activeQueue) {
+            setActiveQueue(null);
+            return;
+          }
+          setActiveQueue(kind);
+          // Vyber první matching transakci → panel s akční zónou se otevře nahoře vpravo
+          const firstMatch = mergedAllTransakce.find((t) => {
+            if (!filteredUcetIds.has(t.ucetId)) return false;
+            if (kind === 'no-vs')     return !t.vs;
+            if (kind === 'no-branch') {
+              const u = BANKA_UCTY.find((x) => x.id === t.ucetId);
+              return !!(u && u.provozovny.length === 0);
+            }
+            return t.stav === kind;
+          });
+          if (firstMatch) {
+            setSelectedTransId(firstMatch.id);
+            window.setTimeout(() => {
+              transTableRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            }, 50);
+          }
+        }}
+        activeQueue={activeQueue}
+      />
+
       {/* Top summary */}
       <TopSummary ucty={mergedUcty} />
 
@@ -1255,7 +1888,7 @@ export default function BankaView({ state }: Props) {
       })()}
 
       {/* Tabulka transakcí + side-panel (panel se objeví až po výběru) */}
-      <div className="row g-4 align-items-start">
+      <div ref={transTableRef} className="row g-4 align-items-start">
         <div className={selectedTrans ? 'col-xl-8 col-lg-7' : 'col-12'}>
           <TransakceTable
             transakce={filteredTransakce}
@@ -1274,6 +1907,9 @@ export default function BankaView({ state }: Props) {
               transakce={selectedTrans}
               ucty={filteredUcty}
               onClose={() => setSelectedTransId(null)}
+              onPatch={patchTrans}
+              onAudit={pushTransAudit}
+              onNote={pushTransNote}
             />
           </div>
         )}
