@@ -19,6 +19,10 @@ import ProvozovnaDrawer from './ProvozovnaDrawer';
 import ComponentReference from './ComponentReference';
 import KodView from './KodView';
 import BankaView from './BankaView';
+import TrvalePrikazyView from './TrvalePrikazyView';
+import UveryView from './UveryView';
+import PoplatkyView from './PoplatkyView';
+import PaymentPlatformView from './PaymentPlatformView';
 import TrzbyView from './TrzbyView';
 import FakturyView from './FakturyView';
 import PohledavkyView from './PohledavkyView';
@@ -92,6 +96,20 @@ export default function AppShell({ state, update }: Props) {
         return <PlatbyView state={state} update={update} />;
       case 'banka':
         return <BankaView state={state} update={update} />;
+      case 'trvale-prikazy':
+        return <TrvalePrikazyView state={state} update={update} />;
+      case 'uvery':
+        return <UveryView state={state} update={update} />;
+      case 'poplatky':
+        return <PoplatkyView state={state} update={update} />;
+      case 'karty':
+        return <PaymentPlatformView platforma="terminal" />;
+      case 'qerko':
+        return <PaymentPlatformView platforma="qerko" />;
+      case 'gopay':
+        return <PaymentPlatformView platforma="gopay" />;
+      case 'sodexo':
+        return <PaymentPlatformView platforma="sodexo" />;
       case 'provozovny':
         return <ProvozovnyView />;
       case 'komponenty':

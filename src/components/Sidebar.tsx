@@ -31,19 +31,33 @@ interface NavItem {
   badge?: number;
 }
 
+// Phase 1 restrukturalizace per zápis 4. 6. 2026:
+// Sidebar členěn na 5 skupin: Přehled / Ekonomika / Finance / Systém / Dev
 const MAIN_ITEMS: NavItem[] = [
-  { id: 'dashboard',  label: 'Dashboard',      icon: 'solar:widget-5-bold-duotone' },
-  { id: 'trzby',      label: 'Tržby',          icon: 'solar:chart-2-bold-duotone' },
-  { id: 'zavierky',   label: 'Denní závěrky',  icon: 'solar:document-text-bold-duotone', badge: 2 },
-  { id: 'provozovny', label: 'Provozovny',     icon: 'solar:buildings-bold-duotone' },
+  { id: 'dashboard',  label: 'Dashboard',  icon: 'solar:widget-5-bold-duotone' },
+  { id: 'provozovny', label: 'Provozovny', icon: 'solar:buildings-bold-duotone' },
 ];
 
+// Ekonomika — účetní / dokladová evidence (tržby, doklady, peněžní výhled)
+const EKONOMIKA_ITEMS: NavItem[] = [
+  { id: 'trzby',      label: 'Tržby',         icon: 'solar:chart-2-bold-duotone' },
+  { id: 'zavierky',   label: 'Denní závěrky', icon: 'solar:document-text-bold-duotone', badge: 2 },
+  { id: 'faktury',    label: 'Faktury',       icon: 'solar:bill-list-bold-duotone', badge: 1 },
+  { id: 'pohledavky', label: 'Pohledávky',    icon: 'solar:money-bag-bold-duotone', badge: 2 },
+  { id: 'cashflow',   label: 'Cashflow',      icon: 'solar:dollar-minimalistic-bold-duotone' },
+];
+
+// Finance — peníze a bankovní operace (účty, automatické platby, poplatky, karty, payment platforms)
 const FINANCE_ITEMS: NavItem[] = [
-  { id: 'cashflow',    label: 'Cashflow',    icon: 'solar:dollar-minimalistic-bold-duotone' },
-  { id: 'faktury',     label: 'Faktury',     icon: 'solar:bill-list-bold-duotone', badge: 1 },
-  { id: 'pohledavky',  label: 'Pohledávky',  icon: 'solar:money-bag-bold-duotone', badge: 2 },
-  { id: 'platby',      label: 'Platby',      icon: 'solar:card-send-bold-duotone' },
-  { id: 'banka',       label: 'Banka',       icon: 'solar:wallet-bold-duotone' },
+  { id: 'banka',          label: 'Bankovní účty',  icon: 'solar:wallet-bold-duotone' },
+  { id: 'trvale-prikazy', label: 'Trvalé příkazy', icon: 'solar:refresh-circle-bold-duotone' },
+  { id: 'uvery',          label: 'Úvěry',          icon: 'solar:hand-money-bold-duotone' },
+  { id: 'poplatky',       label: 'Poplatky',       icon: 'solar:tag-price-bold-duotone' },
+  { id: 'karty',          label: 'Platební karty', icon: 'solar:card-bold-duotone' },
+  { id: 'qerko',          label: 'Qerko',          icon: 'solar:qr-code-bold-duotone' },
+  { id: 'gopay',          label: 'GoPay',          icon: 'solar:card-2-bold-duotone' },
+  { id: 'sodexo',         label: 'Sodexo',         icon: 'solar:ticket-bold-duotone' },
+  { id: 'platby',         label: 'Platby',         icon: 'solar:card-send-bold-duotone' },
 ];
 
 const SYSTEM_ITEMS: NavItem[] = [
@@ -78,6 +92,11 @@ export default function Sidebar({ active, onSelect }: Props) {
 
           <li className="menu-title">Přehled</li>
           {MAIN_ITEMS.map((item) => (
+            <NavLink key={item.id} item={item} active={active} onSelect={onSelect} />
+          ))}
+
+          <li className="menu-title">Ekonomika</li>
+          {EKONOMIKA_ITEMS.map((item) => (
             <NavLink key={item.id} item={item} active={active} onSelect={onSelect} />
           ))}
 

@@ -29,7 +29,11 @@ src/
   platbyData.ts         # faktury, platby, BANKOVNI_UCTY, PRAVNI_ENTITA, MATCHING_DATA, FakturaForma
   pohledavkyData.ts     # pohledávky, aging, STAV_META_POH
   cashflowData.ts       # týdenní cashflow, KPI, kategorie, transakce, prognóza
-  bankaData.ts          # BankaUcet, BankaTransakce, SuggestedMatch, TransAuditEntry, TransNote, helpers (sumForMena, timeAgo, STAV_META, TRANS_STAV_META 7-stavů)
+  bankaData.ts          # BankaUcet, BankaTransakce (3 stavy: paired/unpaired/manual-paired), SuggestedMatch, TransAuditEntry, TransNote, TransDelegace, BANKA_USERS, isInternalTransfer, helpers
+  trvalePrikazyData.ts  # TrvalyPrikaz (standard/leasing/zaloha), TrvalySplatkaItem (rozpad VS), TrvalyDokument, generateLeasingSplatky
+  uveryData.ts          # Uver (hypoteka/investicni/provozni/leasing-finanční), UverSplatkaItem (jistina/úrok rozpad), fix vs PRIBOR sazba, generateUverSplatky (anuita)
+  poplatkyData.ts       # Poplatek (9 typů), MesicniSouhrn, getBreakdownPoTypech
+  paymentPlatformsData.ts # Qerko/GoPay/Sodexo/terminal config, DenniParovani (per den per provozovna), MesicniFakturaPlatformy, skutečný vs odhad poplatek
   duplicateDetection.ts # detectDuplicates() – pure function (VS / číslo / dodavatel+částka+měsíc)
   dodaciListyData.ts    # mock dodací listy (DodaciList, DLPolozka, getDodaciList/y)
   fakturaPolozkyUtils.ts# generateFakturaPolozky(), DPH_SAZBA, getDiffStav(), DIFF_META, tolerance prahy
@@ -46,7 +50,11 @@ src/
     FakturySidePanel.tsx # sticky right panel: detail, forma, matching, příloha, audit, komunikace
     DLMatchingDetail.tsx # diff tabulka faktura vs DL, editovatelné DL, "Spustit párování" s callback
     DuplicateDetail.tsx  # side-by-side comparison "Tato faktura" vs "Originál" s red highlighty
-    BankaView.tsx        # banka: účty + Work Queue „Vyžaduje pozornost" + tabulka transakcí + single-scroll side panel (Akce/Detail/Aktivita)
+    BankaView.tsx        # banka: účty (Konsolidované + Ostatní rozbalitelné) + Work Queue „Vyžaduje pozornost" + tabulka transakcí + single-scroll side panel
+    TrvalePrikazyView.tsx# Trvalé příkazy: KPI + tabulka + form modal (nový/upravit) + side panel se splátkovým kalendářem (per-řádek edit)
+    UveryView.tsx        # Úvěry: KPI + tabulka (sazba fix vs PRIBOR) + side panel s rozpadem jistina/úrok + form modal + předčasné splacení
+    PoplatkyView.tsx     # Poplatky: KPI + barbar breakdown po typech + tabulka + měsíční souhrny (klikatelné)
+    PaymentPlatformView.tsx # Generická view pro Qerko/GoPay/Sodexo/terminal: header + KPI + breakdown po provozovnách + tabulka (skut vs odhad poplatek) + měs. faktury
     PlatbyView.tsx       # platební dashboard: právní entity, stavový filtr, auto-výběr faktur
     PlatbyDetailPanel.tsx # offcanvas drawer: detail + audit + pozastavení s poznámkou + náhled faktury
     PlatbyKPIStrip.tsx   # 4× KPI karta platby (zůstatek/schváleno/po-splatnosti/splatné)
@@ -71,9 +79,13 @@ src/
 
 ```typescript
 type ProvozovnaId = 'all' | string;
+// Phase 1 restrukturalizace (zápis 4. 6. 2026) — sidebar členěn na 5 skupin:
+// Přehled / Ekonomika / Finance / Systém / Dev
 type SidebarSection = 'dashboard' | 'trzby' | 'zavierky' | 'provozovny'
                     | 'cashflow' | 'faktury' | 'pohledavky' | 'platby'
-                    | 'reporty' | 'nastaveni' | 'komponenty';
+                    | 'banka' | 'trvale-prikazy' | 'uvery' | 'poplatky'
+                    | 'karty' | 'qerko' | 'gopay' | 'sodexo'
+                    | 'reporty' | 'nastaveni' | 'komponenty' | 'kod';
 
 interface Provozovna {
   id: string; name: string; shortName: string; color: string;
@@ -582,19 +594,27 @@ Admin sekce (sidebar → Provoz → Provozovny), 3 záložky:
 
 ## Routing (AppShell.tsx)
 
-| selectedSection | Komponenta |
-|---|---|
-| `dashboard` | DashboardView |
-| `trzby` | TrzbyView |
-| `faktury` | FakturyView |
-| `pohledavky` | PohledavkyView |
-| `cashflow` | CashflowView |
-| `platby` | PlatbyView |
-| `banka` | BankaView |
-| `provozovny` | ProvozovnyView |
-| `komponenty` | ComponentReference |
-| `kod` | KodView |
-| ostatní | PlaceholderView |
+| selectedSection | Komponenta | Sidebar skupina |
+|---|---|---|
+| `dashboard` | DashboardView | Přehled |
+| `provozovny` | ProvozovnyView | Přehled |
+| `trzby` | TrzbyView | Ekonomika |
+| `zavierky` | PlaceholderView | Ekonomika |
+| `faktury` | FakturyView | Ekonomika |
+| `pohledavky` | PohledavkyView | Ekonomika |
+| `cashflow` | CashflowView | Ekonomika |
+| `banka` | BankaView | Finance |
+| `trvale-prikazy` | TrvalePrikazyView | Finance |
+| `uvery` | UveryView | Finance |
+| `poplatky` | PoplatkyView | Finance |
+| `karty` | PaymentPlatformView (terminal) | Finance |
+| `qerko` | PaymentPlatformView (qerko) | Finance |
+| `gopay` | PaymentPlatformView (gopay) | Finance |
+| `sodexo` | PaymentPlatformView (sodexo) | Finance |
+| `platby` | PlatbyView | Finance |
+| `reporty` / `nastaveni` | PlaceholderView | Systém |
+| `komponenty` | ComponentReference | Dev |
+| `kod` | KodView | Dev |
 
 ## Kontext projektu
 
@@ -616,6 +636,7 @@ Piazza otevřena 2006 (potvrzeno majitelem).
 - **v3 s11**: Sekce **Kód** refaktor #1 — kodér chce vše inline v komponentě bez Helper/Support tříd. Smazány `app/Support/Provozovny.php` a `app/Support/TrzbyHelper.php` jako samostatné soubory. Všechna mock data (PROVOZOVNY, BASE_SPLIT, DOW_MULT, UCTY_MOCK, SEASONAL, FOUNDING_YEAR) + helpery (detRand, baseDay, getDowFactor, genDayData, genDayDataSplit, genD7Split, genMonthRevenue, genAnnualRevenue, smoothPath, fCzk, getDatesInRange) přesunuty do class body `TrzbyDetail.php` a `VyvojTrzeb.php` jako public metody (volatelné z Blade přes `$this->...`). Accordion redukován ze 7 na 6 sekcí (bez Sdílené helpery). Sed script + Python regex pro hromadné `TrzbyHelper::` → `$this->` replace v Blade konstantách (38 substitucí).
 - **v3 s12**: Sekce **Kód** refaktor #2 — kodér poslal vzorovou `sales-sum.blade.php`, přechod na **Livewire Volt** + **Eloquent**. Class-based `app/Livewire/*.php` přepsány na **Volt single-file** (`resources/views/livewire/*.blade.php` s anonymní třídou `new #[Defer] class extends Component {}`). Žádné mock generators — query přes `Branch::all()` + `DailyClosingRow` (`SUM(value)` pro `type_id IN [SALES, SALE_MANUAL]`). `formatMoney($n, false)` místo `fCzk()`, `<x-input>` Blade komponenta místo standardních inputů, multi-tenancy přes `auth()->user()->activeBranch()` + `mainBranchGet()`. Accordion redukován na 4 sekce. Žluté otázky pro kodéra: K/B split, historické agregace, opened_at.
 - **v3 s13**: Sekce **Kód** refaktor #3 — odpovědi od kodéra zapracovány. **Kuchyň/Bar split** přes `DailyClosingRow::SALES_K` + `SALES_B` (query rozšířena o `GROUP BY type_id`, indexace `[branchId][date][typeId]`, single-venue tabulka Datum/Kuchyň/Bar/Celkem). **Cache::remember** pro `loadChartData()` (TTL 1h, klíč s mode/period/year/month/branchIds). **MIN(daily_closings.date)** fallback pro `fromYear()` při `period='vse'` (24h cache). Vyřešené body z žlutého varování přesunuty do zeleného success banneru.
+- **v3 s20**: **Phase 1–6 podle zápisu porady 4. 6. 2026** (master refactor + nové sekce). **Phase 1 (sidebar restrukturalizace)**: členění na 5 skupin (Přehled / Ekonomika / Finance / Systém / Dev). „Banka" přejmenována na „Bankovní účty". Přidány nové sekce: `trvale-prikazy` / `uvery` / `poplatky` / `karty` / `qerko` / `gopay` / `sodexo`. Topbar breadcrumb labels aktualizovány (Ekonomika vs. Finance). Sidebar CSS scroll fix — `overflow-y: auto` v `.main-nav .scrollbar` (nebyl SimpleBar JS init). **Phase 2 (Banka redukce + UX)**: `BankaTransStav` ze 7 na **3 stavy** (`paired` / `unpaired` / `manual-paired`) per zápis. Vnitřní flagy `isWaitingReview` / `hasError` / `isOverdueAtBank` / `delegatedTo` na `BankaTransakce`. Nová pole `protiUcet` / `splatnost` / `manualReason` / `manualNote`. Filter bar rozšířen o období (date range) + částka (range) + fulltext (firma/poznámka/VS/protiúčet). Nový sloupec **Protiúčet** v tabulce. Smart Alerts strip odstraněn (duplikoval Work Queue). Účty provozoven schované do rozbalovacího pole **„Ostatní účty"** (read-only). **Work Queue redesign** — 2 skupiny **„K vyřešení"** vs **„K přehledu"** se sekčními labels, čtvercové karty 96px (větší 26px číslo, ikona v kruhu, border-top barva). Tlačítko **„Vyčistit všechny filtry"** (outline-danger + ikona gumy) + viditelný banner aktivního Work Queue filtru. Sticky panel fix (`align-items-start` odstraněn → pravý sloupec se roztáhne na výšku tabulky). Scroll-to-center kliknutého řádku. Provozovny v tabulce mají label + tečku (předtím jen tečka s title). **Auto-evidence interních převodů** (`isInternalTransfer` helper porovná protiÚčet vs IBAN), **delegování na 4 mock uživatele** (`BANKA_USERS`), **„V bance neuhrazená"** auto-status (splatnost > 3 dny + nespárováno), **proklik na fakturu** přes cross-section nav. **AutoSyncBar** rozšířen: hromadné platby (Odeslat dávku / Vrátit poslední krok), error stav (Auto-sync vypnut + Zapnout znovu), API limit 187/300. **Phase 3 (Trvalé příkazy)**: nová sekce `/trvale-prikazy`, 10 mock příkazů (standard / leasing / záloha), KPI strip (Aktivní / Měsíční zátěž / **Nezaplacené splátky** klikatelné / Pozastavené), filter chip „Jen nezaplacené". **Form modal pro nový/edit** s auto-generováním splátkového kalendáře leasingu (vsVzor + počet → preview tabulka). **Inline edit splátky** v side panelu (datum, VS, částka, override odchozího účtu). **Upload smluv/dokumentů** (mock — typ se auto-detekuje z názvu souboru). **Phase 4 (Úvěry)**: nová sekce `/uvery`, 3 mock úvěry (hypotéka KB 8.5M PRIBOR / provozní ČSOB 800k fix / investiční Raiffeisen 1.5M PRIBOR s **částečnou splátkou pro demo manuální kontroly**). KPI s nestandardními splátkami. Tabulka s typem sazby (**fix vs PRIBOR + marže**), progress bar splaceno. Side panel s **rozpadem jistina/úrok per splátka** (PRIBOR predikce kurzívou + alert „finalizuje po spárování"). Akce **Předčasné splacení** s confirm dialogem. Form modal s anuitní kalkulačkou. Upload dokumentů. **Phase 5 (Poplatky)**: nová sekce `/poplatky`, ~40 mock záznamů napříč 6 měsíci, 9 typů poplatků (vedení účtu / transakce / karta / výběr / vklad / úrok z debetu / služby / sankce / jiné). KPI (Tento měsíc s trendem / Průměr/měsíc / Nejdražší typ / Záznamů celkem). **Klikatelný barbar breakdown po typech** (filtruje tabulku). Tabulka + měsíční souhrny v pravém sloupci (klikatelné chip). **Phase 6 (Qerko / GoPay / Sodexo / Platební karty)**: jedna generická komponenta `PaymentPlatformView` se 4 platformami. **Sodexo bez API** (warning badge + tlačítko „Importovat data"), ostatní s API. **Per-platforma config**: provize % / D+N zpoždění / účet pro příjmy / podporované metody / **seznam provozoven**. **Rozdělení po provozovnách** s klikatelným barbar a sumami (hrubá tržba / provize skut. / čistý příjem). **Inline „Přiřadit…" select** pro nepřiřazené záznamy. **Skutečný poplatek = TržbaPOS − Příchozí** (info banner — příchozí platba je net po provizi). Sloupce: Tržba POS / Příchozí (D+1) / **Provize skut. / Provize odhad / Δ odhadu** (zelená < 5 Kč, jinak žlutá). Měsíční faktury s porovnáním odhad vs fakturovaný poplatek. Mock data: per den per provozovnu, demo rozdíly (Qerko refund −350 / GoPay nepřišlo / 2 nepřiřazené dny pro manuální flow). Build OK, ~720 KB JS bundle.
 - **v3 s19**: **Banka — Phase 2 (operační workflow)** podle master promptu ze schůzky. **Rozšířené stavy**: `BankaTransStav` ze 4 na **7 stavů** (přidány `waiting-review` / `multiple-candidates` / `outside-system` / `no-invoice`). Nové typy `SuggestedMatch` (matchScore + důvody), `TransAuditEntry`, `TransNote`. `BankaTransakce` rozšířena o `candidates?`, `outsideReason?/Note?`, `noInvoiceReason?`, `notes?`, `auditLog?`. 8 nových mock transakcí (tx31–tx38). **Work Queue „Vyžaduje pozornost"** — 6 klikatelných karet (nespárované / s více kandidáty / bez VS / bez provozovny / čekající / s chybou). Klik = atomická operace: filter + auto-select první transakce + scroll k panelu (žádné dohledávání). Druhý klik zruší. **Side panel kompletně přepracován** — původně 4 tabs (Detail / Párování / Komunikace / Historie), po UX iteraci přepsán na **single-scroll s progressive disclosure**: Akční zóna (vždy nahoře, kontextová) → Detail → Aktivita (sloučený chronologický feed audit + poznámky). Header rozšířen o částku + datum. **Mikrofeedback** po akci (zelený alert, auto-dismiss 2.5s). Kandidáti: ≥80 % match dostává zelený 2px border + **„DOPORUČENO" badge** u prvního. Manuální párování s `<datalist>` autocomplete (mock 5 VS). „Vystavit fakturu" generuje mock `FA-2026-XXXX`. **„Nelze napárovat?"** sloučený workflow — 2 tlačítka (Mimo systém / Bez faktury), klik rozbalí inline form s důvody (`OUTSIDE_REASONS` 5 / `NO_INVOICE_REASONS` 7). Outside dovoluje navíc text poznámky. Aktivita: audit = tečka+ikona+barva, poznámky = žlutá bublina s borderLeft. **State**: `localTrans: Record<id, Partial<BankaTransakce>>` + `getMergedTrans()` (appenduje audit/notes) + `mergedAllTransakce` propaguje do Work Queue counts + tabulky. `selectedTrans` hledán v `mergedAllTransakce` (ne filtered) → panel nezmizí po akci, která přesune transakci mimo filter. Helpers `pushTransAudit` / `pushTransNote` / `patchTrans`. Build OK.
 - **v3 s18**: **Faktury — 5 nových features per spec** (operational invoice workflow dashboard). **1) Locking + Cost category audit**: nový flag `isLocked?: boolean` v `FakturaPlatby` (paralelně s workflow stavem). 3 mock faktury locked (fp14 Metro AG, fp46 Makro, fp47 E.ON — z března/dubna, zaplacené, uzavřené účetní období). V tabulce 🔒 fialová ikona vedle stav-badge + tooltip. V side panelu fialový alert „Faktura uzamčena", nová sekce „Účetní kategorie" s editovatelným dropdown (jen kategorie editovatelná, ostatní read-only), workflow akce skryté, poznámka read-only s šedým pozadím. Změna kategorie → audit zápis `typ: 'editace'`. Nový quick filter chip „🔒 Uzamčené (3)" který zahrnuje i zaplacené (jinak skryté). **2) Rounding correction workflow**: pro diff DL ≤ 1 Kč nové tlačítko „Schválit zaokrouhlení" v zeleném boxu DLMatchingDetail; po schválení změna stavu na „✓ Zaokrouhlení schváleno" + audit zápis `typ: 'parovani'`. Mock data: fp01.castka 45 200 → 45 201 (vytvoří diff +1 Kč pro demo). **3) Recheck matching vylepšení**: počet pokusů per faktura (`localRecheckCount: Record<id, number>`), tlačítko mění label (Spustit párování → Znovu párovat 1× → 2× → 3×) + počet v bílém badgi, primary modré při neukončeném párování, outline-primary když sparovana. Audit zápisy s ordinálním číslem („Druhý pokus o přepárování — vyhodnoceno: spárováno ✓") + výsledný stav matching. **4) Saved filter states**: state `savedPresets: FilterPreset[]` se snapshot všech filtrů (kategorie/stav/párování/forma/preset/částka/search). Nový řádek nahoře v filter baru „🔖 Moje filtry: [chipy] [+ Uložit aktuální]". 2 výchozí demo presety (Denní review / K vyřešení). Klik na chip načte snapshot, ×  smaže, „Uložit aktuální" prompts na název, „Zrušit filtry" zruší active preset. **5) Tabs v side panelu**: nahrazuje endless scroll. 4 záložky (Detail / Párování / Komunikace / Historie), modrý underline na aktivní, ikony Solar. Header (status badges + dodavatel) a alerty (Locked / Mismatch / Duplicita) vždy viditelné. Mostly jen jedna sekce najednou — žádné dlouhé scroll. **Plus layout vylepšení**: tabulka full-width (`col-12`) když není faktura vybraná, panel (`col-xl-5 col-lg-5`) se zobrazí až po výběru (jako v Bance). Dodavatel sloupec `width: 220px` + `text-truncate` + tooltip. Tabbed panel `top: calc(var(--bs-topbar-height) + 16px)` + `maxHeight: calc(100vh - var(--bs-topbar-height) - 32px)` (správně pod topbarem). Removed nested scroll v komentářích.
 - **v3 s17**: **Responzivita pass #1** — analýza + 7 fixů ve 3 souborech. **Faktury layout**: panel z `col-lg-4` na `col-lg-5` (širší při 992–1199px). **Faktury action bar**: rozdělen na 2 logické skupiny (Období \| Akce) přes `justify-content-between`. **Banka AutoSyncBar**: text-popisky („Poslední:", „Příští:", „Ve frontě:") schované pod `md` (`d-none d-md-inline`) + `title` attr pro tooltip. **Banka card grid**: 4-per-row přesunuto z `xl` (1200+) na `xxl` (1400+), takže na 1200–1399 jsou 3-per-row (méně cramped). **Tržby Vývoj tržeb toggle row**: `flex-wrap` (3-4 řádky chaos) → `flex-nowrap` + horizontální scroll (`overflowX: auto` + `flex-shrink-0` na chipech) + tenký scrollbar (`.trzby-chart-toggles` CSS). **Tržby Vývoj tržeb header**: `flex-column flex-lg-row` — title nad kontroly na md (méně tisněné). **CSS media queries** pro tablet (768–991): `.trzby-box` padding 16→12px, `.trzby-box-value` 22→18px, `.card-header.trzby-detail-header-sticky` padding 10/14. Pro <1200: `.trzby-sticky-r` box-shadow pro vizuální oddělení. Nedotčeno: Dashboard layout, PlatbyView, Sidebar mobile overlay, Topbar `d-none d-md-block` shy, Banka Smart Alerts (již `text-nowrap`), Modal sizing (existující `@media` v custom.css).

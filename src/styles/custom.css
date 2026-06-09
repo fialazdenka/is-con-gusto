@@ -1220,6 +1220,41 @@ tfoot .trzby-sticky-r {
 }
 
 /* ============================================================
+   SIDEBAR — native scroll bez SimpleBar JS
+   Larkon předpokládá SimpleBar (data-simplebar). Nemáme JS lib,
+   takže přidáme klasický scroll + pretty scrollbar.
+   ============================================================ */
+.main-nav .scrollbar {
+  overflow-y: auto;
+  overflow-x: hidden;
+  /* Firefox */
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.18) transparent;
+}
+.main-nav .scrollbar::-webkit-scrollbar { width: 6px; }
+.main-nav .scrollbar::-webkit-scrollbar-track { background: transparent; }
+.main-nav .scrollbar::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.18);
+  border-radius: 6px;
+}
+.main-nav .scrollbar::-webkit-scrollbar-thumb:hover { background: rgba(255, 255, 255, 0.32); }
+
+/* ============================================================
+   BANKA — Work Queue „Vyžaduje pozornost" karty (hover lift)
+   ============================================================ */
+.wq-card {
+  transition: all 0.18s ease;
+}
+.wq-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+  border-color: #cdd2da !important;
+}
+.wq-card:active {
+  transform: translateY(0);
+}
+
+/* ============================================================
    TRŽBY — horizontální scroll pro řadu toggle podniků
    ============================================================ */
 .trzby-chart-toggles {
