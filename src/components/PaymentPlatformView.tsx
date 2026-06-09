@@ -218,10 +218,10 @@ function VenueBreakdown({ platforma, denni, activeProv, onSetProv }: {
                 <div className="flex-grow-1 position-relative" style={{ height: 6, background: '#f1f3f5', borderRadius: 3 }}>
                   <div style={{ width: `${pct}%`, height: '100%', background: meta?.color ?? cfg.color, borderRadius: 3 }} />
                 </div>
-                <div className="d-flex align-items-center gap-2" style={{ width: 180, justifyContent: 'flex-end' }}>
-                  <span className="czk-num fw-semibold fs-12">{fCzk(Math.round(r.trzba))}</span>
-                  <span className="text-muted fs-11 czk-num">−{fCzk(Math.round(r.poplatek))}</span>
-                  <span className="text-success fw-semibold fs-12 czk-num">{fCzk(Math.round(r.cisty))}</span>
+                <div className="d-flex align-items-center gap-2" style={{ width: 240, justifyContent: 'flex-end' }}>
+                  <span className="czk-num fw-semibold fs-12" style={{ whiteSpace: 'nowrap' }}>{fCzk(Math.round(r.trzba))}</span>
+                  <span className="text-muted fs-11 czk-num" style={{ whiteSpace: 'nowrap' }}>−{fCzk(Math.round(r.poplatek))}</span>
+                  <span className="text-success fw-semibold fs-12 czk-num" style={{ whiteSpace: 'nowrap' }}>{fCzk(Math.round(r.cisty))}</span>
                 </div>
               </button>
             );
