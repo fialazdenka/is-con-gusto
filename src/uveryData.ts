@@ -55,6 +55,8 @@ export interface Uver {
   konec: string;                 // YYYY-MM-DD
   pristiSplatnost: string;
   stav: UverStav;
+  // Phase 7 (zápis 12. 6. 2026) — komu úvěr patří (provoz / právní entita)
+  provozovnaId?: string;         // konkrétní provozovna (nebo undefined = celofiremní)
   poznamka?: string;
   // Splátkový kalendář (předpis)
   splatky: UverSplatkaItem[];
@@ -135,6 +137,7 @@ export const UVERY: Uver[] = [
     return {
       id: 'uv01',
       nazev: 'Hypotéka — provozovna CG Brno',
+      provozovnaId: 'cg-brno',
       banka: 'Komerční banka',
       cisloSmlouvy: 'HU-2024-01-15-CG-BRNO',
       typ: 'hypoteka' as UverTyp,
@@ -169,6 +172,7 @@ export const UVERY: Uver[] = [
     return {
       id: 'uv02',
       nazev: 'Provozní úvěr — Piazza 2025',
+      provozovnaId: 'piazza',
       banka: 'ČSOB',
       cisloSmlouvy: 'PU-2025-04-PIAZZA',
       typ: 'provozni' as UverTyp,
@@ -207,6 +211,7 @@ export const UVERY: Uver[] = [
     return {
       id: 'uv03',
       nazev: 'Investiční úvěr — kuchyně Monte',
+      provozovnaId: 'monte',
       banka: 'Raiffeisen Bank',
       cisloSmlouvy: 'IU-2025-09-MONTE',
       typ: 'investicni' as UverTyp,

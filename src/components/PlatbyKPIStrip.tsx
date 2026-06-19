@@ -36,20 +36,20 @@ export default function PlatbyKPIStrip({ provozovna, periodOd, periodDo }: Props
   const zustatek  = getZustatek(provozovna);
 
   const schvalene = faktury.filter(
-    (f) => f.stav === 'schvalena' || f.stav === 'ke-schvaleni'
+    (f) => f.stav === 'schvalena' || f.stav === 'ceka-na-schvaleni'
   );
   const poSplatnosti = faktury.filter(
-    (f) => f.stav !== 'zaplacena' && f.stav !== 'odeslana' && isPoSplatnosti(f.splatnost)
+    (f) => f.stav !== 'uhrazena' && f.stav !== 'v-bance' && isPoSplatnosti(f.splatnost)
   );
   const splatneVObdobi = faktury.filter(
     (f) =>
-      f.stav !== 'zaplacena' &&
-      f.stav !== 'odeslana' &&
+      f.stav !== 'uhrazena' &&
+      f.stav !== 'v-bance' &&
       isSplatneVObdobi(f.splatnost, periodOd, periodDo) &&
       !isPoSplatnosti(f.splatnost)
   );
   const neschvalene = faktury.filter(
-    (f) => f.stav === 'nova' || f.stav === 'ke-schvaleni'
+    (f) => f.stav === 'nova' || f.stav === 'ceka-na-schvaleni'
   );
 
   const sumSchvalene = schvalene.reduce((s, f) => s + f.castka, 0);

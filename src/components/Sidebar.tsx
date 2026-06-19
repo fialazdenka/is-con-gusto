@@ -45,11 +45,12 @@ const EKONOMIKA_ITEMS: NavItem[] = [
   { id: 'faktury',    label: 'Faktury',       icon: 'solar:bill-list-bold-duotone', badge: 1 },
   { id: 'pohledavky', label: 'Pohledávky',    icon: 'solar:money-bag-bold-duotone', badge: 2 },
   { id: 'cashflow',   label: 'Cashflow',      icon: 'solar:dollar-minimalistic-bold-duotone' },
+  { id: 'dane',       label: 'Daně',          icon: 'solar:bill-list-bold-duotone' },
 ];
 
 // Finance — peníze a bankovní operace (účty, automatické platby, poplatky, karty, payment platforms)
 const FINANCE_ITEMS: NavItem[] = [
-  { id: 'banka',          label: 'Bankovní účty',  icon: 'solar:wallet-bold-duotone' },
+  { id: 'banka',          label: 'Banka',          icon: 'solar:wallet-bold-duotone' },
   { id: 'trvale-prikazy', label: 'Trvalé příkazy', icon: 'solar:refresh-circle-bold-duotone' },
   { id: 'uvery',          label: 'Úvěry',          icon: 'solar:hand-money-bold-duotone' },
   { id: 'poplatky',       label: 'Poplatky',       icon: 'solar:tag-price-bold-duotone' },

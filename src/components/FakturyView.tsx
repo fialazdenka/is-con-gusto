@@ -39,11 +39,11 @@ export type SortCol = 'cislo' | 'dodavatel' | 'castka' | 'splatnost' | 'odeslatD
 
 const STAV_CHIPS: { value: FakturaStavPlatby; label: string }[] = [
   { value: 'nova',          label: 'Nová' },
-  { value: 'ke-schvaleni',  label: 'Ke schválení' },
+  { value: 'ceka-na-schvaleni',  label: 'Ke schválení' },
   { value: 'schvalena',     label: 'Schválená' },
   { value: 'zamitnuta',     label: 'Zamítnutá' },
-  { value: 'zastavena',     label: 'Zastavená' },
-  { value: 'zaplacena',     label: 'Zaplacená' },
+  { value: 'pozastavena',     label: 'Zastavená' },
+  { value: 'uhrazena',     label: 'Zaplacená' },
 ];
 
 const FORMA_CHIPS: { value: FakturaForma; label: string; icon: string }[] = [
@@ -109,8 +109,15 @@ export default function FakturyView({ state, update }: Props) {
     }
   }
 
-  // Nová faktura – modal state
-  const [showNovaFaktura, setShowNovaFaktura] = useState(false);
+  // Phase 8 (zápis 19. 6. 2026) — Nová faktura / Nová proforma jsou samostatné podstránky,
+  // ne modal okna. Přepíná se mezi list / new-faktura / new-proforma view.
+  type ViewMode = 'list' | 'new-faktura' | 'new-proforma';
+  const [viewMode, setViewMode] = useState<ViewMode>('list');
+  // Backward-compatible aliasy pro existující kód
+  const showNovaFaktura  = viewMode === 'new-faktura';
+  const showNovaProforma = viewMode === 'new-proforma';
+  const setShowNovaFaktura = (v: boolean) => setViewMode(v ? 'new-faktura' : 'list');
+  const setShowNovaProforma = (v: boolean) => setViewMode(v ? 'new-proforma' : 'list');
   const [novaFa, setNovaFa] = useState({
     typDokladu: 'prijata' as TypDokladu,
     dodavatel: '',
@@ -122,6 +129,19 @@ export default function FakturyView({ state, update }: Props) {
     splatnost: '',
     poznamka: '',
     prirazenaOsoba: '',
+  });
+  // Phase 8 (zápis 10. 6. 2026) — proforma (zálohová) faktura – samostatná podstránka
+  const [novaProf, setNovaProf] = useState({
+    typDokladu: 'prijata' as TypDokladu,
+    dodavatel: '',
+    cislo: '',
+    kategorie: 'sluzby' as FakturaKategorie,
+    provozovna: selectedProvozovna === 'all' ? 'cg-brno' : selectedProvozovna,
+    castka: '',
+    datum: '2026-04-23',
+    splatnost: '',
+    poznamka: '',
+    spojenaSId: '',     // odkaz na finální fakturu (volitelné)
   });
 
   // Schvalování – drawer state
@@ -163,7 +183,7 @@ export default function FakturyView({ state, update }: Props) {
       icon: 'solar:clock-circle-bold-duotone',
       snapshot: {
         kategorieFilter: 'all',
-        stavFilters:     ['nova', 'ke-schvaleni'],
+        stavFilters:     ['nova', 'ceka-na-schvaleni'],
         matchingFilters: [],
         formaFilters:    [],
         presetFilters:   [],
@@ -258,7 +278,7 @@ export default function FakturyView({ state, update }: Props) {
 
   const allFakturyRaw = getFakturyForProvozovna(selectedProvozovna);
   const keSchvaleni = allFakturyRaw.filter(
-    (f) => (localStavy[f.id] ?? f.stav) === 'nova' || (localStavy[f.id] ?? f.stav) === 'ke-schvaleni'
+    (f) => (localStavy[f.id] ?? f.stav) === 'nova' || (localStavy[f.id] ?? f.stav) === 'ceka-na-schvaleni'
   );
 
   function spustitSchvalovani() {
@@ -295,10 +315,10 @@ export default function FakturyView({ state, update }: Props) {
   }
   function handleOdlozit(id: string) {
     const prevStav = localStavy[id];
-    setLocalStavy((prev) => ({ ...prev, [id]: 'ke-schvaleni' }));
+    setLocalStavy((prev) => ({ ...prev, [id]: 'ceka-na-schvaleni' }));
     setLocalSchvalil((prev) => { const n = { ...prev }; delete n[id]; return n; });
     setLocalDatumSchvaleni((prev) => { const n = { ...prev }; delete n[id]; return n; });
-    const akce = prevStav === 'zastavena' ? 'Obnoveno ke schválení' : prevStav === 'zamitnuta' ? 'Přehodnoceno – vráceno ke schválení' : 'Odloženo ke schválení';
+    const akce = prevStav === 'pozastavena' ? 'Obnoveno ke schválení' : prevStav === 'zamitnuta' ? 'Přehodnoceno – vráceno ke schválení' : 'Odloženo ke schválení';
     pushAudit(id, { cas: now(), kdo: AKTUALNI_UZIVATEL.jmeno, akce, icon: 'solar:refresh-bold-duotone', color: '#0dcaf0', typ: 'stav' });
   }
 
@@ -342,15 +362,15 @@ export default function FakturyView({ state, update }: Props) {
 
   const allFaktury     = getFakturyForProvozovna(selectedProvozovna);
   const poSplatCnt     = allFaktury.filter(
-    (f) => f.stav !== 'zaplacena' && f.stav !== 'odeslana' && isPoSplatnosti(f.splatnost)
+    (f) => f.stav !== 'uhrazena' && f.stav !== 'v-bance' && isPoSplatnosti(f.splatnost)
   ).length;
   const neschvaleneCnt = allFaktury.filter(
-    (f) => f.stav === 'nova' || f.stav === 'ke-schvaleni'
+    (f) => f.stav === 'nova' || f.stav === 'ceka-na-schvaleni'
   ).length;
   const splatneVObdobi = allFaktury.filter(
     (f) =>
-      f.stav !== 'zaplacena' &&
-      f.stav !== 'odeslana' &&
+      f.stav !== 'uhrazena' &&
+      f.stav !== 'v-bance' &&
       isSplatneVObdobi(f.splatnost, periodOd, periodDo) &&
       !isPoSplatnosti(f.splatnost)
   ).length;
@@ -367,6 +387,9 @@ export default function FakturyView({ state, update }: Props) {
 
   return (
     <>
+      {/* Phase 8 (zápis 19. 6. 2026) — viewMode přepíná: list ↔ formulář pro Novou fakturu / Novou proformu (samostatné podstránky, ne modaly) */}
+      {viewMode === 'list' && (
+      <>
       {/* ACTION BAR – SOURCE: Larkon .page-title-box (title odstraněn, zobrazen v topbaru) */}
       {/* Layout: levá skupina (Období) + pravá skupina (akční tlačítka) — wrap-row na úzkých */}
       <div className="page-title-box">
@@ -401,11 +424,19 @@ export default function FakturyView({ state, update }: Props) {
                 Spustit schvalování ({keSchvaleni.length})
               </button>
             )}
-            <button className="btn btn-light btn-sm" onClick={() => {
+            <button className="btn btn-light btn-sm d-flex align-items-center gap-1" onClick={() => {
               setNovaFa((f) => ({ ...f, provozovna: selectedProvozovna === 'all' ? 'cg-brno' : selectedProvozovna }));
               setShowNovaFaktura(true);
             }}>
+              <iconify-icon icon="solar:add-square-bold-duotone" />
               Nová faktura
+            </button>
+            <button className="btn btn-outline-info btn-sm d-flex align-items-center gap-1" onClick={() => {
+              setNovaProf((f) => ({ ...f, provozovna: selectedProvozovna === 'all' ? 'cg-brno' : selectedProvozovna }));
+              setShowNovaProforma(true);
+            }} title="Zálohová (proforma) faktura — bude započtena při finální fakturaci">
+              <iconify-icon icon="solar:wallet-money-bold-duotone" />
+              Nová proforma
             </button>
             <button
               className="btn btn-primary btn-sm"
@@ -448,7 +479,7 @@ export default function FakturyView({ state, update }: Props) {
               <span className="flex-grow-1">
                 <strong>{neschvaleneCnt} faktur čeká na schválení</strong> – nemohou být odeslány k platbě
               </span>
-              <span className="alert-link fw-semibold text-nowrap ms-auto" style={{ cursor: 'pointer' }} onClick={() => setStavFilters(new Set(['nova', 'ke-schvaleni']))}>
+              <span className="alert-link fw-semibold text-nowrap ms-auto" style={{ cursor: 'pointer' }} onClick={() => setStavFilters(new Set(['nova', 'ceka-na-schvaleni']))}>
                 Schválit →
               </span>
             </div>
@@ -816,7 +847,7 @@ export default function FakturyView({ state, update }: Props) {
             showExtraCols={false}
             showMatching={true}
             tableTitle="Přehled faktur"
-            showZaplacene={stavFilters.has('zaplacena')}
+            showZaplacene={stavFilters.has('uhrazena')}
             selectedRowId={drawerFakturaId}
             search={search}
             onRowClick={(id) => {
@@ -913,20 +944,32 @@ export default function FakturyView({ state, update }: Props) {
         </div>
       )}
 
-      {/* Modal – Nová faktura */}
+      </>
+      )}
+
+      {/* Phase 8 (zápis 19. 6. 2026) — Podstránka: Nová faktura (full-page, ne modal) */}
       {showNovaFaktura && (
         <>
-          <div className="modal-backdrop fade show" style={{ zIndex: 200 }} onClick={() => setShowNovaFaktura(false)} />
-          <div className="modal show d-block" style={{ zIndex: 300 }} tabIndex={-1}>
-            <div className="modal-dialog modal-lg">
-              <div className="modal-content">
+          <div className="page-title-box">
+            <div className="d-flex align-items-center justify-content-between flex-wrap gap-2">
+              <div className="d-flex align-items-center gap-2">
+                <button
+                  className="btn btn-light btn-sm d-flex align-items-center gap-1"
+                  onClick={() => setShowNovaFaktura(false)}
+                  title="Zpět na seznam faktur"
+                >
+                  <iconify-icon icon="solar:alt-arrow-left-bold-duotone" style={{ fontSize: 16 }} />
+                  Zpět na seznam
+                </button>
+                <span className="text-muted">/</span>
+                <span className="fw-semibold">Nová faktura</span>
+              </div>
+            </div>
+          </div>
 
-                <div className="modal-header">
-                  <h5 className="modal-title">Nová faktura</h5>
-                  <button className="btn-close" onClick={() => setShowNovaFaktura(false)} />
-                </div>
+          <div className="card">
+            <div className="card-body">
 
-                <div className="modal-body">
                   <div className="row g-3">
                     {/* Typ dokladu */}
                     <div className="col-12">
@@ -1074,9 +1117,8 @@ export default function FakturyView({ state, update }: Props) {
                       </div>
                     </div>
                   </div>
-                </div>
 
-                <div className="modal-footer">
+                <div className="d-flex justify-content-end gap-2 mt-3 pt-3 border-top">
                   <button className="btn btn-light btn-sm" onClick={() => setShowNovaFaktura(false)}>
                     Zrušit
                   </button>
@@ -1089,7 +1131,147 @@ export default function FakturyView({ state, update }: Props) {
                   </button>
                 </div>
 
+            </div>
+          </div>
+        </>
+      )}
+
+      {/* Phase 8 (zápis 19. 6. 2026) — Podstránka: Nová proforma (zálohová) faktura (full-page, ne modal) */}
+      {showNovaProforma && (
+        <>
+          <div className="page-title-box">
+            <div className="d-flex align-items-center justify-content-between flex-wrap gap-2">
+              <div className="d-flex align-items-center gap-2">
+                <button
+                  className="btn btn-light btn-sm d-flex align-items-center gap-1"
+                  onClick={() => setShowNovaProforma(false)}
+                  title="Zpět na seznam faktur"
+                >
+                  <iconify-icon icon="solar:alt-arrow-left-bold-duotone" style={{ fontSize: 16 }} />
+                  Zpět na seznam
+                </button>
+                <span className="text-muted">/</span>
+                <span className="fw-semibold d-flex align-items-center gap-1">
+                  <iconify-icon icon="solar:wallet-money-bold-duotone" style={{ fontSize: 18, color: '#0dcaf0' }} />
+                  Nová proforma (zálohová) faktura
+                </span>
               </div>
+            </div>
+          </div>
+
+          <div className="card">
+            <div className="card-body">
+
+                  <div className="alert alert-info py-2 mb-3 fs-12">
+                    <iconify-icon icon="solar:info-circle-bold-duotone" className="me-1" />
+                    <strong>Proforma / zálohová faktura</strong> — záloha bude započtena při finální fakturaci.
+                    Systém hlídá navázání na finální doklad.
+                  </div>
+                  <div className="row g-3">
+                    <div className="col-md-6">
+                      <label className="form-label fs-12 fw-semibold">Typ dokladu</label>
+                      <div className="d-flex gap-3 pt-1">
+                        {(['prijata', 'vydana'] as TypDokladu[]).map((t) => (
+                          <label key={t} className="d-flex align-items-center gap-1">
+                            <input type="radio"
+                              checked={novaProf.typDokladu === t}
+                              onChange={() => setNovaProf((f) => ({ ...f, typDokladu: t }))} />
+                            <span className="fs-13">{t === 'prijata' ? 'Přijatá' : 'Vydaná'}</span>
+                          </label>
+                        ))}
+                      </div>
+                    </div>
+                    <div className="col-md-6">
+                      <label className="form-label fs-12 fw-semibold">Provozovna *</label>
+                      <select className="form-select form-select-sm" value={novaProf.provozovna}
+                        onChange={(e) => setNovaProf((f) => ({ ...f, provozovna: e.target.value }))}>
+                        {PROVOZOVNY.filter((p) => p.status === 'active').map((p) => (
+                          <option key={p.id} value={p.id}>{p.name}</option>
+                        ))}
+                      </select>
+                    </div>
+                    <div className="col-md-6">
+                      <label className="form-label fs-12 fw-semibold">
+                        {novaProf.typDokladu === 'prijata' ? 'Dodavatel *' : 'Odběratel *'}
+                      </label>
+                      <input type="text" className="form-control form-control-sm"
+                        placeholder="Název firmy"
+                        value={novaProf.dodavatel}
+                        onChange={(e) => setNovaProf((f) => ({ ...f, dodavatel: e.target.value }))} />
+                    </div>
+                    <div className="col-md-6">
+                      <label className="form-label fs-12 fw-semibold">Číslo proformy *</label>
+                      <input type="text" className="form-control form-control-sm czk-num"
+                        placeholder="např. ZAL-2026-0001"
+                        value={novaProf.cislo}
+                        onChange={(e) => setNovaProf((f) => ({ ...f, cislo: e.target.value }))} />
+                    </div>
+                    <div className="col-md-4">
+                      <label className="form-label fs-12 fw-semibold">Datum vystavení *</label>
+                      <input type="date" className="form-control form-control-sm"
+                        value={novaProf.datum}
+                        onChange={(e) => setNovaProf((f) => ({ ...f, datum: e.target.value }))} />
+                    </div>
+                    <div className="col-md-4">
+                      <label className="form-label fs-12 fw-semibold">Splatnost *</label>
+                      <input type="date" className="form-control form-control-sm"
+                        value={novaProf.splatnost}
+                        onChange={(e) => setNovaProf((f) => ({ ...f, splatnost: e.target.value }))} />
+                    </div>
+                    <div className="col-md-4">
+                      <label className="form-label fs-12 fw-semibold">Záloha (Kč) *</label>
+                      <input type="number" className="form-control form-control-sm czk-num"
+                        placeholder="0"
+                        value={novaProf.castka}
+                        onChange={(e) => setNovaProf((f) => ({ ...f, castka: e.target.value }))} />
+                    </div>
+                    <div className="col-12">
+                      <label className="form-label fs-12 fw-semibold">Kategorie</label>
+                      <select className="form-select form-select-sm" value={novaProf.kategorie}
+                        onChange={(e) => setNovaProf((f) => ({ ...f, kategorie: e.target.value as FakturaKategorie }))}>
+                        <option value="zbozi">Zboží</option>
+                        <option value="sluzby">Služby</option>
+                        <option value="najem">Nájem</option>
+                        <option value="energie">Energie</option>
+                        <option value="ostatni">Ostatní</option>
+                      </select>
+                    </div>
+                    <div className="col-12">
+                      <label className="form-label fs-12 fw-semibold">Navázání na finální fakturu (volitelné)</label>
+                      <input type="text" className="form-control form-control-sm czk-num"
+                        placeholder="ID nebo číslo finální faktury (pokud už víte)"
+                        value={novaProf.spojenaSId}
+                        onChange={(e) => setNovaProf((f) => ({ ...f, spojenaSId: e.target.value }))} />
+                      <div className="text-muted fs-11 mt-1">
+                        Pokud necháte prázdné, systém vás upozorní při finální fakturaci od stejného dodavatele.
+                      </div>
+                    </div>
+                    <div className="col-12">
+                      <label className="form-label fs-12 fw-semibold">Poznámka</label>
+                      <textarea className="form-control form-control-sm" rows={2}
+                        placeholder="Volitelný komentář"
+                        value={novaProf.poznamka}
+                        onChange={(e) => setNovaProf((f) => ({ ...f, poznamka: e.target.value }))} />
+                    </div>
+                    <div className="col-12">
+                      <label className="form-label fs-12 fw-semibold">Přiložit dokument (PDF)</label>
+                      <input type="file" className="form-control form-control-sm" accept=".pdf,.png,.jpg" />
+                      <div className="text-muted fs-11 mt-1">
+                        <iconify-icon icon="solar:info-circle-bold-duotone" className="me-1" />
+                        Pokud necháte prázdné, systém upozorní při uložení (per zápis 10. 6. 2026).
+                      </div>
+                    </div>
+                  </div>
+
+                <div className="d-flex justify-content-end gap-2 mt-3 pt-3 border-top">
+                  <button className="btn btn-light btn-sm" onClick={() => setShowNovaProforma(false)}>
+                    Zrušit
+                  </button>
+                  <button className="btn btn-info btn-sm" onClick={() => setShowNovaProforma(false)}>
+                    <iconify-icon icon="solar:diskette-bold-duotone" className="me-1" />
+                    Uložit proformu
+                  </button>
+                </div>
             </div>
           </div>
         </>

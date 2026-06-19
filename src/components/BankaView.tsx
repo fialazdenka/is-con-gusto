@@ -28,6 +28,8 @@ import {
   type TransNote,
   type TransDelegace,
 } from '../bankaData';
+import { FAKTURY_PLATBY } from '../platbyData';
+import { UVERY } from '../uveryData';
 import { fCzk, fDate, PROVOZOVNY } from '../data';
 
 interface Props {
@@ -346,48 +348,111 @@ function WorkQueue({ transakce, ucty, onSelectQueue, activeQueue }: {
 }
 
 // ── Top summary banner (Zůstatek celkem) ───────────────────────
-function TopSummary({ ucty }: { ucty: BankaUcet[] }) {
+// Phase 7 (zápis 12. 6. 2026) — zjednodušený přehled:
+//  - 2 ukazatele (nespárované / ručně spárované)
+//  - Zůstatek CZK + EUR s rozbalovacím seznamem účtů
+function SimpleMetrics({ transakce }: { transakce: BankaTransakce[] }) {
+  const nespCount    = transakce.filter((t) => t.stav === 'unpaired').length;
+  const rucneCount   = transakce.filter((t) => t.stav === 'manual-paired').length;
+  const tiles = [
+    { label: 'Nespárované platby',     value: nespCount,  icon: 'solar:danger-triangle-bold-duotone', color: nespCount > 0 ? '#ffc107' : '#9097a7', bg: '#fff8e6' },
+    { label: 'Ručně spárované platby', value: rucneCount, icon: 'solar:hand-stars-bold-duotone',      color: '#6c757d', bg: '#f1f3f5' },
+  ];
+  return (
+    <div className="row g-2 mb-3">
+      {tiles.map((t) => (
+        <div key={t.label} className="col-12 col-md-6">
+          <div className="card h-100" style={{ borderTop: `3px solid ${t.color}` }}>
+            <div className="card-body py-3 d-flex align-items-center gap-3">
+              <span className="d-flex align-items-center justify-content-center rounded-circle"
+                style={{ width: 44, height: 44, background: t.bg, color: t.color, flexShrink: 0 }}>
+                <iconify-icon icon={t.icon} style={{ fontSize: 24 }} />
+              </span>
+              <div className="min-width-0">
+                <div className="text-muted fs-12 text-uppercase fw-semibold" style={{ letterSpacing: '0.3px' }}>{t.label}</div>
+                <div className="fw-bold czk-num" style={{ fontSize: 24, lineHeight: 1.1 }}>{t.value}</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+// Zůstatek CZK / EUR + rozbalovací seznam jednotlivých účtů s čísly a zůstatky
+function BalanceOverview({ ucty }: { ucty: BankaUcet[] }) {
+  const [open, setOpen] = useState(false);
   const czk = sumForMena(ucty, 'CZK');
   const eur = sumForMena(ucty, 'EUR');
-  // Trend vs minulý týden (mock — celkem +2.4 %)
-  const trendPct = 2.4;
+  const czkUcty = ucty.filter((u) => u.mena === 'CZK');
+  const eurUcty = ucty.filter((u) => u.mena === 'EUR');
   return (
     <div className="card mb-3" style={{ borderTop: '3px solid var(--prov-color, #c9911a)', background: '#f1faf3' }}>
       <div className="card-body py-3">
-        <div className="d-flex align-items-center justify-content-between flex-wrap gap-3">
-          <div>
-            <div className="text-muted fs-12 text-uppercase fw-semibold mb-1">Zůstatek celkem</div>
+        {/* Hlavička — 2 měny vedle sebe */}
+        <div className="row g-3 align-items-end">
+          <div className="col-12 col-md-6">
+            <div className="text-muted fs-12 text-uppercase fw-semibold mb-1">Zůstatek (CZK)</div>
             <div className="d-flex align-items-baseline gap-3 flex-wrap">
-              <div>
-                <span className="czk-num fw-bold" style={{ fontSize: 22 }}>{fCzk(czk.ucetni)}</span>
-                <span className="text-muted ms-2 fs-13">účetní bilance</span>
-              </div>
-              {eur.ucetni > 0 && (
-                <div className="text-muted">
-                  + <span className="czk-num fw-semibold">{eur.ucetni.toFixed(2)} €</span>
-                </div>
-              )}
+              <span className="czk-num fw-bold" style={{ fontSize: 26, whiteSpace: 'nowrap' }}>{fCzk(czk.ucetni)}</span>
+              <span className="text-muted fs-13" style={{ whiteSpace: 'nowrap' }}>· dostupné <strong className="czk-num text-success">{fCzk(czk.dostupne)}</strong></span>
             </div>
-            <div className="d-flex align-items-baseline gap-3 flex-wrap mt-1">
-              <div>
-                <span className="czk-num fw-semibold" style={{ fontSize: 16, color: '#198754' }}>{fCzk(czk.dostupne)}</span>
-                <span className="text-muted ms-2 fs-12">dostupní prostředky</span>
-              </div>
-              {eur.dostupne > 0 && (
-                <div className="text-muted fs-13">
-                  + <span className="czk-num">{eur.dostupne.toFixed(2)} €</span>
-                </div>
-              )}
-            </div>
+            <div className="text-muted fs-12">{czkUcty.length} {czkUcty.length === 1 ? 'účet' : czkUcty.length < 5 ? 'účty' : 'účtů'}</div>
           </div>
-          <div className="d-flex flex-column gap-1 align-items-end">
-            <span className={`badge ${trendPct >= 0 ? 'bg-success-subtle text-success' : 'bg-danger-subtle text-danger'} fs-12`}>
-              <iconify-icon icon={trendPct >= 0 ? 'solar:arrow-up-bold' : 'solar:arrow-down-bold'} className="me-1" />
-              {trendPct >= 0 ? '+' : ''}{trendPct.toFixed(1).replace('.', ',')} % vs. minulý týden
-            </span>
-            <span className="text-muted fs-12">{ucty.length} {ucty.length === 1 ? 'účet' : ucty.length < 5 ? 'účty' : 'účtů'}</span>
+          <div className="col-12 col-md-6">
+            <div className="text-muted fs-12 text-uppercase fw-semibold mb-1">Zůstatek (EUR)</div>
+            <div className="d-flex align-items-baseline gap-3 flex-wrap">
+              <span className="czk-num fw-bold" style={{ fontSize: 26, whiteSpace: 'nowrap' }}>{eur.ucetni.toFixed(2)} €</span>
+              <span className="text-muted fs-13" style={{ whiteSpace: 'nowrap' }}>· dostupné <strong className="czk-num text-success">{eur.dostupne.toFixed(2)} €</strong></span>
+            </div>
+            <div className="text-muted fs-12">{eurUcty.length} {eurUcty.length === 1 ? 'účet' : eurUcty.length < 5 ? 'účty' : 'účtů'}</div>
           </div>
         </div>
+
+        {/* Rozbalovací seznam účtů */}
+        <button className="btn btn-link btn-sm p-0 mt-2 text-muted d-flex align-items-center gap-1"
+          style={{ fontSize: 12, textDecoration: 'none' }}
+          onClick={() => setOpen((v) => !v)}>
+          <iconify-icon icon={open ? 'solar:alt-arrow-down-bold' : 'solar:alt-arrow-right-bold'} />
+          {open ? 'Skrýt seznam účtů' : `Zobrazit seznam účtů (${ucty.length})`}
+        </button>
+
+        {open && (
+          <div className="mt-2 border-top pt-2">
+            <div className="table-responsive">
+              <table className="table table-sm mb-0" style={{ fontSize: 12 }}>
+                <thead className="table-light">
+                  <tr>
+                    <th>Účet</th>
+                    <th>Číslo / IBAN</th>
+                    <th>Banka</th>
+                    <th className="text-end">Účetní</th>
+                    <th className="text-end">Dostupné</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {ucty.map((u) => (
+                    <tr key={u.id}>
+                      <td>
+                        <div className="fw-semibold">{u.nazev}</div>
+                        <span className="badge bg-light text-dark border" style={{ fontSize: 10 }}>{u.mena}</span>
+                      </td>
+                      <td className="czk-num text-muted" style={{ fontSize: 11 }}>{u.iban}</td>
+                      <td className="text-muted">{u.banka}</td>
+                      <td className="text-end czk-num">
+                        {u.mena === 'EUR' ? `${u.ucetniBalance.toFixed(2)} €` : fCzk(u.ucetniBalance)}
+                      </td>
+                      <td className="text-end czk-num fw-semibold text-success">
+                        {u.mena === 'EUR' ? `${u.dostupniProstredky.toFixed(2)} €` : fCzk(u.dostupniProstredky)}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
@@ -712,7 +777,7 @@ function TransakceSidePanel({ transakce, ucty, onClose, onPatch, onAudit, onNote
   const [noteInput, setNoteInput] = useState('');
   const [manualMatchInvoice, setManualMatchInvoice] = useState('');
   // Sjednocený dropdown „Označit jako…": null / 'outside' / 'no-invoice'
-  const [oznacitMode, setOznacitMode] = useState<'outside' | 'no-invoice' | null>(null);
+  const [oznacitMode, setOznacitMode] = useState<'outside' | 'no-invoice' | 'loan-payment' | null>(null);
   const [oznacitReason, setOznacitReason] = useState('');
   const [oznacitNote, setOznacitNote] = useState('');
   const [activityCollapsed, setActivityCollapsed] = useState(false);
@@ -940,8 +1005,11 @@ function TransakceSidePanel({ transakce, ucty, onClose, onPatch, onAudit, onNote
     <div style={{
       position: 'sticky',
       top: 'calc(var(--bs-topbar-height, 100px) + 16px)',
-      maxHeight: 'calc(100vh - var(--bs-topbar-height, 100px) - 32px)',
+      // Fixní výška (ne max) — vždy bude vlastní scrollbar uvnitř panelu,
+      // wheel events nesplývají s page scrollem (overscrollBehavior: contain).
+      height: 'calc(100vh - var(--bs-topbar-height, 100px) - 32px)',
       overflowY: 'auto',
+      overscrollBehavior: 'contain',
     }}>
       <div className="card">
         {/* ── HEADER (vždy viditelný) — typ, stav, dodavatel, částka + datum ── */}
@@ -1236,7 +1304,34 @@ function TransakceSidePanel({ transakce, ucty, onClose, onPatch, onAudit, onNote
                 {oznacitMode === null ? (
                   <div>
                     <div className="text-muted fs-11 mb-1">Nelze napárovat?</div>
-                    <div className="d-flex gap-2">
+                    <div className="d-flex gap-2 flex-wrap">
+                      <button
+                        className="btn btn-outline-danger btn-sm flex-grow-1"
+                        title="Phase 7 (zápis 12. 6. 2026) — okamžitě označí jako bankovní poplatek, přidá do sekce Poplatky"
+                        onClick={() => {
+                          // Rychlá akce — bez výběru důvodu, předvyplněno
+                          onPatch(transakce.id, {
+                            stav: 'manual-paired',
+                            manualReason: 'Bankovní poplatek',
+                            manualNote: 'Zaevidováno jako poplatek z nespárované transakce',
+                          });
+                          onAudit(transakce.id, {
+                            cas: nowIso(), kdo: me,
+                            akce: 'Označeno jako bankovní poplatek (auto-zařazení do Poplatků)',
+                            icon: 'solar:tag-price-bold-duotone', color: '#dc3545',
+                          });
+                          setFeedback('Označeno jako poplatek + přidáno do Poplatků');
+                        }}>
+                        <iconify-icon icon="solar:tag-price-bold-duotone" className="me-1" />
+                        Označit jako poplatek
+                      </button>
+                      <button
+                        className="btn btn-outline-info btn-sm flex-grow-1"
+                        title="Phase 7 (zápis 12. 6. 2026) — přiřadit transakci k existujícímu úvěru jako splátka"
+                        onClick={() => { setOznacitMode('loan-payment'); setOznacitReason(''); }}>
+                        <iconify-icon icon="solar:hand-money-bold-duotone" className="me-1" />
+                        Splátka úvěru
+                      </button>
                       <button
                         className="btn btn-outline-secondary btn-sm flex-grow-1"
                         onClick={() => { setOznacitMode('outside'); setOznacitReason(''); setOznacitNote(''); }}>
@@ -1248,6 +1343,57 @@ function TransakceSidePanel({ transakce, ucty, onClose, onPatch, onAudit, onNote
                         onClick={() => { setOznacitMode('no-invoice'); setOznacitReason(''); }}>
                         <iconify-icon icon="solar:close-circle-bold-duotone" className="me-1" />
                         Bez faktury
+                      </button>
+                    </div>
+                  </div>
+                ) : oznacitMode === 'loan-payment' ? (
+                  <div className="border rounded p-2" style={{ background: 'white' }}>
+                    <div className="fw-semibold fs-12 mb-2">
+                      <iconify-icon icon="solar:hand-money-bold-duotone" className="me-1" />
+                      Označit jako splátku úvěru
+                    </div>
+                    <select
+                      className="form-select form-select-sm mb-2"
+                      style={{ fontSize: 12 }}
+                      value={oznacitReason}
+                      onChange={(e) => setOznacitReason(e.target.value)}>
+                      <option value="">— vyberte úvěr —</option>
+                      {UVERY.filter((u) => u.stav === 'aktivni').map((u) => (
+                        <option key={u.id} value={u.id}>
+                          {u.nazev} · {u.banka} · {fCzk(u.splatkaMesicni)}/měs
+                        </option>
+                      ))}
+                    </select>
+                    <div className="text-muted fs-11 mb-2">
+                      Transakce bude označena jako splátka tohoto úvěru. V sekci Úvěry se v kalendáři spáruje s odpovídající splátkou.
+                    </div>
+                    <div className="d-flex gap-1">
+                      <button
+                        className="btn btn-info btn-sm flex-grow-1"
+                        disabled={!oznacitReason}
+                        onClick={() => {
+                          const uver = UVERY.find((u) => u.id === oznacitReason);
+                          if (!uver) return;
+                          onPatch(transakce.id, {
+                            stav: 'manual-paired',
+                            manualReason: `Splátka úvěru: ${uver.nazev}`,
+                            manualNote: `Spárováno s úvěrem ${uver.cisloSmlouvy}`,
+                            parovanaSId: uver.id,
+                          });
+                          onAudit(transakce.id, {
+                            cas: nowIso(), kdo: me,
+                            akce: `Označeno jako splátka úvěru „${uver.nazev}"`,
+                            icon: 'solar:hand-money-bold-duotone', color: '#0d6efd',
+                          });
+                          setFeedback(`Označeno jako splátka úvěru „${uver.nazev}"`);
+                          setOznacitMode(null);
+                          setOznacitReason('');
+                        }}>
+                        <iconify-icon icon="solar:check-circle-bold-duotone" className="me-1" />
+                        Potvrdit
+                      </button>
+                      <button className="btn btn-light btn-sm" onClick={() => { setOznacitMode(null); setOznacitReason(''); }}>
+                        Zrušit
                       </button>
                     </div>
                   </div>
@@ -1415,7 +1561,7 @@ function TransakceTable({
   stavFilters, toggleStav, typFilter, setTypFilter, ucetFilter, setUcetFilter,
   castkaOd, setCastkaOd, castkaDo, setCastkaDo,
   datumOd, setDatumOd, datumDo, setDatumDo,
-  onClearFilters, activeQueueLabel,
+  onClearFilters, activeQueueLabel, onNewPayment,
 }: {
   transakce: BankaTransakce[];
   ucty: BankaUcet[];
@@ -1439,6 +1585,7 @@ function TransakceTable({
   setDatumDo: (s: string) => void;
   onClearFilters: () => void;
   activeQueueLabel?: string | null;   // pokud je aktivní filtr z Work Queue
+  onNewPayment: () => void;           // Phase 7 — „Nová platba" CTA
 }) {
   // Per zápis 4. 6. 2026 — pouze 3 hlavní stavy
   const STAV_CHIPS: { value: BankaTransStav; label: string }[] = [
@@ -1449,10 +1596,17 @@ function TransakceTable({
   return (
     <div className="card">
       <div className="card-header">
-        <h5 className="card-title mb-2">
-          Seznam transakcí
-          <small className="text-muted fw-normal ms-2 fs-13">{transakce.length} {transakce.length === 1 ? 'transakce' : 'transakcí'}</small>
-        </h5>
+        <div className="d-flex align-items-center gap-2 flex-wrap mb-2">
+          <h5 className="card-title mb-0">
+            Seznam transakcí
+            <small className="text-muted fw-normal ms-2 fs-13">{transakce.length} {transakce.length === 1 ? 'transakce' : 'transakcí'}</small>
+          </h5>
+          <button className="btn btn-primary btn-sm ms-auto d-flex align-items-center gap-1" onClick={onNewPayment}
+            title="Zadat platbu nevázanou na fakturu (daně, poplatky, ad-hoc)">
+            <iconify-icon icon="solar:add-square-bold-duotone" />
+            Nová platba
+          </button>
+        </div>
         {(() => {
           const hasAnyFilter = !!(search || castkaOd || castkaDo || datumOd || datumDo || typFilter !== 'all' || ucetFilter !== 'all' || stavFilters.size > 0 || activeQueueLabel);
           return (
@@ -1547,23 +1701,21 @@ function TransakceTable({
         <table className="table table-hover table-centered table-nowrap mb-0" style={{ fontSize: 12 }}>
           <thead className="table-light">
             <tr>
-              <th>Typ</th>
               <th>Datum</th>
-              <th>Firma / Poznámka</th>
+              <th>Typ</th>
+              <th>Protistrana</th>
+              <th>VS</th>
               <th>Účet</th>
-              <th>Protiúčet</th>
-              <th>Provoz</th>
               <th className="text-end">Částka</th>
               <th>Stav</th>
             </tr>
           </thead>
           <tbody>
             {transakce.length === 0 && (
-              <tr><td colSpan={8} className="text-center py-4 text-muted">Žádné transakce nesplňují filtr</td></tr>
+              <tr><td colSpan={7} className="text-center py-4 text-muted">Žádné transakce nesplňují filtr</td></tr>
             )}
             {transakce.map((t) => {
               const ucet = ucty.find((u) => u.id === t.ucetId);
-              const provs = ucet ? getProvozovnyForUcet(ucet) : [];
               const isActive = t.id === selectedRowId;
               const stavMeta = TRANS_STAV_META[t.stav];
               // Phase 2.3 — overdue má červený levý okraj, delegace ukazuje avatar
@@ -1578,89 +1730,82 @@ function TransakceTable({
                       const row = e.currentTarget;
                       const wasSelected = isActive;
                       onRowClick(t.id);
-                      // Když uživatel klikne na nový řádek (otevírá panel), nech řádek vycentrovaný
-                      // ve viewportu — sticky panel pak bude vedle něj, ne kdesi nahoře.
+                      // Per zápis 12. 6. 2026: kliknutý řádek se zarovná s horní hranou
+                      // sticky panelu vpravo (tj. jen pod topbar). Nevycentruje doprostřed.
                       if (!wasSelected) {
                         requestAnimationFrame(() => {
-                          row.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                          const rect = row.getBoundingClientRect();
+                          const topbarH = parseFloat(
+                            getComputedStyle(document.documentElement).getPropertyValue('--bs-topbar-height')
+                          ) || 100;
+                          const targetY = window.scrollY + rect.top - topbarH - 16;
+                          window.scrollTo({ top: Math.max(0, targetY), behavior: 'smooth' });
                         });
                       }
                     }}>
+                  {/* Datum */}
                   <td>
-                    <iconify-icon icon={t.typ === 'prichoz' ? 'solar:arrow-down-bold' : 'solar:arrow-up-bold'}
-                      style={{ fontSize: 14, color: t.typ === 'prichoz' ? '#198754' : '#dc3545' }} />
-                  </td>
-                  <td>
-                    <div>{fDate(t.datum.slice(0, 10))}</div>
+                    <div className="fw-semibold czk-num">{fDate(t.datum.slice(0, 10))}</div>
                     <div className="text-muted" style={{ fontSize: 10 }}>{t.datum.slice(11, 16)}</div>
                   </td>
+                  {/* Typ — šipka + label */}
                   <td>
-                    <div className="d-flex align-items-center gap-2 flex-wrap">
-                      <div className="fw-semibold">{t.firma}</div>
-                      {isInternalTransfer(t, BANKA_UCTY) && (
-                        <span className="badge bg-info-subtle text-info" style={{ fontSize: 9 }} title="Interní převod mezi firemními účty">
-                          <iconify-icon icon="solar:transfer-horizontal-bold-duotone" className="me-1" style={{ fontSize: 9 }} />
-                          Mezi-účetní
-                        </span>
-                      )}
-                      {t.isOverdueAtBank && (
-                        <span className="badge bg-danger-subtle text-danger" style={{ fontSize: 9 }} title={`Splatnost ${t.splatnost ?? '—'}`}>
-                          <iconify-icon icon="solar:bell-bing-bold-duotone" className="me-1" style={{ fontSize: 9 }} />
-                          V bance neuhrazená
-                        </span>
-                      )}
-                      {t.delegatedTo && (
-                        <span
-                          className="rounded-circle d-inline-flex align-items-center justify-content-center fw-bold text-white"
-                          style={{ width: 18, height: 18, fontSize: 9, background: BANKA_USERS.find((u) => u.jmeno === t.delegatedTo?.user)?.color ?? '#6c757d' }}
-                          title={`Přiděleno: ${t.delegatedTo.user} (${t.delegatedTo.role})`}
-                        >
-                          {BANKA_USERS.find((u) => u.jmeno === t.delegatedTo?.user)?.initials ?? '?'}
-                        </span>
-                      )}
-                    </div>
-                    <div className="text-muted" style={{ fontSize: 11 }}>
-                      {t.poznamka}{t.vs && <span className="ms-2 czk-num">· VS {t.vs}</span>}
-                    </div>
+                    <span className={`badge ${t.typ === 'prichoz' ? 'bg-success-subtle text-success' : 'bg-warning-subtle text-warning'} d-inline-flex align-items-center gap-1`} style={{ fontSize: 10 }}>
+                      <iconify-icon icon={t.typ === 'prichoz' ? 'solar:arrow-down-bold' : 'solar:arrow-up-bold'} style={{ fontSize: 11 }} />
+                      {t.typ === 'prichoz' ? 'Příchozí' : 'Odchozí'}
+                    </span>
+                    {/* Vedlejší badge (interní převod / overdue / delegace) */}
+                    {(isInternalTransfer(t, BANKA_UCTY) || t.isOverdueAtBank || t.delegatedTo) && (
+                      <div className="d-flex align-items-center gap-1 mt-1 flex-wrap">
+                        {isInternalTransfer(t, BANKA_UCTY) && (
+                          <span className="badge bg-info-subtle text-info" style={{ fontSize: 9 }} title="Interní převod mezi firemními účty">
+                            <iconify-icon icon="solar:transfer-horizontal-bold-duotone" style={{ fontSize: 9 }} />
+                          </span>
+                        )}
+                        {t.isOverdueAtBank && (
+                          <span className="badge bg-danger-subtle text-danger" style={{ fontSize: 9 }} title={`V bance neuhrazená · splatnost ${t.splatnost ?? '—'}`}>
+                            <iconify-icon icon="solar:bell-bing-bold-duotone" style={{ fontSize: 9 }} />
+                          </span>
+                        )}
+                        {t.delegatedTo && (
+                          <span
+                            className="rounded-circle d-inline-flex align-items-center justify-content-center fw-bold text-white"
+                            style={{ width: 16, height: 16, fontSize: 8, background: BANKA_USERS.find((u) => u.jmeno === t.delegatedTo?.user)?.color ?? '#6c757d' }}
+                            title={`Přiděleno: ${t.delegatedTo.user} (${t.delegatedTo.role})`}
+                          >
+                            {BANKA_USERS.find((u) => u.jmeno === t.delegatedTo?.user)?.initials ?? '?'}
+                          </span>
+                        )}
+                      </div>
+                    )}
                   </td>
+                  {/* Protistrana (firma + protiÚčet) */}
+                  <td style={{ maxWidth: 240 }}>
+                    <div className="fw-semibold text-truncate" title={t.firma}>{t.firma}</div>
+                    {t.protiUcet && (
+                      <div className="text-muted czk-num text-truncate" style={{ fontSize: 10 }} title={t.protiUcet}>
+                        {t.protiUcet}
+                      </div>
+                    )}
+                  </td>
+                  {/* VS */}
+                  <td>
+                    {t.vs ? (
+                      <span className="czk-num">{t.vs}</span>
+                    ) : (
+                      <span className="text-muted">—</span>
+                    )}
+                  </td>
+                  {/* Účet */}
                   <td>
                     <div className="fw-semibold">{ucet?.nazev}</div>
                     <div className="text-muted czk-num" style={{ fontSize: 10 }}>{ucet?.iban.slice(0, 12)}…</div>
                   </td>
-                  <td>
-                    {t.protiUcet ? (
-                      <div className="czk-num" style={{ fontSize: 11 }} title={t.protiUcet}>
-                        {t.protiUcet.length > 18 ? t.protiUcet.slice(0, 18) + '…' : t.protiUcet}
-                      </div>
-                    ) : (
-                      <span className="text-muted">—</span>
-                    )}
-                  </td>
-                  <td style={{ maxWidth: 180 }}>
-                    {provs.length === 0 ? (
-                      <span className="text-muted">—</span>
-                    ) : provs.length <= 2 ? (
-                      <div className="d-flex gap-1 flex-wrap">
-                        {provs.map((p) => (
-                          <span key={p.id} className="badge bg-light text-dark border d-inline-flex align-items-center gap-1"
-                                style={{ fontSize: 10 }}>
-                            <span className="rounded-circle" style={{ width: 6, height: 6, background: p.color, display: 'inline-block' }} />
-                            {p.shortName}
-                          </span>
-                        ))}
-                      </div>
-                    ) : (
-                      <span className="badge bg-light text-dark border d-inline-flex align-items-center gap-1"
-                            style={{ fontSize: 10, cursor: 'help' }}
-                            title={provs.map((p) => p.shortName).join(', ')}>
-                        <iconify-icon icon="solar:buildings-3-bold-duotone" style={{ fontSize: 11 }} />
-                        Více ({provs.length})
-                      </span>
-                    )}
-                  </td>
+                  {/* Částka */}
                   <td className={`text-end czk-num fw-bold ${t.castka < 0 ? 'text-danger' : 'text-success'}`}>
                     {ucet?.mena === 'EUR' ? `${t.castka.toFixed(2)} €` : fCzk(t.castka)}
                   </td>
+                  {/* Stav */}
                   <td>
                     <span className={`badge ${stavMeta.cls}`} style={{ fontSize: 10 }}>
                       <iconify-icon icon={stavMeta.icon} className="me-1" style={{ fontSize: 10 }} />
@@ -1792,6 +1937,246 @@ function PrevodModal({ ucty, prefilledTargetId, onClose, onSubmit }: {
 }
 
 // ── Modal: Přiřadit provoz ─────────────────────────────────────
+// Phase 7 (zápis 12. 6. 2026) — modal „Nová platba"
+// Pro platby nevázané na faktury (daně, poplatky), případně s přiřazením/nahráním faktury.
+function NovaPlatbaModal({ onClose, onSubmit }: {
+  onClose: () => void;
+  onSubmit: (t: BankaTransakce, fakturaInfo: { id?: string; nahranySoubor?: string }) => void;
+}) {
+  const [typ, setTyp]         = useState<'prichoz' | 'odchozi'>('odchozi');
+  // Vždy všechny účty — nezávisle na filtru provozovny
+  const ucty = BANKA_UCTY;
+  const [ucetId, setUcetId]   = useState(ucty[0]?.id ?? '');
+  const [datum, setDatum]     = useState('2026-06-18');
+  const [castka, setCastka]   = useState('');
+  const [firma, setFirma]     = useState('');
+  const [protiUcet, setProtiUcet] = useState('');
+  const [vs, setVs]           = useState('');
+  const [poznamka, setPoznamka] = useState('');
+  const [kategorie, setKategorie] = useState<'faktura' | 'dane' | 'poplatky' | 'jine'>('faktura');
+  // Phase 7 — nepovinné přiřazení provozovny ('' = globálně Con Gusto)
+  const [provozovnaId, setProvozovnaId] = useState('');
+
+  // Faktura — None / Assign existing / Upload new
+  const [fakturaMode, setFakturaMode] = useState<'none' | 'assign' | 'upload'>('none');
+  const [fakturaId,   setFakturaId]   = useState('');
+  const [fakturaFile, setFakturaFile] = useState<string | null>(null);
+
+  // Validace — co chybí
+  const castkaN = parseFloat(castka) || 0;
+  const missing: string[] = [];
+  if (!firma.trim())   missing.push('Protistrana');
+  if (castkaN <= 0)    missing.push('Částka');
+  if (!ucetId)         missing.push('Účet');
+  const canSubmit = missing.length === 0;
+
+  const handleSubmit = () => {
+    if (!canSubmit) return;
+    const signedCastka = typ === 'odchozi' ? -Math.abs(castkaN) : Math.abs(castkaN);
+    const newTrans: BankaTransakce = {
+      id: `tx-new-${Date.now()}`,
+      ucetId,
+      typ,
+      datum: `${datum}T${new Date().toTimeString().slice(0, 5)}:00`,
+      castka: signedCastka,
+      firma: firma.trim(),
+      poznamka: poznamka.trim()
+        || (kategorie === 'dane' ? 'Daň'
+          : kategorie === 'poplatky' ? 'Poplatek'
+          : kategorie === 'faktura' ? 'Platba k faktuře'
+          : 'Ad-hoc platba'),
+      vs: vs.trim() || undefined,
+      protiUcet: protiUcet.trim() || undefined,
+      // Pokud přiřazena faktura → stav „Spárováno" + reference, jinak „Spárováno ručně"
+      stav: fakturaMode === 'assign' && fakturaId ? 'paired' : 'manual-paired',
+      parovanaSId: fakturaMode === 'assign' && fakturaId ? fakturaId : undefined,
+      manualReason: kategorie === 'dane' ? 'Daň'
+                  : kategorie === 'poplatky' ? 'Bankovní poplatek'
+                  : kategorie === 'faktura' ? 'Platba k faktuře'
+                  : 'Ručně zadáno',
+      provozovnaId: provozovnaId || undefined,
+    };
+    onSubmit(newTrans, {
+      id: fakturaMode === 'assign' ? fakturaId : undefined,
+      nahranySoubor: fakturaMode === 'upload' && fakturaFile ? fakturaFile : undefined,
+    });
+  };
+
+  // Mock seznam faktur k přiřazení (jen nezaplacené)
+  const unpaidFaktury = FAKTURY_PLATBY.filter((f) =>
+    f.stav === 'schvalena' || f.stav === 'nova' || f.stav === 'ceka-na-schvaleni'
+  ).slice(0, 10);
+
+  return (
+    <>
+      <div className="modal-backdrop fade show" style={{ zIndex: 1050 }} onClick={onClose} />
+      <div className="modal fade show d-block" style={{ zIndex: 1060 }} tabIndex={-1} role="dialog">
+        <div className="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable" role="document">
+          <div className="modal-content">
+            <div className="modal-header">
+              <h5 className="modal-title d-flex align-items-center gap-2">
+                <iconify-icon icon="solar:add-square-bold-duotone" style={{ fontSize: 22 }} />
+                Nová platba
+              </h5>
+              <button type="button" className="btn-close" onClick={onClose} aria-label="Zavřít" />
+            </div>
+            <div className="modal-body">
+              <div className="row g-3">
+                {/* Základní info */}
+                <div className="col-md-6">
+                  <label className="form-label fs-12 fw-semibold">Typ *</label>
+                  <select className="form-select form-select-sm" value={typ} onChange={(e) => setTyp(e.target.value as 'prichoz' | 'odchozi')}>
+                    <option value="odchozi">Odchozí</option>
+                    <option value="prichoz">Příchozí</option>
+                  </select>
+                </div>
+                <div className="col-md-6">
+                  <label className="form-label fs-12 fw-semibold">Kategorie *</label>
+                  <select className="form-select form-select-sm" value={kategorie} onChange={(e) => setKategorie(e.target.value as 'faktura' | 'dane' | 'poplatky' | 'jine')}>
+                    <option value="faktura">Platba k faktuře</option>
+                    <option value="dane">Daň</option>
+                    <option value="poplatky">Poplatek</option>
+                    <option value="jine">Jiné</option>
+                  </select>
+                </div>
+                <div className="col-12">
+                  <label className="form-label fs-12 fw-semibold">Účet *</label>
+                  <select className="form-select form-select-sm" value={ucetId} onChange={(e) => setUcetId(e.target.value)}>
+                    {ucty.map((u) => (
+                      <option key={u.id} value={u.id}>{u.nazev} ({u.mena}) — {u.iban}</option>
+                    ))}
+                  </select>
+                </div>
+                <div className="col-12">
+                  <label className="form-label fs-12 fw-semibold">Provozovna (nepovinné)</label>
+                  <select className="form-select form-select-sm" value={provozovnaId} onChange={(e) => setProvozovnaId(e.target.value)}>
+                    <option value="">— Globálně (celé Con Gusto) —</option>
+                    {PROVOZOVNY.filter((p) => p.status === 'active').map((p) => (
+                      <option key={p.id} value={p.id}>{p.name}</option>
+                    ))}
+                  </select>
+                  <div className="text-muted fs-11 mt-1">
+                    Pokud platba není konkrétně provozovny, nech globálně.
+                  </div>
+                </div>
+                <div className="col-md-6">
+                  <label className="form-label fs-12 fw-semibold">Protistrana (firma) *</label>
+                  <input type="text" className="form-control form-control-sm"
+                    placeholder="např. Finanční úřad / Komerční banka"
+                    value={firma} onChange={(e) => setFirma(e.target.value)} />
+                </div>
+                <div className="col-md-6">
+                  <label className="form-label fs-12 fw-semibold">Číslo účtu protistrany</label>
+                  <input type="text" className="form-control form-control-sm czk-num"
+                    placeholder="např. 7704000/0710"
+                    value={protiUcet} onChange={(e) => setProtiUcet(e.target.value)} />
+                </div>
+                <div className="col-md-4">
+                  <label className="form-label fs-12 fw-semibold">Datum *</label>
+                  <input type="date" className="form-control form-control-sm"
+                    value={datum} onChange={(e) => setDatum(e.target.value)} />
+                </div>
+                <div className="col-md-4">
+                  <label className="form-label fs-12 fw-semibold">VS</label>
+                  <input type="text" className="form-control form-control-sm czk-num"
+                    value={vs} onChange={(e) => setVs(e.target.value)} />
+                </div>
+                <div className="col-md-4">
+                  <label className="form-label fs-12 fw-semibold">Částka (Kč) *</label>
+                  <input type="number" inputMode="numeric" className="form-control form-control-sm czk-num"
+                    placeholder="0" value={castka} onChange={(e) => setCastka(e.target.value)} />
+                </div>
+                <div className="col-12">
+                  <label className="form-label fs-12 fw-semibold">Poznámka</label>
+                  <input type="text" className="form-control form-control-sm"
+                    placeholder="Volitelný popis"
+                    value={poznamka} onChange={(e) => setPoznamka(e.target.value)} />
+                </div>
+
+                {/* ── Sekce Faktura ── */}
+                <div className="col-12 mt-2">
+                  <div className="text-muted fs-11 fw-semibold text-uppercase d-flex align-items-center gap-2"
+                    style={{ letterSpacing: '0.3px', borderBottom: '1px solid #e9ecef', paddingBottom: 4 }}>
+                    <iconify-icon icon="solar:bill-list-bold-duotone" />
+                    <span>Faktura (volitelné)</span>
+                  </div>
+                </div>
+                <div className="col-12">
+                  <div className="btn-group btn-group-sm w-100" role="group">
+                    <button type="button" className={`btn ${fakturaMode === 'none' ? 'btn-secondary' : 'btn-outline-secondary'}`}
+                      onClick={() => setFakturaMode('none')}>
+                      Bez faktury
+                    </button>
+                    <button type="button" className={`btn ${fakturaMode === 'assign' ? 'btn-primary' : 'btn-outline-primary'}`}
+                      onClick={() => setFakturaMode('assign')}>
+                      <iconify-icon icon="solar:link-bold-duotone" className="me-1" />
+                      Přiřadit existující
+                    </button>
+                    <button type="button" className={`btn ${fakturaMode === 'upload' ? 'btn-success' : 'btn-outline-success'}`}
+                      onClick={() => setFakturaMode('upload')}>
+                      <iconify-icon icon="solar:upload-bold-duotone" className="me-1" />
+                      Nahrát novou
+                    </button>
+                  </div>
+                </div>
+                {fakturaMode === 'assign' && (
+                  <div className="col-12">
+                    <label className="form-label fs-12 fw-semibold">Faktura k přiřazení</label>
+                    <select className="form-select form-select-sm" value={fakturaId} onChange={(e) => setFakturaId(e.target.value)}>
+                      <option value="">— vyberte fakturu —</option>
+                      {unpaidFaktury.map((f) => (
+                        <option key={f.id} value={f.id}>
+                          {f.cislo} · {f.dodavatel} · {fCzk(f.castka)} · splatnost {f.splatnost.slice(0, 10)}
+                        </option>
+                      ))}
+                    </select>
+                    <div className="text-muted fs-11 mt-1">
+                      Zobrazují se jen nezaplacené faktury. Po uložení dostane platba stav <strong>Spárováno</strong>.
+                    </div>
+                  </div>
+                )}
+                {fakturaMode === 'upload' && (
+                  <div className="col-12">
+                    <label className="form-label fs-12 fw-semibold">Nahrát PDF / obrázek faktury</label>
+                    <input type="file" className="form-control form-control-sm" accept=".pdf,.png,.jpg,.jpeg"
+                      onChange={(e) => setFakturaFile(e.target.files?.[0]?.name ?? null)} />
+                    {fakturaFile && (
+                      <div className="d-flex align-items-center gap-2 mt-2 p-2 border rounded" style={{ background: '#e8f6ed' }}>
+                        <iconify-icon icon="solar:document-text-bold-duotone" style={{ fontSize: 18, color: '#0d6efd' }} />
+                        <span className="fs-12 fw-semibold flex-grow-1 text-truncate">{fakturaFile}</span>
+                        <button type="button" className="btn btn-link btn-sm p-0 text-danger" title="Odebrat"
+                          onClick={() => setFakturaFile(null)}>
+                          <iconify-icon icon="solar:trash-bin-trash-bold-duotone" style={{ fontSize: 14 }} />
+                        </button>
+                      </div>
+                    )}
+                    <div className="text-muted fs-11 mt-1">Mock — soubor se neukládá fyzicky, jen metadata.</div>
+                  </div>
+                )}
+              </div>
+            </div>
+            <div className="modal-footer d-flex align-items-center justify-content-between">
+              {missing.length > 0 ? (
+                <div className="text-warning fs-12 fw-semibold">
+                  <iconify-icon icon="solar:danger-triangle-bold-duotone" className="me-1" />
+                  Chybí vyplnit: {missing.join(', ')}
+                </div>
+              ) : <div />}
+              <div className="d-flex gap-2">
+                <button type="button" className="btn btn-light btn-sm" onClick={onClose}>Zrušit</button>
+                <button type="button" className="btn btn-primary btn-sm" disabled={!canSubmit} onClick={handleSubmit}>
+                  <iconify-icon icon="solar:check-circle-bold-duotone" className="me-1" />
+                  Uložit platbu
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </>
+  );
+}
+
 function PrirazeniModal({ ucet, onClose, onSubmit }: {
   ucet: BankaUcet;
   onClose: () => void;
@@ -2047,6 +2432,10 @@ export default function BankaView({ state, update }: Props) {
   const [activeQueue, setActiveQueue] = useState<WorkQueueKind | null>(null);
   // Ref pro scroll do tabulky transakcí (akční zóna v panelu je vždy nahoře)
   const transTableRef = useRef<HTMLDivElement>(null);
+  // Phase 7 — Nová platba modal
+  const [novaPlatbaOpen, setNovaPlatbaOpen] = useState(false);
+  // Lokálně vytvořené transakce („Nová platba" — daně, poplatky atd.)
+  const [localNewTrans, setLocalNewTrans] = useState<BankaTransakce[]>([]);
 
   const toggleStav = useCallback((s: BankaTransStav) => {
     setStavFilters((prev) => {
@@ -2097,14 +2486,25 @@ export default function BankaView({ state, update }: Props) {
   }, []);
 
   // Všechny transakce s aplikovanými lokálními změnami (stav, parovanaSId, …)
+  // + ručně přidané „Nové platby"
   const mergedAllTransakce = useMemo(() => {
-    return BANKA_TRANSAKCE.map((t) => getMergedTrans(t));
-  }, [getMergedTrans]);
+    return [
+      ...localNewTrans,
+      ...BANKA_TRANSAKCE.map((t) => getMergedTrans(t)),
+    ];
+  }, [getMergedTrans, localNewTrans]);
 
   const filteredTransakce = useMemo(() => {
     return mergedAllTransakce.filter((t) => {
-      // Provozovna filter via account ownership
-      if (!filteredUcetIds.has(t.ucetId)) return false;
+      // Provozovna filter — pokud transakce má explicitní provozovnaId, použij ho,
+      // jinak filtruj podle účtu (původní logika).
+      if (selectedProvozovna !== 'all') {
+        if (t.provozovnaId) {
+          if (t.provozovnaId !== selectedProvozovna) return false;
+        } else if (!filteredUcetIds.has(t.ucetId)) {
+          return false;
+        }
+      }
       if (typFilter !== 'all' && t.typ !== typFilter) return false;
       if (ucetFilter !== 'all' && t.ucetId !== ucetFilter) return false;
       if (stavFilters.size > 0 && !stavFilters.has(t.stav)) return false;
@@ -2237,127 +2637,16 @@ export default function BankaView({ state, update }: Props) {
 
   return (
     <>
-      {/* Work Queue — „Vyžaduje pozornost" (Smart Alerts strip odstraněn 9.6.2026 — duplikoval s Work Queue) */}
-      <WorkQueue
-        transakce={mergedAllTransakce}
-        ucty={mergedUcty}
-        onSelectQueue={(kind) => {
-          // Toggle off → zruš filtr i selekci
-          if (kind === null || kind === activeQueue) {
-            setActiveQueue(null);
-            return;
-          }
-          setActiveQueue(kind);
-          // Vyber první matching transakci → panel s akční zónou se otevře nahoře vpravo
-          const firstMatch = mergedAllTransakce.find((t) => {
-            if (!filteredUcetIds.has(t.ucetId)) return false;
-            if (t.stav !== 'unpaired') return false;
-            if (kind === 'no-vs')     return !t.vs;
-            if (kind === 'no-branch') {
-              const u = BANKA_UCTY.find((x) => x.id === t.ucetId);
-              return !!(u && u.provozovny.length === 0);
-            }
-            if (kind === 'overdue-at-bank') return !!t.isOverdueAtBank;
-            if (kind === 'delegated')       return !!t.delegatedTo;
-            if (kind === 'with-candidates') return (t.candidates?.length ?? 0) > 0;
-            if (kind === 'waiting-review')  return !!t.isWaitingReview;
-            if (kind === 'error')           return !!t.hasError;
-            return true; // 'unpaired'
-          });
-          if (firstMatch) {
-            setSelectedTransId(firstMatch.id);
-            window.setTimeout(() => {
-              transTableRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-            }, 50);
-          }
-        }}
-        activeQueue={activeQueue}
-      />
-
-      {/* Top summary */}
-      <TopSummary ucty={mergedUcty} />
-
-      {/* AutoSyncBar */}
+      {/* Phase 7 (zápis 12. 6. 2026) — zjednodušený přehled:
+          AutoSyncBar nahoře → 2 ukazatele (nespárované / ručně spárované) → Zůstatek CZK/EUR + rozbalovací účty.
+          Work Queue + sparkline karty účtů odstraněny (Úvodní čtvercové přehledy budou odstraněny). */}
       <AutoSyncBar
         pendingCount={pendingCount}
         paymentsQueueCount={5}
         apiCallsUsed={187}
       />
-
-      {/* Konsolidované (multi-venue) účty — vždy nahoře */}
-      {(() => {
-        const multi  = mergedUcty.filter((u) => u.provozovny.length > 1);
-        const single = mergedUcty.filter((u) => u.provozovny.length <= 1);
-        return (
-          <>
-            {multi.length > 0 && (
-              <div className="mb-4">
-                <h5 className="mb-3">
-                  Konsolidované účty
-                  <small className="text-muted fw-normal ms-2 fs-13">
-                    {multi.length} {multi.length === 1 ? 'účet' : multi.length < 5 ? 'účty' : 'účtů'} · napojeno na víc provozoven
-                  </small>
-                </h5>
-                <div className="row g-3">
-                  {multi.map((u) => (
-                    <div key={u.id} className="col-12 col-sm-6 col-lg-4 col-xxl-3">
-                      <UcetCard
-                        ucet={u}
-                        allBranches={allBranches}
-                        isHighlighted={highlightedUcetId === u.id}
-                        isSyncing={syncingIds.has(u.id)}
-                        cardRef={(el) => setUcetRef(u.id, el)}
-                        onOpenDetail={(id) => setDetailUcetId(id)}
-                        onAction={handleAction}
-                      />
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            {single.length > 0 && (
-              <div className="mb-4">
-                <button
-                  className="btn btn-light w-100 d-flex align-items-center gap-2 px-3 py-2 mb-3"
-                  style={{ border: '1px dashed #c8cdd4', background: '#fafbfc' }}
-                  onClick={() => setOstatniUctyOpen((v) => !v)}
-                  title="Účty jednotlivých provozoven — read-only, ponechané kvůli historickým datům"
-                >
-                  <iconify-icon icon={ostatniUctyOpen ? 'solar:alt-arrow-down-bold' : 'solar:alt-arrow-right-bold'} style={{ fontSize: 16 }} />
-                  <iconify-icon icon="solar:archive-bold-duotone" style={{ fontSize: 16, color: '#6c757d' }} />
-                  <span className="fw-semibold">Ostatní účty</span>
-                  <span className="text-muted fs-12">— read-only ({single.length}), pro přístup k historickým datům</span>
-                  {!ostatniUctyOpen && (
-                    <span className="badge bg-secondary-subtle text-secondary ms-auto" style={{ fontSize: 10 }}>
-                      <iconify-icon icon="solar:eye-closed-bold-duotone" className="me-1" style={{ fontSize: 10 }} />
-                      Skryto
-                    </span>
-                  )}
-                </button>
-
-                {ostatniUctyOpen && (
-                  <div className="row g-3" style={{ opacity: 0.85 }}>
-                    {single.map((u) => (
-                      <div key={u.id} className="col-12 col-sm-6 col-lg-4 col-xxl-3">
-                        <UcetCard
-                          ucet={u}
-                          allBranches={allBranches}
-                          isHighlighted={highlightedUcetId === u.id}
-                          isSyncing={syncingIds.has(u.id)}
-                          cardRef={(el) => setUcetRef(u.id, el)}
-                          onOpenDetail={(id) => setDetailUcetId(id)}
-                          onAction={handleAction}
-                        />
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-            )}
-          </>
-        );
-      })()}
+      <SimpleMetrics transakce={mergedAllTransakce} />
+      <BalanceOverview ucty={mergedUcty} />
 
       {/* Tabulka transakcí + side-panel (panel se objeví až po výběru) */}
       {/* Bez `align-items-start` aby se pravý sloupec roztáhl na výšku tabulky — jinak sticky panel skáče nahoru. */}
@@ -2386,6 +2675,7 @@ export default function BankaView({ state, update }: Props) {
               setActiveQueue(null);
             }}
             activeQueueLabel={activeQueue ? WORK_QUEUE_LABEL[activeQueue] : null}
+            onNewPayment={() => setNovaPlatbaOpen(true)}
           />
         </div>
         {selectedTrans && (
@@ -2406,6 +2696,22 @@ export default function BankaView({ state, update }: Props) {
           </div>
         )}
       </div>
+
+      {/* Phase 7 — Nová platba modal */}
+      {novaPlatbaOpen && (
+        <NovaPlatbaModal
+          onClose={() => setNovaPlatbaOpen(false)}
+          onSubmit={(t, fakturaInfo) => {
+            setLocalNewTrans((prev) => [t, ...prev]);
+            setNovaPlatbaOpen(false);
+            const msg = fakturaInfo.id ? `Platba uložena a napárována na ${fakturaInfo.id}`
+                     : fakturaInfo.nahranySoubor ? `Platba uložena s fakturou „${fakturaInfo.nahranySoubor}"`
+                     : `Nová platba „${t.firma}" uložena`;
+            setToast(msg);
+            window.setTimeout(() => setToast(null), 2500);
+          }}
+        />
+      )}
 
       {/* ── Modaly ── */}
       {modalState?.type === 'prevod' && (

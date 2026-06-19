@@ -11,6 +11,8 @@ export type SidebarSection =
   | 'pohledavky'
   | 'platby'
   | 'banka'
+  // Ekonomika — Daně (Phase 7 — zápis 12. 6. 2026)
+  | 'dane'
   // Finance — nové podsekce (Phase 1 restrukturalizace)
   | 'trvale-prikazy'
   | 'uvery'

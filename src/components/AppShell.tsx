@@ -22,6 +22,7 @@ import BankaView from './BankaView';
 import TrvalePrikazyView from './TrvalePrikazyView';
 import UveryView from './UveryView';
 import PoplatkyView from './PoplatkyView';
+import DaneView from './DaneView';
 import PaymentPlatformView from './PaymentPlatformView';
 import TrzbyView from './TrzbyView';
 import FakturyView from './FakturyView';
@@ -102,6 +103,8 @@ export default function AppShell({ state, update }: Props) {
         return <UveryView state={state} update={update} />;
       case 'poplatky':
         return <PoplatkyView state={state} update={update} />;
+      case 'dane':
+        return <DaneView state={state} update={update} />;
       case 'karty':
         return <PaymentPlatformView platforma="terminal" />;
       case 'qerko':

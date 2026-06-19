@@ -20,16 +20,14 @@ interface Props {
 }
 
 const STAV_META: Record<FakturaStavPlatby, { cls: string; label: string; icon: string }> = {
-  nova:                { cls: 'bg-secondary-subtle text-secondary', label: 'Nová',                  icon: 'solar:document-bold-duotone' },
-  'ke-schvaleni':      { cls: 'bg-warning-subtle text-warning',     label: 'Ke schválení',          icon: 'solar:clock-circle-bold-duotone' },
-  schvalena:           { cls: 'bg-success-subtle text-success',     label: 'Schválená',             icon: 'solar:check-circle-bold-duotone' },
-  zamitnuta:           { cls: 'bg-danger-subtle text-danger',       label: 'Zamítnutá',             icon: 'solar:close-circle-bold-duotone' },
-  zastavena:           { cls: 'bg-danger-subtle text-danger',       label: 'Zastavená',             icon: 'solar:pause-circle-bold-duotone' },
-  odeslana:            { cls: 'bg-info-subtle text-info',           label: 'Odeslaná',              icon: 'solar:arrow-right-up-bold-duotone' },
-  zaplacena:           { cls: 'bg-success-subtle text-success',     label: 'Zaplacená',             icon: 'solar:check-square-bold-duotone' },
-  'v-bance':           { cls: 'bg-info-subtle text-info',           label: 'V bance',               icon: 'solar:bank-bold-duotone' },
-  'ceka-na-sparovani': { cls: 'platby-stav-sparovani',              label: 'Čeká na spárování',     icon: 'solar:refresh-circle-bold-duotone' },
-  'chyba-platby':      { cls: 'platby-stav-chyba',                  label: 'Platba neproběhla',          icon: 'solar:danger-circle-bold-duotone' },
+  nova:                 { cls: 'bg-secondary-subtle text-secondary', label: 'Nová',                  icon: 'solar:document-bold-duotone' },
+  'ceka-na-schvaleni':  { cls: 'bg-warning-subtle text-warning',     label: 'Čeká na schválení',     icon: 'solar:clock-circle-bold-duotone' },
+  schvalena:            { cls: 'bg-success-subtle text-success',     label: 'Schválená',             icon: 'solar:check-circle-bold-duotone' },
+  pozastavena:          { cls: 'bg-warning-subtle text-warning',     label: 'Pozastavená',           icon: 'solar:pause-circle-bold-duotone' },
+  zamitnuta:            { cls: 'bg-danger-subtle text-danger',       label: 'Zamítnutá',             icon: 'solar:close-circle-bold-duotone' },
+  'v-bance':            { cls: 'bg-info-subtle text-info',           label: 'V bance',               icon: 'solar:bank-bold-duotone' },
+  uhrazena:             { cls: 'bg-success text-white',              label: 'Uhrazená',              icon: 'solar:check-square-bold-duotone' },
+  'v-bance-neuhrazena': { cls: 'platby-stav-chyba',                  label: 'V bance neuhrazená',    icon: 'solar:danger-circle-bold-duotone' },
 };
 
 const AUDIT_IKONY: Record<string, string> = {
@@ -37,7 +35,7 @@ const AUDIT_IKONY: Record<string, string> = {
   prirazen:            'solar:user-id-bold-duotone',
   schvalena:           'solar:check-circle-bold-duotone',
   zamitnuta:           'solar:close-circle-bold-duotone',
-  zastavena:           'solar:pause-circle-bold-duotone',
+  pozastavena:           'solar:pause-circle-bold-duotone',
   'odeslana-do-banky': 'solar:arrow-right-up-bold-duotone',
   'v-bance':           'solar:bank-bold-duotone',
   sparovana:           'solar:check-square-bold-duotone',
@@ -50,7 +48,7 @@ const AUDIT_BARVY: Record<string, string> = {
   prirazen:            '#c9911a',
   schvalena:           '#198754',
   zamitnuta:           '#dc3545',
-  zastavena:           '#dc3545',
+  pozastavena:           '#dc3545',
   'odeslana-do-banky': '#0d6efd',
   'v-bance':           '#0dcaf0',
   sparovana:           '#198754',
@@ -65,10 +63,10 @@ export default function PlatbyDetailPanel({ faktura, onClose, onOdeslatDoBanky, 
   const ucet      = getBankovniUcet(faktura.provozovna);
   const { cls, label, icon } = STAV_META[faktura.stav] ?? STAV_META['nova'];
 
-  const isInBank    = faktura.stav === 'v-bance' || faktura.stav === 'ceka-na-sparovani';
-  const isChyba     = faktura.stav === 'chyba-platby';
+  const isInBank    = faktura.stav === 'v-bance';
+  const isChyba     = faktura.stav === 'v-bance-neuhrazena';
   const isAktivni   = faktura.stav === 'schvalena';
-  const isZastavena = faktura.stav === 'zastavena';
+  const isZastavena = faktura.stav === 'pozastavena';
 
   const [pozastavitMode, setPozastavitMode] = useState(false);
   const [poznamkaText, setPoznamkaText] = useState('');
@@ -127,7 +125,7 @@ export default function PlatbyDetailPanel({ faktura, onClose, onOdeslatDoBanky, 
               </div>
               <div className="col-6">
                 <DetailField label="Splatnost" value={
-                  <span className={faktura.stav === 'chyba-platby' || (faktura.stav === 'schvalena' && faktura.splatnost < '2026-04-17') ? 'text-danger fw-bold' : ''}>
+                  <span className={faktura.stav === 'v-bance-neuhrazena' || (faktura.stav === 'schvalena' && faktura.splatnost < '2026-04-17') ? 'text-danger fw-bold' : ''}>
                     {fDate(faktura.splatnost)}
                   </span>
                 } />
@@ -190,8 +188,7 @@ export default function PlatbyDetailPanel({ faktura, onClose, onOdeslatDoBanky, 
                   />
                   <div className="fs-13">
                     {faktura.stav === 'v-bance' && 'Platba odeslána do banky, čeká na zpracování (1–2 pracovní dny)'}
-                    {faktura.stav === 'ceka-na-sparovani' && 'Platba zpracována bankou, čeká na automatické spárování s výpisem'}
-                    {isChyba && 'Platba vrácena bankou – zkontrolujte číslo účtu a odešlete znovu'}
+                    {isChyba && 'Platba v bance neuhrazena — zkontrolujte číslo účtu a odešlete znovu'}
                   </div>
                 </div>
               </div>

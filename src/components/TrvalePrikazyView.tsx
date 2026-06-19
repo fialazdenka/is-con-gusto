@@ -22,7 +22,7 @@ import {
   type TrvalyDokument,
 } from '../trvalePrikazyData';
 import { BANKA_UCTY } from '../bankaData';
-import { fCzk, fDate } from '../data';
+import { fCzk, fDate, PROVOZOVNY } from '../data';
 
 interface Props {
   state: AppState;
@@ -34,12 +34,12 @@ interface Props {
 // ──────────────────────────────────────────────────────────────
 function KpiStrip({ data, onClickNezaplacene }: { data: TrvalyPrikaz[]; onClickNezaplacene: () => void }) {
   const aktivni = data.filter((p) => p.stav === 'aktivni').length;
-  const pozastaveno = data.filter((p) => p.stav === 'pozastaveny').length;
   const mesicniZatez = getMesicniZatez();
   const nezaplaceneCount = getPocetNezaplacenychSplatek(data);
   const nezaplacenePrikazy = data.filter(maNezaplacenouSplatku).length;
 
   type Tile = { label: string; value: string; icon: string; color: string; onClick?: () => void; alert?: boolean };
+  // Phase 7 — „Zrušené" KPI dlaždice odstraněna (per feedback 18. 6. 2026)
   const tiles: Tile[] = [
     { label: 'Aktivní',          value: String(aktivni),                  icon: 'solar:play-circle-bold-duotone',          color: '#198754' },
     { label: 'Měsíční zátěž',    value: fCzk(Math.round(mesicniZatez)),   icon: 'solar:dollar-minimalistic-bold-duotone',  color: '#0d6efd' },
@@ -50,13 +50,12 @@ function KpiStrip({ data, onClickNezaplacene }: { data: TrvalyPrikaz[]; onClickN
       onClick: nezaplaceneCount > 0 ? onClickNezaplacene : undefined,
       alert: nezaplaceneCount > 0,
     },
-    { label: 'Pozastavené',      value: String(pozastaveno),              icon: 'solar:pause-circle-bold-duotone',         color: '#ffc107' },
   ];
 
   return (
     <div className="row g-2 mb-3">
       {tiles.map((t) => (
-        <div key={t.label} className="col-6 col-md-3">
+        <div key={t.label} className="col-12 col-md-4">
           <div className={`card h-100 ${t.onClick ? 'wq-card' : ''}`}
                style={{
                  borderTop: `3px solid ${t.color}`,
@@ -132,8 +131,7 @@ function PrikazyTable({ data, ucty, selectedId, onSelect, search, setSearch, sta
             value={stavFilter} onChange={(e) => setStavFilter(e.target.value as TrvalyPrikazStav | 'all')}>
             <option value="all">Všechny stavy</option>
             <option value="aktivni">Aktivní</option>
-            <option value="pozastaveny">Pozastavené</option>
-            <option value="ukonceny">Ukončené</option>
+            <option value="zruseny">Zrušené</option>
           </select>
           <button type="button"
             className={`badge border-0 ${nezaplaceneOnly ? 'bg-danger text-white' : 'bg-danger-subtle text-danger'}`}
@@ -339,32 +337,26 @@ function PrikazSidePanel({ prikaz, ucty, onClose, onChangeStav, onEdit, onUpdate
               <iconify-icon icon="solar:pen-bold-duotone" />
               Upravit příkaz
             </button>
+            {/* Phase 7 (zápis 12. 6. 2026) — jen 2 stavy: aktivní ↔ zrušený */}
             {prikaz.stav === 'aktivni' && (
-              <button className="btn btn-outline-warning btn-sm w-100 d-flex align-items-center justify-content-center gap-2"
-                onClick={() => onChangeStav(prikaz.id, 'pozastaveny')}>
-                <iconify-icon icon="solar:pause-circle-bold-duotone" />
-                Pozastavit
-              </button>
-            )}
-            {prikaz.stav === 'pozastaveny' && (
-              <button className="btn btn-outline-success btn-sm w-100 d-flex align-items-center justify-content-center gap-2"
-                onClick={() => onChangeStav(prikaz.id, 'aktivni')}>
-                <iconify-icon icon="solar:play-circle-bold-duotone" />
-                Aktivovat
-              </button>
-            )}
-            {prikaz.stav !== 'ukonceny' && (
               <button className="btn btn-outline-danger btn-sm w-100 d-flex align-items-center justify-content-center gap-2"
-                onClick={() => onChangeStav(prikaz.id, 'ukonceny')}>
+                onClick={() => onChangeStav(prikaz.id, 'zruseny')}>
                 <iconify-icon icon="solar:stop-circle-bold-duotone" />
-                Ukončit
+                Zrušit příkaz
               </button>
             )}
-            {prikaz.stav === 'ukonceny' && (
-              <div className="alert alert-secondary py-2 mb-0 fs-12 d-flex align-items-center gap-2">
-                <iconify-icon icon="solar:stop-circle-bold-duotone" style={{ fontSize: 16 }} />
-                <span>Tento příkaz byl ukončen.</span>
-              </div>
+            {prikaz.stav === 'zruseny' && (
+              <>
+                <button className="btn btn-outline-success btn-sm w-100 d-flex align-items-center justify-content-center gap-2"
+                  onClick={() => onChangeStav(prikaz.id, 'aktivni')}>
+                  <iconify-icon icon="solar:play-circle-bold-duotone" />
+                  Znovu aktivovat
+                </button>
+                <div className="alert alert-secondary py-2 mb-0 fs-12 d-flex align-items-center gap-2">
+                  <iconify-icon icon="solar:stop-circle-bold-duotone" style={{ fontSize: 16 }} />
+                  <span>Tento příkaz byl zrušen.</span>
+                </div>
+              </>
             )}
           </div>
         </div>
@@ -408,6 +400,23 @@ function PrikazSidePanel({ prikaz, ucty, onClose, onChangeStav, onEdit, onUpdate
             <div className="col-12">
               <div className="text-muted fs-11 fw-semibold mb-1">Příští splatnost</div>
               <div className="fs-13 fw-semibold">{fDate(prikaz.pristiSplatnost)}</div>
+            </div>
+            {/* Phase 7 — komu jde do nákladu */}
+            <div className="col-12">
+              <div className="text-muted fs-11 fw-semibold mb-1">Komu jde do nákladu</div>
+              <div className="fs-12">
+                {prikaz.nakladKomu === 'kancelar' && <span className="badge bg-info-subtle text-info"><iconify-icon icon="solar:buildings-2-bold-duotone" className="me-1" />Kancelář (celofiremní)</span>}
+                {prikaz.nakladKomu === 'sdileny'  && <span className="badge bg-warning-subtle text-warning"><iconify-icon icon="solar:users-group-rounded-bold-duotone" className="me-1" />Sdílený</span>}
+                {(prikaz.nakladKomu === 'provoz' || !prikaz.nakladKomu) && prikaz.provozovnaId && (
+                  <span className="badge bg-light text-dark border d-inline-flex align-items-center gap-1">
+                    <span className="rounded-circle" style={{ width: 6, height: 6, background: PROVOZOVNY.find((p) => p.id === prikaz.provozovnaId)?.color ?? '#9097a7', display: 'inline-block' }} />
+                    {PROVOZOVNY.find((p) => p.id === prikaz.provozovnaId)?.name ?? prikaz.provozovnaId}
+                  </span>
+                )}
+                {(prikaz.nakladKomu === 'provoz' || !prikaz.nakladKomu) && !prikaz.provozovnaId && (
+                  <span className="text-muted">— nevybráno —</span>
+                )}
+              </div>
             </div>
             {prikaz.poznamka && (
               <div className="col-12">
@@ -684,12 +693,13 @@ function PrikazFormModal({ initial, ucty, onSave, onClose }: {
             </div>
             <div className="modal-body">
               <div className="row g-3">
-                {/* Název */}
+                {/* Interní název příkazu — Phase 7 (zápis 12. 6. 2026) oddělen od názvu firmy */}
                 <div className="col-12">
-                  <label className="form-label fs-12 fw-semibold">Název *</label>
+                  <label className="form-label fs-12 fw-semibold">Interní název příkazu *</label>
                   <input type="text" className="form-control form-control-sm"
                     placeholder="např. O2 — telefon CG Brno"
                     value={form.nazev} onChange={(e) => handleChange('nazev', e.target.value)} />
+                  <div className="text-muted fs-11 mt-1">Slouží pro orientaci v seznamu (popis, ke kterému účelu příkaz patří).</div>
                 </div>
 
                 {/* Typ + Perioda */}
@@ -734,11 +744,11 @@ function PrikazFormModal({ initial, ucty, onSave, onClose }: {
                 {/* Protistrana — sekce */}
                 <div className="col-12 mt-2">
                   <div className="text-muted fs-11 fw-semibold text-uppercase" style={{ letterSpacing: '0.3px', borderBottom: '1px solid #e9ecef', paddingBottom: 4 }}>
-                    Protistrana
+                    Protistrana (komu se platí)
                   </div>
                 </div>
                 <div className="col-md-6">
-                  <label className="form-label fs-12 fw-semibold">Název *</label>
+                  <label className="form-label fs-12 fw-semibold">Název firmy *</label>
                   <input type="text" className="form-control form-control-sm"
                     placeholder="např. O2 Czech Republic"
                     value={form.protistrana} onChange={(e) => handleChange('protistrana', e.target.value)} />
@@ -790,14 +800,42 @@ function PrikazFormModal({ initial, ucty, onSave, onClose }: {
                     value={form.pristiSplatnost} onChange={(e) => handleChange('pristiSplatnost', e.target.value)} />
                 </div>
 
+                {/* Komu jde do nákladu — Phase 7 (zápis 12. 6. 2026) */}
+                <div className="col-12 mt-2">
+                  <div className="text-muted fs-11 fw-semibold text-uppercase" style={{ letterSpacing: '0.3px', borderBottom: '1px solid #e9ecef', paddingBottom: 4 }}>
+                    Komu jde do nákladu (účetnictví)
+                  </div>
+                </div>
+                <div className="col-md-6">
+                  <label className="form-label fs-12 fw-semibold">Typ nákladu *</label>
+                  <select className="form-select form-select-sm"
+                    value={form.nakladKomu ?? 'provoz'}
+                    onChange={(e) => handleChange('nakladKomu', e.target.value as NonNullable<TrvalyPrikaz['nakladKomu']>)}>
+                    <option value="provoz">Konkrétní provozovna</option>
+                    <option value="kancelar">Kancelář (celofiremní)</option>
+                    <option value="sdileny">Sdílený mezi víc provoz</option>
+                  </select>
+                </div>
+                <div className="col-md-6">
+                  <label className="form-label fs-12 fw-semibold">Provozovna {form.nakladKomu === 'provoz' ? '*' : '(nepovinné)'}</label>
+                  <select className="form-select form-select-sm"
+                    value={form.provozovnaId ?? ''}
+                    onChange={(e) => handleChange('provozovnaId', e.target.value || undefined)}
+                    disabled={form.nakladKomu === 'kancelar'}>
+                    <option value="">— nevybráno —</option>
+                    {PROVOZOVNY.filter((p) => p.status === 'active').map((p) => (
+                      <option key={p.id} value={p.id}>{p.name}</option>
+                    ))}
+                  </select>
+                </div>
+
                 {/* Stav + Poznámka */}
                 <div className="col-md-4">
                   <label className="form-label fs-12 fw-semibold">Stav</label>
                   <select className="form-select form-select-sm" value={form.stav}
                     onChange={(e) => handleChange('stav', e.target.value as TrvalyPrikazStav)}>
                     <option value="aktivni">Aktivní</option>
-                    <option value="pozastaveny">Pozastaveno</option>
-                    <option value="ukonceny">Ukončeno</option>
+                    <option value="zruseny">Zrušený</option>
                   </select>
                 </div>
                 <div className="col-md-8">

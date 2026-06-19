@@ -76,15 +76,14 @@ export default function PlatbyView({ state, update }: Props) {
   const vsechnyFaktury = getFakturyForProvozovna(selectedProvozovna);
   const overdueUnpaid  = vsechnyFaktury.filter(
     (f) => isPoSplatnosti(f.splatnost)
-      && f.stav !== 'zaplacena' && f.stav !== 'odeslana'
-      && f.stav !== 'v-bance' && f.stav !== 'ceka-na-sparovani' && f.stav !== 'chyba-platby'
+      && f.stav !== 'uhrazena' && f.stav !== 'v-bance' && f.stav !== 'v-bance-neuhrazena'
   );
   const overdueInBank  = vsechnyFaktury.filter(
     (f) => isPoSplatnosti(f.splatnost)
-      && (f.stav === 'v-bance' || f.stav === 'ceka-na-sparovani')
+      && (f.stav === 'v-bance' || false /* removed: bank-side state */)
   );
-  const chybaPlatby    = vsechnyFaktury.filter((f) => (localStavy[f.id] ?? f.stav) === 'chyba-platby');
-  const neschvalene    = vsechnyFaktury.filter((f) => f.stav === 'nova' || f.stav === 'ke-schvaleni');
+  const chybaPlatby    = vsechnyFaktury.filter((f) => (localStavy[f.id] ?? f.stav) === 'v-bance-neuhrazena');
+  const neschvalene    = vsechnyFaktury.filter((f) => f.stav === 'nova' || f.stav === 'ceka-na-schvaleni');
 
   const pocetVybrano = selectedFaIds.size;
 
@@ -266,7 +265,7 @@ export default function PlatbyView({ state, update }: Props) {
             setDetailId(null);
           }}
           onPozastavit={(id, poznamka) => {
-            setLocalStavy((prev) => ({ ...prev, [id]: 'zastavena' }));
+            setLocalStavy((prev) => ({ ...prev, [id]: 'pozastavena' }));
             if (poznamka) setLocalPoznamky((prev) => ({ ...prev, [id]: poznamka }));
             setDetailId(null);
           }}

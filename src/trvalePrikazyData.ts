@@ -10,10 +10,10 @@ export type TrvalyPrikazPerioda =
   | 'tydenni'
   | 'jednorazovy';
 
+// Phase 7 (zápis 12. 6. 2026) — pozastavený zrušen, zůstávají jen 2 stavy: aktivní + zrušený
 export type TrvalyPrikazStav =
   | 'aktivni'         // běží podle plánu
-  | 'pozastaveny'     // dočasně zastaven
-  | 'ukonceny';       // doběhl konec / zrušen
+  | 'zruseny';        // ukončený / zrušený (dříve „ukonceny" + „pozastaveny")
 
 export type TrvalyPrikazTyp =
   | 'standard'        // stejná částka i VS každý cyklus
@@ -44,11 +44,17 @@ export interface TrvalyDokument {
   uploadedBy: string;
 }
 
+// „Komu to jde do nákladu" — Phase 7 (zápis 12. 6. 2026)
+// 'kancelar'  = celofiremní náklad (např. vedení účtu, paušál centrály)
+// 'provoz'    = konkrétní provozovna (specifikuje se v `provozovnaId`)
+// 'sdileny'   = sdílený mezi víc provozoven (např. catering)
+export type NakladKomu = 'kancelar' | 'provoz' | 'sdileny';
+
 export interface TrvalyPrikaz {
   id: string;
-  nazev: string;
+  nazev: string;                 // interní název příkazu („Hyundai leasing — dodávka CG Brno")
   ucetId: string;                // z BANKA_UCTY
-  protistrana: string;
+  protistrana: string;           // název firmy (protistrany — „Hyundai Leasing s.r.o.")
   protiUcet: string;
   typ: TrvalyPrikazTyp;
   perioda: TrvalyPrikazPerioda;
@@ -60,6 +66,9 @@ export interface TrvalyPrikaz {
   konec?: string;
   pristiSplatnost: string;       // YYYY-MM-DD
   stav: TrvalyPrikazStav;
+  // Phase 7 — komu jde náklad
+  nakladKomu?: NakladKomu;       // default 'provoz' (s provozovnaId), 'kancelar' = celofiremní
+  provozovnaId?: string;         // jen pro nakladKomu === 'provoz'
   poznamka?: string;
   splatky?: TrvalySplatkaItem[];
   dokumenty?: TrvalyDokument[];  // smlouvy, dodatky
@@ -267,7 +276,7 @@ export const TRVALE_PRIKAZY: TrvalyPrikaz[] = [
     vs: '20260701',
     zacatek: '2022-07-01',
     pristiSplatnost: '2026-07-01',
-    stav: 'pozastaveny',
+    stav: 'zruseny',
     poznamka: 'Pozastaveno — řeší se přechod na jinou pojišťovnu.',
   },
 ];
@@ -292,9 +301,8 @@ export const TYP_META_TP: Record<TrvalyPrikazTyp, { label: string; color: string
 };
 
 export const STAV_META_TP: Record<TrvalyPrikazStav, { label: string; cls: string; icon: string }> = {
-  aktivni:     { label: 'Aktivní',     cls: 'bg-success-subtle text-success',     icon: 'solar:play-circle-bold-duotone' },
-  pozastaveny: { label: 'Pozastaveno', cls: 'bg-warning-subtle text-warning',     icon: 'solar:pause-circle-bold-duotone' },
-  ukonceny:    { label: 'Ukončeno',    cls: 'bg-secondary-subtle text-secondary', icon: 'solar:stop-circle-bold-duotone' },
+  aktivni: { label: 'Aktivní', cls: 'bg-success-subtle text-success',     icon: 'solar:play-circle-bold-duotone' },
+  zruseny: { label: 'Zrušený', cls: 'bg-secondary-subtle text-secondary', icon: 'solar:stop-circle-bold-duotone' },
 };
 
 export const SPLATKA_STAV_META: Record<TrvalySplatkaItem['stav'], { label: string; cls: string; icon: string }> = {

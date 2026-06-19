@@ -25,6 +25,9 @@ export interface Poplatek {
   castka: number;                // vždy kladná částka (poplatek = náklad)
   parovanaSBankaTrans?: string;  // ID transakce v Bance — pro auditing
   auto: boolean;                 // true = auto-detekován z bank. transakce
+  // Phase 7 (zápis 12. 6. 2026) — nepovinné přiřazení provozovně.
+  // Pokud chybí → poplatek spadá globálně pod celé Con Gusto (celofiremní náklad).
+  provozovnaId?: string;
   poznamka?: string;
 }
 

@@ -10,6 +10,7 @@ import {
   SCHVALOVACI_OSOBY,
   KATEGORIE_LABELS,
   FAKTURY_PLATBY,
+  BANKOVNI_UCTY,
 } from '../platbyData';
 import { PROVOZOVNY, fCzk, fDate } from '../data';
 
@@ -65,7 +66,7 @@ function getMockKomentare(faktura: FakturaPlatby, matchingStav?: string): Koment
       { id: 'mk-2', kdo: 'Jana Kovářová', role: 'ucetni', avatar: 'JK', color: '#0dcaf0',
         zprava: 'DL zkontrolován, vše sedí. Připraveno ke schválení.', cas: fDate(faktura.splatnost) },
     );
-  } else if (faktura.stav === 'nova' || faktura.stav === 'ke-schvaleni') {
+  } else if (faktura.stav === 'nova' || faktura.stav === 'ceka-na-schvaleni') {
     base.push(
       { id: 'mk-2', kdo: 'Jana Kovářová', role: 'ucetni', avatar: 'JK', color: '#0dcaf0',
         zprava: 'Prosím o schválení, splatnost se blíží.', cas: fDate(faktura.splatnost) },
@@ -101,16 +102,14 @@ interface Props {
 // ── Status metadata ────────────────────────────────────────────
 
 const STAV_META: Record<FakturaStavPlatby, { cls: string; label: string; icon: string }> = {
-  nova:                { cls: 'bg-secondary-subtle text-secondary', label: 'Nová',               icon: 'solar:document-bold-duotone' },
-  'ke-schvaleni':      { cls: 'bg-warning-subtle text-warning',     label: 'Ke schválení',       icon: 'solar:clock-circle-bold-duotone' },
-  schvalena:           { cls: 'bg-success-subtle text-success',     label: 'Schválená',          icon: 'solar:check-circle-bold-duotone' },
-  zamitnuta:           { cls: 'bg-danger-subtle text-danger',       label: 'Zamítnutá',          icon: 'solar:close-circle-bold-duotone' },
-  zastavena:           { cls: 'bg-danger-subtle text-danger',       label: 'Zastavená',          icon: 'solar:pause-circle-bold-duotone' },
-  odeslana:            { cls: 'bg-info-subtle text-info',           label: 'Odeslaná',           icon: 'solar:arrow-right-up-bold-duotone' },
-  zaplacena:           { cls: 'bg-success-subtle text-success',     label: 'Zaplacená',          icon: 'solar:check-square-bold-duotone' },
-  'v-bance':           { cls: 'bg-info-subtle text-info',           label: 'V bance',            icon: 'solar:bank-bold-duotone' },
-  'ceka-na-sparovani': { cls: 'platby-stav-sparovani',              label: 'Čeká na spárování',  icon: 'solar:refresh-circle-bold-duotone' },
-  'chyba-platby':      { cls: 'platby-stav-chyba',                  label: 'Platba neproběhla',  icon: 'solar:danger-circle-bold-duotone' },
+  nova:                 { cls: 'bg-secondary-subtle text-secondary', label: 'Nová',                  icon: 'solar:document-bold-duotone' },
+  'ceka-na-schvaleni':  { cls: 'bg-warning-subtle text-warning',     label: 'Čeká na schválení',     icon: 'solar:clock-circle-bold-duotone' },
+  schvalena:            { cls: 'bg-success-subtle text-success',     label: 'Schválená',             icon: 'solar:check-circle-bold-duotone' },
+  pozastavena:          { cls: 'bg-warning-subtle text-warning',     label: 'Pozastavená',           icon: 'solar:pause-circle-bold-duotone' },
+  zamitnuta:            { cls: 'bg-danger-subtle text-danger',       label: 'Zamítnutá',             icon: 'solar:close-circle-bold-duotone' },
+  'v-bance':            { cls: 'bg-info-subtle text-info',           label: 'V bance',               icon: 'solar:bank-bold-duotone' },
+  uhrazena:             { cls: 'bg-success text-white',              label: 'Uhrazená',              icon: 'solar:check-square-bold-duotone' },
+  'v-bance-neuhrazena': { cls: 'platby-stav-chyba',                  label: 'V bance neuhrazená',    icon: 'solar:danger-circle-bold-duotone' },
 };
 
 const MATCHING_META: Record<MatchingStav, { cls: string; label: string; icon: string; color: string }> = {
@@ -221,6 +220,12 @@ export default function FakturySidePanel({
   const [showPreview, setShowPreview] = useState(false);
   const [showPrilohy, setShowPrilohy] = useState(true);
   const [komentar, setKomentar] = useState('');
+  // Phase 8.2 (zápis 10. 6. 2026) — Schvalovací proces pole (local session)
+  const [vyberUctu, setVyberUctu] = useState('');
+  const [vyberSchvalovatele, setVyberSchvalovatele] = useState('');
+  const [korektura, setKorektura] = useState('');
+  const [zapocetMode, setZapocetMode] = useState<'dobropis' | 'zaloha' | null>(null);
+  const [zapocetVyber, setZapocetVyber] = useState('');
 
   // ── Empty state ──────────────────────────────────────────────
   if (!faktura) {
@@ -245,8 +250,8 @@ export default function FakturySidePanel({
   const datumSchvFinal = localDatumSchvaleni || faktura.datumSchvaleni || '';
 
   const isLocked    = faktura.isLocked === true;
-  const isAprovable = !isLocked && (effectiveStav === 'nova' || effectiveStav === 'ke-schvaleni');
-  const isZastavena = !isLocked && effectiveStav === 'zastavena';
+  const isAprovable = !isLocked && (effectiveStav === 'nova' || effectiveStav === 'ceka-na-schvaleni');
+  const isZastavena = !isLocked && effectiveStav === 'pozastavena';
   const isZamitnuta = !isLocked && effectiveStav === 'zamitnuta';
   const mismatch    = matching?.stav === 'nesedi-dl';
   const isDuplikat  = matching?.stav === 'duplikat';
@@ -633,24 +638,131 @@ export default function FakturySidePanel({
           </div>
           )}
 
+          {/* ── Schvalovací proces (Phase 8.2 — zápis 10. 6. 2026) ─────── */}
+          {activeTab === 'detail' && isAprovable && !isLocked && (
+          <div className="p-3 border-bottom">
+            <div className="d-flex align-items-center gap-2 mb-2">
+              <iconify-icon icon="solar:bolt-bold-duotone" style={{ fontSize: 14, color: '#0d6efd' }} />
+              <div className="fw-semibold fs-12 text-uppercase" style={{ letterSpacing: '0.3px', color: '#495057' }}>
+                Schvalovací proces
+              </div>
+            </div>
+            {/* Výběr účtu — z jakého účtu se zaplatí (přejmenováno z „automatické schvalování") */}
+            <div className="mb-2">
+              <label className="form-label fs-11 fw-semibold mb-1">Výběr účtu (z kterého se zaplatí) *</label>
+              <select className="form-select form-select-sm" value={vyberUctu} onChange={(e) => setVyberUctu(e.target.value)}>
+                <option value="">— auto-výběr per provozovna —</option>
+                {BANKOVNI_UCTY.filter((u) => u.provozovna === faktura.provozovna).map((u) => (
+                  <option key={u.cisloUctu} value={u.cisloUctu}>{u.nazev} — {u.cisloUctu}</option>
+                ))}
+              </select>
+            </div>
+            {/* Výběr schvalovatele */}
+            <div className="mb-2">
+              <label className="form-label fs-11 fw-semibold mb-1">Výběr schvalovatele *</label>
+              <select className="form-select form-select-sm" value={vyberSchvalovatele} onChange={(e) => setVyberSchvalovatele(e.target.value)}>
+                <option value="">— vyberte osobu —</option>
+                {SCHVALOVACI_OSOBY.filter((o) => o.role !== 'fakturant').map((o) => (
+                  <option key={o.id} value={o.id}>{o.jmeno} ({o.role})</option>
+                ))}
+              </select>
+            </div>
+            {/* Korektura celkové částky */}
+            <div className="mb-2">
+              <label className="form-label fs-11 fw-semibold mb-1">Korektura celkové částky (volitelné)</label>
+              <div className="d-flex align-items-center gap-1">
+                <input type="number" className="form-control form-control-sm czk-num"
+                  placeholder={`Originál: ${fCzk(faktura.castka)}`}
+                  value={korektura} onChange={(e) => setKorektura(e.target.value)} />
+                <span className="text-muted fs-11">Kč</span>
+              </div>
+              {korektura && parseFloat(korektura) !== faktura.castka && (
+                <div className={`alert ${parseFloat(korektura) > faktura.castka ? 'alert-warning' : 'alert-info'} py-1 mb-0 mt-1 fs-11`}>
+                  <iconify-icon icon="solar:info-circle-bold-duotone" className="me-1" />
+                  <strong>Do banky půjde:</strong> <span className="czk-num fw-bold">{fCzk(parseFloat(korektura))}</span>
+                  {' '}
+                  ({parseFloat(korektura) > faktura.castka ? '+' : ''}{fCzk(parseFloat(korektura) - faktura.castka)} oproti fakturované částce)
+                </div>
+              )}
+            </div>
+            {/* Zápočty — Přiřadit dobropis / Přiřadit zálohu */}
+            <div className="mb-2">
+              <label className="form-label fs-11 fw-semibold mb-1">Zápočty (volitelné)</label>
+              <div className="d-flex gap-2">
+                <button className="btn btn-outline-secondary btn-sm flex-grow-1"
+                  onClick={() => setZapocetMode(zapocetMode === 'dobropis' ? null : 'dobropis')}>
+                  <iconify-icon icon="solar:undo-left-round-bold-duotone" className="me-1" />
+                  Přiřadit dobropis
+                </button>
+                <button className="btn btn-outline-secondary btn-sm flex-grow-1"
+                  onClick={() => setZapocetMode(zapocetMode === 'zaloha' ? null : 'zaloha')}>
+                  <iconify-icon icon="solar:wallet-money-bold-duotone" className="me-1" />
+                  Přiřadit zálohu
+                </button>
+              </div>
+              {zapocetMode && (
+                <div className="mt-2 p-2 border rounded" style={{ background: '#fafbfc' }}>
+                  <select className="form-select form-select-sm mb-1"
+                    value={zapocetVyber} onChange={(e) => setZapocetVyber(e.target.value)}>
+                    <option value="">
+                      {zapocetMode === 'dobropis' ? '— vyberte nespárovaný dobropis —' : '— vyberte nespárovanou zálohu —'}
+                    </option>
+                    {FAKTURY_PLATBY
+                      .filter((d) => (zapocetMode === 'dobropis' ? d.forma === 'dobropis' : d.forma === 'zalohova'))
+                      .filter((d) => d.dodavatel === faktura.dodavatel)
+                      .filter((d) => !d.spojenaSId)
+                      .slice(0, 10)
+                      .map((d) => (
+                        <option key={d.id} value={d.id}>{d.cislo} · {fCzk(d.castka)} · {fDate(d.splatnost)}</option>
+                      ))}
+                  </select>
+                  <div className="text-muted fs-11">
+                    Zobrazují se jen <strong>nespárované</strong> doklady od stejného dodavatele.
+                    Po schválení faktury se automaticky odečte z platby.
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+          )}
+
           {/* ── Workflow akce ────────────────────────────── */}
           {activeTab === 'detail' && (
           <div className="p-3 border-bottom d-flex flex-column gap-2">
             {isAprovable && !isDuplikat && (
               <>
-                <button className="btn btn-success btn-sm w-100" onClick={() => onSchvalit(faktura.id)}>
+                <button className="btn btn-success btn-sm w-100"
+                  disabled={!vyberSchvalovatele}
+                  title={!vyberSchvalovatele ? 'Nejdřív vyberte schvalovatele' : undefined}
+                  onClick={() => onSchvalit(faktura.id)}>
                   <iconify-icon icon="solar:check-circle-bold-duotone" className="me-2" />
-                  Schválit fakturu
+                  Schválit fakturu {vyberSchvalovatele && '+ zápočet + korektura v jednom kroku'}
                 </button>
-                <div className="d-flex gap-2">
-                  <button className="btn btn-light btn-sm flex-grow-1" onClick={() => onOdlozit(faktura.id)}>
+                <div className="d-flex gap-2 flex-wrap">
+                  <button className="btn btn-light btn-sm flex-grow-1" onClick={() => onOdlozit(faktura.id)}
+                    title="Odložit rozhodnutí — vrátí fakturu do stavu Nová pro pozdější zpracování">
+                    <iconify-icon icon="solar:pause-circle-bold-duotone" className="me-1" />
                     Odložit
                   </button>
+                  <button className="btn btn-outline-warning btn-sm flex-grow-1" onClick={() => onOdlozit(faktura.id)}
+                    title="Přidat žádost — vrátí fakturantovi se žádostí o doplnění (např. chybí DL, špatná částka)">
+                    <iconify-icon icon="solar:chat-round-line-bold-duotone" className="me-1" />
+                    Přidat žádost
+                  </button>
                   <button className="btn btn-danger btn-sm flex-grow-1" onClick={() => onZamitout(faktura.id)}>
+                    <iconify-icon icon="solar:close-circle-bold-duotone" className="me-1" />
                     Zamítnout
                   </button>
                 </div>
               </>
+            )}
+            {/* Pozastavit — Phase 8.2 (zápis 10. 6.): jen po schválení */}
+            {effectiveStav === 'schvalena' && !isLocked && (
+              <button className="btn btn-outline-warning btn-sm w-100" onClick={() => onOdlozit(faktura.id)}
+                title="Pozastavit schválenou fakturu — vyžaduje důvod v chatu, odešle se účetním">
+                <iconify-icon icon="solar:pause-circle-bold-duotone" className="me-2" />
+                Pozastavit (s důvodem)
+              </button>
             )}
             {isAprovable && isDuplikat && (
               <div className="alert alert-danger py-2 mb-0 fs-12">
@@ -669,8 +781,11 @@ export default function FakturySidePanel({
                 Přehodnotit
               </button>
             )}
-            {!isAprovable && !isZastavena && !isZamitnuta && !isLocked && (
-              <div className="text-muted fs-12 text-center py-1">Faktura ve stavu: <strong>{stavMeta.label}</strong></div>
+            {!isAprovable && !isZastavena && !isZamitnuta && !isLocked && effectiveStav !== 'schvalena' && (
+              <div className="text-muted fs-12 text-center py-1">
+                Faktura ve stavu: <strong>{stavMeta.label}</strong>
+                {effectiveStav === 'uhrazena' && <div className="fs-11 mt-1">Uhrazená faktura je read-only.</div>}
+              </div>
             )}
             {isLocked && (
               <div className="d-flex align-items-center gap-2 py-2 px-2 rounded" style={{ background: '#f3eaff' }}>

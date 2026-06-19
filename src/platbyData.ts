@@ -4,17 +4,19 @@
 // Týden: 2026-04-13 (Po) – 2026-04-19 (Ne)
 // ─────────────────────────────────────────────────────────────
 
+// Phase 8 (zápis 10. 6. 2026) — sjednocené stavy přijatých faktur:
+//   nová → čeká na schválení (od X) → schválená → v bance → uhrazená
+//   alternativně: schválená → pozastavená (jen po schválení) / zamítnutá
+//   alternativně: v bance → v bance neuhrazená (3+ dny po splatnosti)
 export type FakturaStavPlatby =
-  | 'nova'               // zadaná, čeká na přiřazení
-  | 'ke-schvaleni'       // spárovaná se Septem, čeká na schválení
-  | 'schvalena'          // schválená k úhradě
-  | 'zamitnuta'          // zamítnuta schvalovatelem
-  | 'zastavena'          // pozdržená – čeká na dořešení sporu / dokladů
-  | 'odeslana'           // odeslaná do banky
-  | 'zaplacena'          // zaplacená (spárovaná)
-  | 'v-bance'            // sent to bank, processing
-  | 'ceka-na-sparovani'  // bank processed, waiting for matching (2 working days)
-  | 'chyba-platby';      // payment failed — high urgency
+  | 'nova'                    // zadaná, čeká na přiřazení schvalovatele
+  | 'ceka-na-schvaleni'       // má schvalovatele, čeká na rozhodnutí
+  | 'schvalena'               // schválená k úhradě
+  | 'pozastavena'             // dočasně pozastavená (jen po schválení)
+  | 'zamitnuta'               // zamítnuta schvalovatelem
+  | 'v-bance'                 // odeslaná do banky, čeká na zpracování
+  | 'uhrazena'                // zaplacená, spárovaná, read-only
+  | 'v-bance-neuhrazena';     // odeslaná, ale po splatnosti nesedí — vysoká urgence
 
 export type FakturaKategorie =
   | 'zbozi'
@@ -224,13 +226,13 @@ export const PLATBY_AUDIT: Record<string, AuditZaznam[]> = {
     { cas: '12.4. 09:00', kdo: 'Petra Nováková', akce: 'vytvorena',       stavPo: 'nova' },
     { cas: '12.4. 14:00', kdo: 'Jana Horáková',  akce: 'schvalena',       stavPo: 'schvalena' },
     { cas: '14.4. 09:00', kdo: 'Petra Nováková', akce: 'odeslana-do-banky', stavPo: 'v-bance', poznamka: 'Dávka #B2026-0039' },
-    { cas: '14.4. 23:55', kdo: 'Systém',         akce: 'v-bance',         stavPo: 'ceka-na-sparovani', poznamka: 'Platba zpracována bankou' },
+    { cas: '14.4. 23:55', kdo: 'Systém',         akce: 'v-bance',         stavPo: 'v-bance', poznamka: 'Platba zpracována bankou' },
   ],
   fp18: [
     { cas: '10.4. 10:00', kdo: 'Petra Nováková', akce: 'vytvorena',       stavPo: 'nova' },
     { cas: '11.4. 09:00', kdo: 'Tomáš Blažek',  akce: 'schvalena',       stavPo: 'schvalena' },
     { cas: '13.4. 08:00', kdo: 'Petra Nováková', akce: 'odeslana-do-banky', stavPo: 'v-bance', poznamka: 'Dávka #B2026-0038' },
-    { cas: '15.4. 12:00', kdo: 'Systém',         akce: 'chyba',           stavPo: 'chyba-platby', poznamka: 'Nesprávné číslo účtu – platba vrácena bankou' },
+    { cas: '15.4. 12:00', kdo: 'Systém',         akce: 'chyba',           stavPo: 'v-bance-neuhrazena', poznamka: 'Nesprávné číslo účtu – platba vrácena bankou' },
   ],
 };
 
@@ -262,7 +264,7 @@ export const FAKTURY_PLATBY: FakturaPlatby[] = [
     castka: 4_800,
     datum: '2026-04-09',
     splatnost: '2026-04-15',
-    stav: 'ke-schvaleni',
+    stav: 'ceka-na-schvaleni',
     typDokladu: 'prijata',
     poznamka: 'Čeká na schválení Septou',
     prirazenaOsoba: 'u-jana',
@@ -364,7 +366,7 @@ export const FAKTURY_PLATBY: FakturaPlatby[] = [
     castka: 18_400,
     datum: '2026-04-11',
     splatnost: '2026-04-22',
-    stav: 'ke-schvaleni',
+    stav: 'ceka-na-schvaleni',
     typDokladu: 'vydana',
     poznamka: 'Smluvní catering 8.4.',
     prirazenaOsoba: 'u-martin',
@@ -436,7 +438,7 @@ export const FAKTURY_PLATBY: FakturaPlatby[] = [
     castka: 9_600,
     datum: '2026-04-09',
     splatnost: '2026-04-20',
-    stav: 'zastavena',
+    stav: 'pozastavena',
     typDokladu: 'prijata',
     poznamka: 'Pozdrženo – probíhá reklamace zboží',
   },
@@ -450,7 +452,7 @@ export const FAKTURY_PLATBY: FakturaPlatby[] = [
     castka: 31_400,
     datum: '2026-04-01',
     splatnost: '2026-04-15',
-    stav: 'zaplacena',
+    stav: 'uhrazena',
     typDokladu: 'prijata',
     isLocked: true,                  // uzavřené účetní období (březen 2026)
     schvalil: 'Petr Dohnal',
@@ -482,7 +484,7 @@ export const FAKTURY_PLATBY: FakturaPlatby[] = [
     castka: 11_250,
     datum: '2026-04-12',
     splatnost: '2026-04-16',
-    stav: 'ceka-na-sparovani' as FakturaStavPlatby,
+    stav: 'v-bance' as FakturaStavPlatby,
     typDokladu: 'prijata' as TypDokladu,
     schvalil: 'Jana Horáková',
     datumSchvaleni: '12. 4. 2026',
@@ -498,7 +500,7 @@ export const FAKTURY_PLATBY: FakturaPlatby[] = [
     castka: 16_800,
     datum: '2026-04-10',
     splatnost: '2026-04-15',
-    stav: 'chyba-platby' as FakturaStavPlatby,
+    stav: 'v-bance-neuhrazena' as FakturaStavPlatby,
     typDokladu: 'prijata' as TypDokladu,
     schvalil: 'Tomáš Blažek',
     datumSchvaleni: '11. 4. 2026',
@@ -508,7 +510,7 @@ export const FAKTURY_PLATBY: FakturaPlatby[] = [
   // ── U ČÁPA ──
   { id: 'fp19', cislo: 'FAK-2026-0051', dodavatel: 'Plzeňský Prazdroj', kategorie: 'zbozi' as FakturaKategorie, provozovna: 'u-capa', castka: 38_400, datum: '2026-04-09', splatnost: '2026-04-16', stav: 'schvalena' as FakturaStavPlatby, typDokladu: 'prijata' as TypDokladu, schvalil: 'Petr Dohnal', datumSchvaleni: '11. 4. 2026', poznamka: 'Týdenní dodávka piva – duben' },
   { id: 'fp20', cislo: 'FAK-2026-0052', dodavatel: 'Správa budov s.r.o.', kategorie: 'najem' as FakturaKategorie, provozovna: 'u-capa', castka: 62_000, datum: '2026-04-05', splatnost: '2026-04-20', stav: 'schvalena' as FakturaStavPlatby, typDokladu: 'prijata' as TypDokladu, schvalil: 'Petr Dohnal', datumSchvaleni: '7. 4. 2026', poznamka: 'Nájem duben – Štefánikova' },
-  { id: 'fp21', cislo: 'FAK-2026-0053', dodavatel: 'Makro Cash & Carry', kategorie: 'zbozi' as FakturaKategorie, provozovna: 'u-capa', castka: 14_700, datum: '2026-04-11', splatnost: '2026-04-18', stav: 'ke-schvaleni' as FakturaStavPlatby, typDokladu: 'prijata' as TypDokladu, prirazenaOsoba: 'u-petr' },
+  { id: 'fp21', cislo: 'FAK-2026-0053', dodavatel: 'Makro Cash & Carry', kategorie: 'zbozi' as FakturaKategorie, provozovna: 'u-capa', castka: 14_700, datum: '2026-04-11', splatnost: '2026-04-18', stav: 'ceka-na-schvaleni' as FakturaStavPlatby, typDokladu: 'prijata' as TypDokladu, prirazenaOsoba: 'u-petr' },
   { id: 'fp22', cislo: 'FAK-2026-0054', dodavatel: 'E.ON Energie', kategorie: 'energie' as FakturaKategorie, provozovna: 'u-capa', castka: 9_800, datum: '2026-04-08', splatnost: '2026-04-17', stav: 'v-bance' as FakturaStavPlatby, typDokladu: 'prijata' as TypDokladu, schvalil: 'Petr Dohnal', datumSchvaleni: '10. 4. 2026' },
 
   // ── KOREK WINEBAR ──
@@ -520,8 +522,8 @@ export const FAKTURY_PLATBY: FakturaPlatby[] = [
   // ── U KOHOUTŮ ──
   { id: 'fp27', cislo: 'FAK-2026-0059', dodavatel: 'Pivovary Krušovice', kategorie: 'zbozi' as FakturaKategorie, provozovna: 'u-kohoutu', castka: 28_900, datum: '2026-04-10', splatnost: '2026-04-17', stav: 'schvalena' as FakturaStavPlatby, typDokladu: 'prijata' as TypDokladu, schvalil: 'Petr Dohnal', datumSchvaleni: '12. 4. 2026', poznamka: 'Pravidelná dodávka piva' },
   { id: 'fp28', cislo: 'FAK-2026-0060', dodavatel: 'Metro AG', kategorie: 'zbozi' as FakturaKategorie, provozovna: 'u-kohoutu', castka: 19_600, datum: '2026-04-11', splatnost: '2026-04-18', stav: 'schvalena' as FakturaStavPlatby, typDokladu: 'prijata' as TypDokladu, schvalil: 'Petr Dohnal', datumSchvaleni: '12. 4. 2026' },
-  { id: 'fp29', cislo: 'FAK-2026-0061', dodavatel: 'Správa budov s.r.o.', kategorie: 'najem' as FakturaKategorie, provozovna: 'u-kohoutu', castka: 48_000, datum: '2026-04-05', splatnost: '2026-04-20', stav: 'zastavena' as FakturaStavPlatby, typDokladu: 'prijata' as TypDokladu, poznamka: 'Pozdrženo – probíhá jednání o výši nájmu' },
-  { id: 'fp30', cislo: 'FAK-2026-0062', dodavatel: 'E.ON Energie', kategorie: 'energie' as FakturaKategorie, provozovna: 'u-kohoutu', castka: 8_100, datum: '2026-04-08', splatnost: '2026-04-18', stav: 'ke-schvaleni' as FakturaStavPlatby, typDokladu: 'prijata' as TypDokladu, prirazenaOsoba: 'u-petra' },
+  { id: 'fp29', cislo: 'FAK-2026-0061', dodavatel: 'Správa budov s.r.o.', kategorie: 'najem' as FakturaKategorie, provozovna: 'u-kohoutu', castka: 48_000, datum: '2026-04-05', splatnost: '2026-04-20', stav: 'pozastavena' as FakturaStavPlatby, typDokladu: 'prijata' as TypDokladu, poznamka: 'Pozdrženo – probíhá jednání o výši nájmu' },
+  { id: 'fp30', cislo: 'FAK-2026-0062', dodavatel: 'E.ON Energie', kategorie: 'energie' as FakturaKategorie, provozovna: 'u-kohoutu', castka: 8_100, datum: '2026-04-08', splatnost: '2026-04-18', stav: 'ceka-na-schvaleni' as FakturaStavPlatby, typDokladu: 'prijata' as TypDokladu, prirazenaOsoba: 'u-petra' },
 
   // ── NAD HLADINKOU ──
   { id: 'fp31', cislo: 'FAK-2026-0063', dodavatel: 'Makro Cash & Carry', kategorie: 'zbozi' as FakturaKategorie, provozovna: 'nad-hladinkou', castka: 31_200, datum: '2026-04-09', splatnost: '2026-04-15', stav: 'schvalena' as FakturaStavPlatby, typDokladu: 'prijata' as TypDokladu, schvalil: 'Petr Dohnal', datumSchvaleni: '11. 4. 2026', poznamka: 'Nákup 9.4. – týdenní zásoby' },
@@ -532,27 +534,27 @@ export const FAKTURY_PLATBY: FakturaPlatby[] = [
   // ── TEÁTR ──
   { id: 'fp35', cislo: 'FAK-2026-0067', dodavatel: 'Metro AG', kategorie: 'zbozi' as FakturaKategorie, provozovna: 'teatr', castka: 24_800, datum: '2026-04-10', splatnost: '2026-04-17', stav: 'schvalena' as FakturaStavPlatby, typDokladu: 'prijata' as TypDokladu, schvalil: 'Petr Dohnal', datumSchvaleni: '12. 4. 2026' },
   { id: 'fp36', cislo: 'FAK-2026-0068', dodavatel: 'Správa budov s.r.o.', kategorie: 'najem' as FakturaKategorie, provozovna: 'teatr', castka: 68_000, datum: '2026-04-05', splatnost: '2026-04-20', stav: 'schvalena' as FakturaStavPlatby, typDokladu: 'prijata' as TypDokladu, schvalil: 'Petr Dohnal', datumSchvaleni: '7. 4. 2026', poznamka: 'Nájem duben – divadelní sál' },
-  { id: 'fp37', cislo: 'FAK-2026-0069', dodavatel: 'Sodexo (stravování)', kategorie: 'sluzby' as FakturaKategorie, provozovna: 'teatr', castka: 7_800, datum: '2026-04-10', splatnost: '2026-04-18', stav: 'ke-schvaleni' as FakturaStavPlatby, typDokladu: 'prijata' as TypDokladu, prirazenaOsoba: 'u-petra' },
+  { id: 'fp37', cislo: 'FAK-2026-0069', dodavatel: 'Sodexo (stravování)', kategorie: 'sluzby' as FakturaKategorie, provozovna: 'teatr', castka: 7_800, datum: '2026-04-10', splatnost: '2026-04-18', stav: 'ceka-na-schvaleni' as FakturaStavPlatby, typDokladu: 'prijata' as TypDokladu, prirazenaOsoba: 'u-petra' },
   { id: 'fp38', cislo: 'FAK-2026-0070', dodavatel: 'ČEZ (elektřina)', kategorie: 'energie' as FakturaKategorie, provozovna: 'teatr', castka: 12_600, datum: '2026-04-07', splatnost: '2026-04-17', stav: 'schvalena' as FakturaStavPlatby, typDokladu: 'prijata' as TypDokladu, schvalil: 'Petr Dohnal', datumSchvaleni: '9. 4. 2026' },
 
   // ── JÍME BRNO ──
   { id: 'fp39', cislo: 'FAK-2026-0071', dodavatel: 'Makro Cash & Carry', kategorie: 'zbozi' as FakturaKategorie, provozovna: 'jime-brno', castka: 18_300, datum: '2026-04-11', splatnost: '2026-04-17', stav: 'schvalena' as FakturaStavPlatby, typDokladu: 'prijata' as TypDokladu, schvalil: 'Petr Dohnal', datumSchvaleni: '13. 4. 2026', poznamka: 'Zásoby – lunch menu' },
   { id: 'fp40', cislo: 'FAK-2026-0072', dodavatel: 'Správa budov s.r.o.', kategorie: 'najem' as FakturaKategorie, provozovna: 'jime-brno', castka: 41_000, datum: '2026-04-05', splatnost: '2026-04-20', stav: 'schvalena' as FakturaStavPlatby, typDokladu: 'prijata' as TypDokladu, schvalil: 'Petr Dohnal', datumSchvaleni: '7. 4. 2026', poznamka: 'Nájem duben – Nové sady' },
   { id: 'fp41', cislo: 'FAK-2026-0073', dodavatel: 'E.ON Energie', kategorie: 'energie' as FakturaKategorie, provozovna: 'jime-brno', castka: 6_400, datum: '2026-04-08', splatnost: '2026-04-18', stav: 'schvalena' as FakturaStavPlatby, typDokladu: 'prijata' as TypDokladu, schvalil: 'Petr Dohnal', datumSchvaleni: '10. 4. 2026' },
-  { id: 'fp42', cislo: 'FAK-2026-0074', dodavatel: 'Linde Gas (CO₂)', kategorie: 'zbozi' as FakturaKategorie, provozovna: 'jime-brno', castka: 3_900, datum: '2026-04-12', splatnost: '2026-04-19', stav: 'ke-schvaleni' as FakturaStavPlatby, typDokladu: 'prijata' as TypDokladu, prirazenaOsoba: 'u-petra' },
+  { id: 'fp42', cislo: 'FAK-2026-0074', dodavatel: 'Linde Gas (CO₂)', kategorie: 'zbozi' as FakturaKategorie, provozovna: 'jime-brno', castka: 3_900, datum: '2026-04-12', splatnost: '2026-04-19', stav: 'ceka-na-schvaleni' as FakturaStavPlatby, typDokladu: 'prijata' as TypDokladu, prirazenaOsoba: 'u-petra' },
 
   // ── SPECIÁLNÍ ÚČETNÍ PŘÍPADY (placeholder demo) ──
   // Zálohová faktura — bude započtena s finální fakturou fp43
   { id: 'fp43', cislo: 'ZAL-2026-0012', dodavatel: 'Sklářské závody Bohemia', kategorie: 'zbozi' as FakturaKategorie, provozovna: 'cg-brno', castka: 25_000, datum: '2026-04-08', splatnost: '2026-04-15', stav: 'schvalena' as FakturaStavPlatby, typDokladu: 'prijata' as TypDokladu, forma: 'zalohova', poznamka: 'Záloha na sklenice – objednávka 60 ks vinných sklenic', schvalil: 'Petr Dohnal', datumSchvaleni: '10. 4. 2026' },
   // Dobropis — vrácené zboží z fp14 (Metro)
-  { id: 'fp44', cislo: 'DOB-2026-0003', dodavatel: 'Metro AG', kategorie: 'zbozi' as FakturaKategorie, provozovna: 'cg-brno', castka: -3_400, datum: '2026-04-14', splatnost: '2026-04-21', stav: 'ke-schvaleni' as FakturaStavPlatby, typDokladu: 'prijata' as TypDokladu, forma: 'dobropis', spojenaSId: 'fp14', poznamka: 'Vrácené zkažené zboží – ovoce a zelenina', prirazenaOsoba: 'u-martin' },
+  { id: 'fp44', cislo: 'DOB-2026-0003', dodavatel: 'Metro AG', kategorie: 'zbozi' as FakturaKategorie, provozovna: 'cg-brno', castka: -3_400, datum: '2026-04-14', splatnost: '2026-04-21', stav: 'ceka-na-schvaleni' as FakturaStavPlatby, typDokladu: 'prijata' as TypDokladu, forma: 'dobropis', spojenaSId: 'fp14', poznamka: 'Vrácené zkažené zboží – ovoce a zelenina', prirazenaOsoba: 'u-martin' },
   // Offset — vzájemný zápočet s odběratelem (CG má jak pohledávku, tak závazek)
-  { id: 'fp45', cislo: 'OFF-2026-0001', dodavatel: 'Catering Partners s.r.o.', kategorie: 'sluzby' as FakturaKategorie, provozovna: 'cg-catering', castka: 12_500, datum: '2026-04-12', splatnost: '2026-04-22', stav: 'ke-schvaleni' as FakturaStavPlatby, typDokladu: 'prijata' as TypDokladu, forma: 'offset', spojenaSId: 'fp40', poznamka: 'Vzájemný zápočet – pronájem prostor vs. catering servis' },
+  { id: 'fp45', cislo: 'OFF-2026-0001', dodavatel: 'Catering Partners s.r.o.', kategorie: 'sluzby' as FakturaKategorie, provozovna: 'cg-catering', castka: 12_500, datum: '2026-04-12', splatnost: '2026-04-22', stav: 'ceka-na-schvaleni' as FakturaStavPlatby, typDokladu: 'prijata' as TypDokladu, forma: 'offset', spojenaSId: 'fp40', poznamka: 'Vzájemný zápočet – pronájem prostor vs. catering servis' },
 
   // ── ZAMČENÉ faktury z uzavřeného účetního období (březen 2026) ──
   // Editovatelná pouze kategorie pro přeúčtování; částka/IBAN/VS jsou zamčené
-  { id: 'fp46', cislo: 'FAK-2026-0021', dodavatel: 'Makro Cash & Carry', kategorie: 'zbozi' as FakturaKategorie, provozovna: 'piazza', castka: 38_900, datum: '2026-03-05', splatnost: '2026-03-12', stav: 'zaplacena' as FakturaStavPlatby, typDokladu: 'prijata' as TypDokladu, isLocked: true, schvalil: 'Petr Dohnal', datumSchvaleni: '6. 3. 2026', poznamka: 'Měsíční nákup březen' },
-  { id: 'fp47', cislo: 'FAK-2026-0024', dodavatel: 'E.ON Energie',       kategorie: 'energie' as FakturaKategorie, provozovna: 'monte', castka: 18_400, datum: '2026-03-10', splatnost: '2026-03-20', stav: 'zaplacena' as FakturaStavPlatby, typDokladu: 'prijata' as TypDokladu, isLocked: true, schvalil: 'Petr Dohnal', datumSchvaleni: '12. 3. 2026' },
+  { id: 'fp46', cislo: 'FAK-2026-0021', dodavatel: 'Makro Cash & Carry', kategorie: 'zbozi' as FakturaKategorie, provozovna: 'piazza', castka: 38_900, datum: '2026-03-05', splatnost: '2026-03-12', stav: 'uhrazena' as FakturaStavPlatby, typDokladu: 'prijata' as TypDokladu, isLocked: true, schvalil: 'Petr Dohnal', datumSchvaleni: '6. 3. 2026', poznamka: 'Měsíční nákup březen' },
+  { id: 'fp47', cislo: 'FAK-2026-0024', dodavatel: 'E.ON Energie',       kategorie: 'energie' as FakturaKategorie, provozovna: 'monte', castka: 18_400, datum: '2026-03-10', splatnost: '2026-03-20', stav: 'uhrazena' as FakturaStavPlatby, typDokladu: 'prijata' as TypDokladu, isLocked: true, schvalil: 'Petr Dohnal', datumSchvaleni: '12. 3. 2026' },
 ];
 
 // ─── Ostatní platby v tomto týdnu (13–19.4.) ─────────────────
@@ -820,6 +822,6 @@ export function getVS(faktura: { vs?: string; cislo: string }): string {
 
 export function getFakturyVProcesu(provozovna: string): FakturaPlatby[] {
   return getFakturyForProvozovna(provozovna).filter(
-    (f) => f.stav === 'v-bance' || f.stav === 'ceka-na-sparovani' || f.stav === 'chyba-platby'
+    (f) => f.stav === 'v-bance' || f.stav === 'v-bance-neuhrazena'
   );
 }

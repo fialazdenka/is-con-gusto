@@ -107,6 +107,9 @@ export interface BankaTransakce {
   isOverdueAtBank?: boolean;              // auto-set 3 dny po splatnosti bez spárování
   // Phase 2.3 — delegace nespárované transakce
   delegatedTo?: TransDelegace;
+  // Phase 7 (zápis 12. 6. 2026) — nepovinné přiřazení provozovně.
+  // Pokud chybí → platba spadá globálně pod celé Con Gusto.
+  provozovnaId?: string;
   // Rozšíření per workflow spec:
   candidates?: SuggestedMatch[];          // návrhy spárování (auto-detekce)
   // Pro 'manual-paired' — důvod a poznámka (vyžadováno per zápis)

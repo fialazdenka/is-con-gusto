@@ -46,15 +46,13 @@ interface Props {
 
 const STAV_META: Record<FakturaStavPlatby, { cls: string; label: string }> = {
   nova:                 { cls: 'bg-secondary-subtle text-secondary', label: 'Nová' },
-  'ke-schvaleni':       { cls: 'bg-warning-subtle text-warning',     label: 'Ke schválení' },
+  'ceka-na-schvaleni':  { cls: 'bg-warning-subtle text-warning',     label: 'Čeká na schválení' },
   schvalena:            { cls: 'bg-success-subtle text-success',     label: 'Schválená' },
+  pozastavena:          { cls: 'bg-warning-subtle text-warning',     label: 'Pozastavená' },
   zamitnuta:            { cls: 'bg-danger-subtle text-danger',       label: 'Zamítnutá' },
-  zastavena:            { cls: 'bg-danger-subtle text-danger',       label: 'Zastavená' },
-  odeslana:             { cls: 'bg-info-subtle text-info',           label: 'Odeslaná' },
-  zaplacena:            { cls: 'bg-success-subtle text-success',     label: 'Zaplacená' },
   'v-bance':            { cls: 'bg-info-subtle text-info',           label: 'V bance' },
-  'ceka-na-sparovani':  { cls: 'platby-stav-sparovani',              label: 'Čeká na spárování' },
-  'chyba-platby':       { cls: 'platby-stav-chyba',                  label: 'Platba neproběhla' },
+  uhrazena:             { cls: 'bg-success text-white',              label: 'Uhrazená' },
+  'v-bance-neuhrazena': { cls: 'platby-stav-chyba',                  label: 'V bance neuhrazená' },
 };
 
 const ROLE_LABEL: Record<string, string> = {
