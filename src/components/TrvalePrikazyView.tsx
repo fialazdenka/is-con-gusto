@@ -1016,7 +1016,7 @@ function PrikazFormModal({ initial, ucty, onSave, onClose }: {
 // ──────────────────────────────────────────────────────────────
 // Main view
 // ──────────────────────────────────────────────────────────────
-export default function TrvalePrikazyView(_props: Props) {
+export default function TrvalePrikazyView({ state, update }: Props) {
   const [search, setSearch] = useState('');
   const [stavFilter, setStavFilter] = useState<TrvalyPrikazStav | 'all'>('all');
   const [typFilter, setTypFilter]   = useState<TrvalyPrikazTyp | 'all'>('all');
@@ -1035,6 +1035,33 @@ export default function TrvalePrikazyView(_props: Props) {
     const t = window.setTimeout(() => setToast(null), 2500);
     return () => window.clearTimeout(t);
   }, [toast]);
+
+  // Phase 8.5 (zápis 12. 6. 2026) — Cross-section nav z Banky: vytvořit TP z transakce
+  useEffect(() => {
+    if (state.pendingTPFromTrans) {
+      const tp = state.pendingTPFromTrans;
+      const today = new Date().toISOString().slice(0, 10);
+      // Otevřeme form modal v "new" módu s předvyplněnými údaji z transakce
+      const initial: TrvalyPrikaz = {
+        id: 'tp-new-' + Date.now(),
+        nazev: `Trvalý příkaz — ${tp.firma}`,
+        ucetId: '',
+        protistrana: tp.firma,
+        protiUcet: tp.protiUcet ?? '',
+        typ: 'standard',
+        perioda: 'mesicni',
+        castka: tp.castka,
+        vs: tp.vs ?? '',
+        zacatek: today,
+        pristiSplatnost: today,
+        stav: 'aktivni',
+      };
+      setFormState({ mode: 'new', initial });
+      setToast(`Předvyplněno z bankovní transakce: ${tp.firma}`);
+      update({ pendingTPFromTrans: null });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [state.pendingTPFromTrans]);
 
   const mergedData: TrvalyPrikaz[] = useMemo(() => {
     // Combine mock + local edits + local new

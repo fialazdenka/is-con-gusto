@@ -28,6 +28,10 @@ const STAV_META: Record<FakturaStavPlatby, { cls: string; label: string; icon: s
   'v-bance':            { cls: 'bg-info-subtle text-info',           label: 'V bance',               icon: 'solar:bank-bold-duotone' },
   uhrazena:             { cls: 'bg-success text-white',              label: 'Uhrazená',              icon: 'solar:check-square-bold-duotone' },
   'v-bance-neuhrazena': { cls: 'platby-stav-chyba',                  label: 'V bance neuhrazená',    icon: 'solar:danger-circle-bold-duotone' },
+  // Phase 8.4 (zápis 19. 6. 2026) — stavy vydaných faktur
+  vystavena:            { cls: 'bg-info-subtle text-info',           label: 'Vystavená',             icon: 'solar:document-add-bold-duotone' },
+  nezaplacena:          { cls: 'bg-danger-subtle text-danger',       label: 'Nezaplacená',           icon: 'solar:danger-triangle-bold-duotone' },
+  zaplacena:            { cls: 'bg-success text-white',              label: 'Zaplacená',             icon: 'solar:check-square-bold-duotone' },
 };
 
 const AUDIT_IKONY: Record<string, string> = {

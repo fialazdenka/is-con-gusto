@@ -413,6 +413,25 @@ export default function TrzbyView({ state, update }: Props) {
 
   return (
     <>
+      {/* Phase 8.5 (zápis 12. 6. 2026) — CG Catering: rozlišení zdaněné vs. nezdaněné tržby
+          (BASE_DAY.b reprezentuje nezdaněné plnění = catering pro firemní akce s vlastní kuchyní).
+          Účetní potřebuje vidět oba druhy zvlášť kvůli DPH. */}
+      {selectedProvozovna === 'cg-catering' && (
+        <div className="alert alert-info py-2 mb-3 d-flex align-items-center gap-2 fs-13">
+          <iconify-icon icon="solar:info-circle-bold-duotone" style={{ fontSize: 18 }} />
+          <div className="flex-grow-1">
+            <strong>CG Catering — rozlišení tržeb pro DPH:</strong>
+            <span className="ms-2">
+              <span className="badge bg-success-subtle text-success me-1">Zdaněné (15 %)</span>
+              cca <strong>~74 %</strong> obratu (catering s servisem),
+              <span className="badge bg-warning-subtle text-warning ms-2 me-1">Nezdaněné</span>
+              cca <strong>~26 %</strong> (osvobozená plnění — donášky, vouchery)
+            </span>
+          </div>
+          <span className="text-muted fs-11 fst-italic">V grafu modrá = zdaněné · oranžová = nezdaněné</span>
+        </div>
+      )}
+
       {/* ═══ SEKCE 1: KPI přehled – boxíky ══════════════════════ */}
       <div className="card mb-3" style={{ borderTop: '3px solid var(--prov-color, #c9911a)' }}>
         <div className="card-header trzby-detail-header-sticky">

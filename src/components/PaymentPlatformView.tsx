@@ -636,7 +636,7 @@ function MonthlyDetailModal({ statement, onClose }: { statement: MonthlyStatemen
   );
 }
 
-function PlatformHeader({ platforma }: { platforma: PlatformaId }) {
+function PlatformHeader({ platforma, onOpenImport }: { platforma: PlatformaId; onOpenImport?: () => void }) {
   const cfg = PLATFORMS[platforma];
   const ucet = BANKA_UCTY.find((u) => u.id === cfg.ucetCilovy);
   return (
@@ -682,7 +682,9 @@ function PlatformHeader({ platforma }: { platforma: PlatformaId }) {
           </div>
         </div>
         {!cfg.apiDostupne && (
-          <button className="btn btn-warning btn-sm d-flex align-items-center gap-2" title="Mock — bez backendu">
+          <button className="btn btn-warning btn-sm d-flex align-items-center gap-2"
+            onClick={() => onOpenImport?.()}
+            title="Manuální import dat — bez API (CSV/XLSX z portálu poskytovatele)">
             <iconify-icon icon="solar:upload-bold-duotone" />
             Importovat data (CSV/XLSX)
           </button>
@@ -1081,6 +1083,9 @@ export default function PaymentPlatformView({ platforma }: Props) {
   // Phase 7 — toast pro import/export akce + modal s detailem měsíčního výpisu
   const [toast, setToast] = useState<string | null>(null);
   const [detailStatement, setDetailStatement] = useState<MonthlyStatement | null>(null);
+  // Phase 8.5 (zápis 12. 6. 2026) — Manuální import s preview parsingu
+  const [importModalOpen, setImportModalOpen] = useState(false);
+  const [importFile, setImportFile] = useState<string | null>(null);
   useEffect(() => {
     if (!toast) return;
     const t = window.setTimeout(() => setToast(null), 2500);
@@ -1089,7 +1094,7 @@ export default function PaymentPlatformView({ platforma }: Props) {
 
   return (
     <>
-      <PlatformHeader platforma={platforma} />
+      <PlatformHeader platforma={platforma} onOpenImport={() => setImportModalOpen(true)} />
 
       {/* Phase 7 — info banner pro GoPay (nesoulad 139k Kč v řešení) */}
       {platforma === 'gopay' && <GoPayAlertBanner />}
@@ -1134,6 +1139,124 @@ export default function PaymentPlatformView({ platforma }: Props) {
             <span className="fs-13">{toast}</span>
           </div>
         </div>
+      )}
+
+      {/* Phase 8.5 (zápis 12. 6. 2026) — Manuální import dat (CSV/XLSX) s preview parsingu */}
+      {importModalOpen && (
+        <>
+          <div className="modal-backdrop fade show" style={{ zIndex: 1400 }} onClick={() => { setImportModalOpen(false); setImportFile(null); }} />
+          <div className="modal fade show d-block" style={{ zIndex: 1500 }} tabIndex={-1}>
+            <div className="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable">
+              <div className="modal-content">
+                <div className="modal-header">
+                  <h5 className="modal-title d-flex align-items-center gap-2">
+                    <iconify-icon icon="solar:upload-bold-duotone" style={{ color: '#fd7e14' }} />
+                    Manuální import dat — {PLATFORMS[platforma].nazev}
+                  </h5>
+                  <button className="btn-close" onClick={() => { setImportModalOpen(false); setImportFile(null); }} />
+                </div>
+                <div className="modal-body">
+                  {!importFile ? (
+                    <>
+                      <div className="alert alert-info py-2 fs-12">
+                        <iconify-icon icon="solar:info-circle-bold-duotone" className="me-1" />
+                        <strong>{PLATFORMS[platforma].nazev}</strong> nemá API — data je nutné stáhnout ručně z portálu poskytovatele
+                        a nahrát zde jako CSV nebo XLSX.
+                      </div>
+                      <div className="border border-2 border-dashed rounded p-5 text-center" style={{ borderColor: '#dee2e6', cursor: 'pointer' }}
+                        onClick={() => setImportFile('sodexo-vypis-04-2026.csv')}>
+                        <iconify-icon icon="solar:cloud-upload-bold-duotone" style={{ fontSize: 56, color: '#dee2e6' }} />
+                        <div className="mt-3 fw-semibold">Klikněte pro výběr souboru</div>
+                        <div className="text-muted fs-12 mt-1">Podporované formáty: .csv, .xlsx, .xls — max 10 MB</div>
+                      </div>
+                    </>
+                  ) : (
+                    <>
+                      <div className="d-flex align-items-center gap-2 mb-3 p-2 rounded" style={{ background: '#e8f5e9' }}>
+                        <iconify-icon icon="solar:document-text-bold-duotone" style={{ fontSize: 22, color: '#198754' }} />
+                        <div className="flex-grow-1">
+                          <div className="fw-semibold fs-13">{importFile}</div>
+                          <div className="text-muted fs-11">Nahráno · 12 KB · 18 řádků</div>
+                        </div>
+                        <button className="btn btn-link btn-sm text-danger p-0" onClick={() => setImportFile(null)} title="Změnit soubor">
+                          <iconify-icon icon="solar:trash-bin-trash-bold-duotone" />
+                        </button>
+                      </div>
+                      <div className="d-flex align-items-center justify-content-between mb-2">
+                        <h6 className="fw-semibold mb-0 fs-13">Náhled prvních 5 řádků</h6>
+                        <div className="d-flex gap-2 align-items-center">
+                          <span className="text-muted fs-11">Provozovna pro celý import:</span>
+                          <select className="form-select form-select-sm" style={{ width: 160, fontSize: 12 }}>
+                            <option value="">Auto-rozpoznat</option>
+                            <option value="cg-brno">CG Brno</option>
+                            <option value="piazza">Piazza</option>
+                            <option value="monte">Monte</option>
+                          </select>
+                        </div>
+                      </div>
+                      <div className="table-responsive border rounded" style={{ maxHeight: 240, overflowY: 'auto' }}>
+                        <table className="table table-sm mb-0" style={{ fontSize: 12 }}>
+                          <thead className="table-light" style={{ position: 'sticky', top: 0 }}>
+                            <tr>
+                              <th>Datum</th>
+                              <th>Číslo karty/dokladu</th>
+                              <th className="text-end">Částka</th>
+                              <th>Provozovna</th>
+                              <th>Stav</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {[
+                              { d: '2026-04-15', c: 'SDX-0001234', a: 1200, p: 'CG Brno',  s: 'ok' },
+                              { d: '2026-04-15', c: 'SDX-0001235', a: 890,  p: 'Piazza',   s: 'ok' },
+                              { d: '2026-04-16', c: 'SDX-0001236', a: 540,  p: '?',        s: 'unmatched' },
+                              { d: '2026-04-16', c: 'SDX-0001237', a: 2150, p: 'Monte',    s: 'ok' },
+                              { d: '2026-04-17', c: 'SDX-0001238', a: 720,  p: 'CG Brno',  s: 'ok' },
+                            ].map((row, i) => (
+                              <tr key={i}>
+                                <td className="czk-num">{row.d}</td>
+                                <td className="czk-num">{row.c}</td>
+                                <td className="text-end czk-num">{row.a.toLocaleString('cs-CZ')} Kč</td>
+                                <td>
+                                  {row.s === 'unmatched'
+                                    ? <span className="badge bg-warning-subtle text-warning fs-11">? Bez provozovny</span>
+                                    : row.p}
+                                </td>
+                                <td>
+                                  {row.s === 'ok'
+                                    ? <span className="badge bg-success-subtle text-success fs-11">OK</span>
+                                    : <span className="badge bg-warning-subtle text-warning fs-11">K dořešení</span>}
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                      <div className="alert alert-success py-2 mb-0 mt-3 fs-12">
+                        <iconify-icon icon="solar:check-circle-bold-duotone" className="me-1" />
+                        <strong>17 z 18 řádků</strong> rozpoznáno automaticky · <strong>1 řádek</strong> vyžaduje přiřazení provozovny (uděláte v hlavní tabulce po importu).
+                      </div>
+                    </>
+                  )}
+                </div>
+                <div className="modal-footer">
+                  <button className="btn btn-light btn-sm" onClick={() => { setImportModalOpen(false); setImportFile(null); }}>
+                    Zrušit
+                  </button>
+                  <button className="btn btn-primary btn-sm" disabled={!importFile}
+                    onClick={() => {
+                      setImportModalOpen(false);
+                      setImportFile(null);
+                      setToast(`Mock: 18 řádků importováno z ${importFile}. 1 řádek čeká na přiřazení provozovny.`);
+                    }}>
+                    <iconify-icon icon="solar:check-circle-bold-duotone" className="me-1" />
+                    Importovat 18 řádků
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </>
       )}
     </>
   );

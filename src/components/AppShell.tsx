@@ -15,6 +15,7 @@ import Sidebar from './Sidebar';
 import Topbar from './Topbar';
 import DashboardView from './DashboardView';
 import PlaceholderView from './PlaceholderView';
+import NastaveniView from './NastaveniView';
 import ProvozovnaDrawer from './ProvozovnaDrawer';
 import ComponentReference from './ComponentReference';
 import KodView from './KodView';
@@ -115,6 +116,8 @@ export default function AppShell({ state, update }: Props) {
         return <PaymentPlatformView platforma="sodexo" />;
       case 'provozovny':
         return <ProvozovnyView />;
+      case 'nastaveni':
+        return <NastaveniView />;
       case 'komponenty':
         return <ComponentReference />;
       case 'kod':

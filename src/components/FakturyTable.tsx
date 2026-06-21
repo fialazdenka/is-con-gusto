@@ -28,6 +28,7 @@ import {
   KATEGORIE_LABELS,
   PROCESSING_DAYS_DEFAULT,
   SCHVALOVACI_OSOBY,
+  getEffektivniStav,
 } from '../platbyData';
 import { PROVOZOVNY, fCzk, fDate } from '../data';
 
@@ -74,8 +75,9 @@ const MATCHING_META: Record<MatchingStav, { cls: string; label: string; icon: st
   'bez-dl':             { cls: 'bg-secondary-subtle text-secondary', label: 'Bez DL',      icon: 'solar:document-bold-duotone' },
 };
 
-// Phase 8 (zápis 10. 6. 2026) — 8 sjednocených stavů přijatých faktur
+// Phase 8 (zápis 10. 6. 2026) — sjednocené stavy přijatých + vydaných faktur (8 + 3)
 const STAV_META: Record<FakturaStavPlatby, { cls: string; label: string }> = {
+  // Přijaté
   nova:                 { cls: 'bg-secondary-subtle text-secondary', label: 'Nová' },
   'ceka-na-schvaleni':  { cls: 'bg-warning-subtle text-warning',     label: 'Čeká na schválení' },
   schvalena:            { cls: 'bg-success-subtle text-success',     label: 'Schválená' },
@@ -84,6 +86,10 @@ const STAV_META: Record<FakturaStavPlatby, { cls: string; label: string }> = {
   'v-bance':            { cls: 'bg-info-subtle text-info',           label: 'V bance' },
   uhrazena:             { cls: 'bg-success text-white',              label: 'Uhrazená' },
   'v-bance-neuhrazena': { cls: 'platby-stav-chyba',                  label: 'V bance neuhrazená' },
+  // Phase 8.4 — Vydané (workflow vystavení → úhrada zákazníkem)
+  vystavena:            { cls: 'bg-info-subtle text-info',           label: 'Vystavená' },
+  nezaplacena:          { cls: 'bg-danger-subtle text-danger',       label: 'Nezaplacená' },
+  zaplacena:            { cls: 'bg-success text-white',              label: 'Zaplacená' },
 };
 
 const FORMA_META: Record<FakturaForma, { label: string; cls: string; icon: string }> = {
@@ -190,10 +196,12 @@ export default function FakturyTable({
     return true;
   });
 
-  // ── Řazení per Phase 8 (zápis 10. 6. 2026) — 8 sjednocených stavů ──
+  // ── Řazení per Phase 8 (zápis 10. 6. 2026) — sjednocené stavy přijatých + vydaných ──
   const STAV_ORDER: Record<FakturaStavPlatby, number> = {
     nova: 1, 'ceka-na-schvaleni': 2, schvalena: 3, pozastavena: 4,
     'v-bance': 5, 'v-bance-neuhrazena': 6, uhrazena: 7, zamitnuta: 8,
+    // Vydané — řadíme po vlastní ose: vystavená → nezaplacená → zaplacená
+    vystavena: 1, nezaplacena: 2, zaplacena: 3,
   };
   const zobrazene = sortBy ? [...filtered].sort((a, b) => {
     const dir = sortDir === 'asc' ? 1 : -1;
@@ -204,7 +212,7 @@ export default function FakturyTable({
       case 'castka':     cmp = a.castka - b.castka; break;
       case 'splatnost':  cmp = a.splatnost.localeCompare(b.splatnost); break;
       case 'odeslatDo':  cmp = getOdeslatDo(a.splatnost, processingDays).localeCompare(getOdeslatDo(b.splatnost, processingDays)); break;
-      case 'stav':       cmp = (STAV_ORDER[localStavy[a.id] ?? a.stav] ?? 99) - (STAV_ORDER[localStavy[b.id] ?? b.stav] ?? 99); break;
+      case 'stav':       cmp = (STAV_ORDER[getEffektivniStav(localStavy[a.id] ?? a.stav, a.splatnost)] ?? 99) - (STAV_ORDER[getEffektivniStav(localStavy[b.id] ?? b.stav, b.splatnost)] ?? 99); break;
     }
     return cmp * dir;
   }) : filtered;
@@ -220,7 +228,7 @@ export default function FakturyTable({
 
   return (
     <div className="card">
-      {/* Phase 8 (zápis 10. 6. 2026) — hromadné zaškrtávání odstraněno per spec */}
+      {/* Phase 8.5 (zápis 10. 6. 2026) — hromadný výběr vrácen pro bulk akce (Exportovat PDF / Označit uhrazené / Schválit) */}
       <div className="card-header d-flex align-items-center justify-content-between gap-3">
         <h5 className="card-title mb-0 flex-grow-1">
           {tableTitle}
@@ -228,6 +236,18 @@ export default function FakturyTable({
             {zobrazene.length} {zobrazene.length === 1 ? 'faktura' : zobrazene.length < 5 ? 'faktury' : 'faktur'}
           </small>
         </h5>
+        {zobrazene.length > 0 && (
+          <button
+            className="btn btn-sm btn-outline-secondary"
+            onClick={() => {
+              if (zobrazene.every((f) => selectedIds.has(f.id))) onToggleAll([]);
+              else onToggleAll(zobrazene.map((f) => f.id));
+            }}
+            title={zobrazene.every((f) => selectedIds.has(f.id)) ? 'Zrušit výběr' : 'Vybrat všechny zobrazené'}>
+            <iconify-icon icon={zobrazene.every((f) => selectedIds.has(f.id)) ? 'solar:close-square-bold-duotone' : 'solar:check-square-bold-duotone'} className="me-1" />
+            {zobrazene.every((f) => selectedIds.has(f.id)) ? 'Zrušit výběr' : `Vybrat vše (${zobrazene.length})`}
+          </button>
+        )}
       </div>
 
       {/* SOURCE: Larkon .table.table-hover.table-centered.table-nowrap */}
@@ -254,7 +274,7 @@ export default function FakturyTable({
               </tr>
             )}
             {zobrazene.map((f) => {
-              const effectiveStav  = localStavy[f.id] ?? f.stav;
+              const effectiveStav  = getEffektivniStav(localStavy[f.id] ?? f.stav, f.splatnost);
               const prirazeniId    = localPrirazeni[f.id] ?? f.prirazenaOsoba ?? '';
               const prirazenaOsoba = SCHVALOVACI_OSOBY.find((o) => o.id === prirazeniId);
               const poSpl    = isPoSplatnosti(f.splatnost);
@@ -278,7 +298,24 @@ export default function FakturyTable({
                   key={f.id}
                   className={rowClass}
                   style={{ cursor: 'pointer' }}
-                  onClick={() => onRowClick ? onRowClick(f.id) : (vybiratelna && onToggle(f.id))}
+                  onClick={(e) => {
+                    const row = e.currentTarget;
+                    const wasSelected = selectedRowId === f.id;
+                    if (onRowClick) onRowClick(f.id);
+                    else if (vybiratelna) onToggle(f.id);
+                    // Phase 8.5 (zápis 19. 6. 2026) — Zarovnání horní hrany kliknutého řádku s horní hranou
+                    // sticky panelu vpravo (jen pod topbar). Pattern z BankaView.
+                    if (!wasSelected && onRowClick) {
+                      requestAnimationFrame(() => {
+                        const rect = row.getBoundingClientRect();
+                        const topbarH = parseFloat(
+                          getComputedStyle(document.documentElement).getPropertyValue('--bs-topbar-height')
+                        ) || 100;
+                        const targetY = window.scrollY + rect.top - topbarH - 16;
+                        window.scrollTo({ top: Math.max(0, targetY), behavior: 'smooth' });
+                      });
+                    }
+                  }}
                 >
                   {/* Phase 8 — Dodavatel (+ číslo + VS + forma) */}
                   <td style={{ width: 260, maxWidth: 260 }}>

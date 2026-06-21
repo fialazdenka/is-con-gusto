@@ -27,6 +27,7 @@ import {
   type TransAuditEntry,
   type TransNote,
   type TransDelegace,
+  detectTransType,
 } from '../bankaData';
 import { FAKTURY_PLATBY } from '../platbyData';
 import { UVERY } from '../uveryData';
@@ -469,18 +470,24 @@ function AutoSyncBar({ pendingCount, paymentsQueueCount, apiCallsUsed }: {
 }) {
   const [syncError, setSyncError]       = useState(false);
   const [lastBatch,  setLastBatch]      = useState<{ id: string; count: number; cas: string } | null>(null);
+  // Phase 8.5 (zápis 12. 6. 2026) — Confirm dialog před anulováním dávky + audit toast
+  const [revertConfirm, setRevertConfirm] = useState(false);
+  const [batchAudit, setBatchAudit] = useState<string[]>([]);
 
   const handleSendBatch = () => {
     if (paymentsQueueCount === 0) return;
-    setLastBatch({
-      id: `BATCH-${Date.now().toString().slice(-6)}`,
-      count: paymentsQueueCount,
-      cas: new Date().toISOString().slice(11, 16),
-    });
+    const id = `BATCH-${Date.now().toString().slice(-6)}`;
+    const cas = new Date().toISOString().slice(11, 16);
+    setLastBatch({ id, count: paymentsQueueCount, cas });
+    setBatchAudit((a) => [...a, `${cas} • Dávka ${id} odeslána (${paymentsQueueCount} plateb)`]);
   };
 
   const handleRevertBatch = () => {
+    if (!lastBatch) return;
+    const cas = new Date().toISOString().slice(11, 16);
+    setBatchAudit((a) => [...a, `${cas} • Dávka ${lastBatch.id} anulována (vrácena do fronty)`]);
     setLastBatch(null);
+    setRevertConfirm(false);
   };
 
   const handleToggleSyncError = () => {
@@ -545,7 +552,7 @@ function AutoSyncBar({ pendingCount, paymentsQueueCount, apiCallsUsed }: {
             Dávka {lastBatch.id} ({lastBatch.count}) odeslána v {lastBatch.cas}
           </span>
           <button className="btn btn-outline-danger btn-sm py-1 px-2" style={{ fontSize: 11 }}
-            onClick={handleRevertBatch} title="Anulovat poslední odeslanou dávku">
+            onClick={() => setRevertConfirm(true)} title="Anulovat poslední odeslanou dávku">
             <iconify-icon icon="solar:undo-left-round-bold-duotone" className="me-1" />
             Vrátit poslední krok
           </button>
@@ -571,11 +578,64 @@ function AutoSyncBar({ pendingCount, paymentsQueueCount, apiCallsUsed }: {
           <iconify-icon icon="solar:download-minimalistic-bold-duotone" className="me-1" />
           Znovu načíst
         </button>
+        {batchAudit.length > 0 && (
+          <div className="dropdown ms-2">
+            <button className="btn btn-link btn-sm py-1 text-muted" style={{ fontSize: 11 }}
+              data-bs-toggle="dropdown" title="Historie dávek a anulací">
+              <iconify-icon icon="solar:history-bold-duotone" className="me-1" />
+              Audit ({batchAudit.length})
+            </button>
+            <ul className="dropdown-menu" style={{ minWidth: 320, fontSize: 11 }}>
+              {batchAudit.slice().reverse().map((line, i) => (
+                <li key={i}><span className="dropdown-item-text py-1 czk-num">{line}</span></li>
+              ))}
+            </ul>
+          </div>
+        )}
         <button className="btn btn-link btn-sm py-1 text-muted ms-auto" style={{ fontSize: 11 }}
           onClick={handleToggleSyncError} title="Simulovat chybu autosync — demo">
           Simulovat chybu
         </button>
       </div>
+
+      {/* Phase 8.5 (zápis 12. 6. 2026) — Confirm dialog před anulováním dávky */}
+      {revertConfirm && lastBatch && (
+        <>
+          <div className="modal-backdrop fade show" style={{ zIndex: 1500 }} onClick={() => setRevertConfirm(false)} />
+          <div className="modal fade show d-block" style={{ zIndex: 1600 }} tabIndex={-1}>
+            <div className="modal-dialog modal-dialog-centered">
+              <div className="modal-content">
+                <div className="modal-header bg-warning-subtle">
+                  <h5 className="modal-title d-flex align-items-center gap-2">
+                    <iconify-icon icon="solar:danger-triangle-bold-duotone" style={{ color: '#fd7e14' }} />
+                    Anulovat dávku {lastBatch.id}?
+                  </h5>
+                  <button className="btn-close" onClick={() => setRevertConfirm(false)} />
+                </div>
+                <div className="modal-body">
+                  <p className="mb-2 fs-13">
+                    Skutečně chcete vrátit poslední odeslanou dávku <strong>{lastBatch.id}</strong> ({lastBatch.count} plateb)?
+                  </p>
+                  <div className="alert alert-warning py-2 mb-0 fs-12">
+                    <iconify-icon icon="solar:info-circle-bold-duotone" className="me-1" />
+                    Banka pokusí stornovat všechny platby, které ještě nebyly zaúčtované. Akce se zapíše do auditu a může způsobit
+                    dočasné zablokování limitu API.
+                  </div>
+                </div>
+                <div className="modal-footer">
+                  <button className="btn btn-light btn-sm" onClick={() => setRevertConfirm(false)}>
+                    Zpět
+                  </button>
+                  <button className="btn btn-danger btn-sm" onClick={handleRevertBatch}>
+                    <iconify-icon icon="solar:undo-left-round-bold-duotone" className="me-1" />
+                    Ano, anulovat dávku
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </>
+      )}
     </div>
   );
 }
@@ -765,7 +825,7 @@ type ActivityEntry =
   | { type: 'audit'; id: string; cas: string; kdo: string; akce: string; icon: string; color: string };
 
 // ── Side-panel detail transakce ────────────────────────────────
-function TransakceSidePanel({ transakce, ucty, onClose, onPatch, onAudit, onNote, onOpenFaktura }: {
+function TransakceSidePanel({ transakce, ucty, onClose, onPatch, onAudit, onNote, onOpenFaktura, onCreateTP }: {
   transakce: BankaTransakce | null;
   ucty: BankaUcet[];
   onClose: () => void;
@@ -773,6 +833,7 @@ function TransakceSidePanel({ transakce, ucty, onClose, onPatch, onAudit, onNote
   onAudit: (id: string, entry: TransAuditEntry) => void;
   onNote:  (id: string, note: TransNote) => void;
   onOpenFaktura?: (fakturaId: string) => void;   // Phase 2.3 — cross-section navigace
+  onCreateTP?: (payload: { firma: string; castka: number; protiUcet?: string; vs?: string }) => void; // Phase 8.5 (zápis 12. 6.) — vytvořit TP z transakce
 }) {
   const [noteInput, setNoteInput] = useState('');
   const [manualMatchInvoice, setManualMatchInvoice] = useState('');
@@ -1300,6 +1361,34 @@ function TransakceSidePanel({ transakce, ucty, onClose, onPatch, onAudit, onNote
                   </button>
                 )}
 
+                {/* Phase 8.5 (zápis 12. 6. 2026) — Auto-návrh ze systému dle textu transakce */}
+                {(() => {
+                  const navrh = detectTransType(transakce.firma, transakce.poznamka);
+                  if (!navrh) return null;
+                  return (
+                    <div className="alert py-2 mb-2 border-0 d-flex align-items-center gap-2" style={{ background: '#e7f1ff' }}>
+                      <iconify-icon icon="solar:magic-stick-3-bold-duotone" style={{ fontSize: 18, color: '#0d6efd' }} />
+                      <div className="flex-grow-1">
+                        <div className="fs-12 fw-semibold">Návrh systému</div>
+                        <div className="fs-11 text-muted">Klasifikovat jako: <strong>{navrh.typ}</strong></div>
+                      </div>
+                      <button className="btn btn-primary btn-sm" onClick={() => {
+                        onPatch(transakce.id, {
+                          stav: 'manual-paired',
+                          manualReason: navrh.typ,
+                          manualNote: `Auto-klasifikace dle popisu (Návrh systému)`,
+                        });
+                        onAudit(transakce.id, {
+                          cas: nowIso(), kdo: me,
+                          akce: `Přijat návrh: ${navrh.typ} → ${navrh.cilovaSekce}`,
+                          icon: 'solar:magic-stick-3-bold-duotone', color: '#0d6efd',
+                        });
+                        setFeedback(`Klasifikováno jako ${navrh.typ} + přidáno do ${navrh.cilovaSekce}`);
+                      }}>Přijmout návrh</button>
+                    </div>
+                  );
+                })()}
+
                 {/* Označit jako… (sloučený workflow) */}
                 {oznacitMode === null ? (
                   <div>
@@ -1331,6 +1420,25 @@ function TransakceSidePanel({ transakce, ucty, onClose, onPatch, onAudit, onNote
                         onClick={() => { setOznacitMode('loan-payment'); setOznacitReason(''); }}>
                         <iconify-icon icon="solar:hand-money-bold-duotone" className="me-1" />
                         Splátka úvěru
+                      </button>
+                      {/* Phase 8.5 (zápis 12. 6. 2026) — Vytvořit trvalý příkaz z této pravidelné platby */}
+                      <button
+                        className="btn btn-outline-success btn-sm flex-grow-1"
+                        title="Vytvořit trvalý příkaz s předvyplněnými údaji z této transakce (firma, částka, protiÚčet, VS)"
+                        onClick={() => {
+                          // Sloučená cross-section navigace přes onOpenFaktura mechanismus, ale s vlastním payload
+                          // (handler v BankaView nastaví pendingTPFromTrans a přepne sekci)
+                          if (onCreateTP) {
+                            onCreateTP({
+                              firma: transakce.firma,
+                              castka: Math.abs(transakce.castka),
+                              protiUcet: transakce.protiUcet,
+                              vs: transakce.vs,
+                            });
+                          }
+                        }}>
+                        <iconify-icon icon="solar:refresh-circle-bold-duotone" className="me-1" />
+                        Vytvořit trvalý příkaz
                       </button>
                       <button
                         className="btn btn-outline-secondary btn-sm flex-grow-1"
@@ -2688,9 +2796,17 @@ export default function BankaView({ state, update }: Props) {
               onAudit={pushTransAudit}
               onNote={pushTransNote}
               onOpenFaktura={(fakturaId) => {
+                // Phase 8.3 (zápis 19. 6. 2026) — cross-section nav: nastavíme pendingFakturaId,
+                // FakturyView ho v useEffect přečte, otevře side panel a vyčistí pole.
                 setToast(`Otevírám fakturu ${fakturaId} v sekci Faktury…`);
                 window.setTimeout(() => setToast(null), 2500);
-                update({ selectedSection: 'faktury' });
+                update({ selectedSection: 'faktury', pendingFakturaId: fakturaId });
+              }}
+              onCreateTP={(payload) => {
+                // Phase 8.5 (zápis 12. 6. 2026) — naviguje na Trvalé příkazy s předvyplněnými údaji
+                setToast(`Otevírám Trvalé příkazy — předvyplněno: ${payload.firma}`);
+                window.setTimeout(() => setToast(null), 2500);
+                update({ selectedSection: 'trvale-prikazy', pendingTPFromTrans: payload });
               }}
             />
           </div>

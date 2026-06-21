@@ -91,4 +91,12 @@ export interface AppState {
   drawerOpen: boolean;
   drawerProvozovnaId: string | null;
   sidebarCollapsed: boolean;
+  // Phase 8.3 (zápis 19. 6. 2026) — cross-section nav: jiné view (Banka, Platby, ...) může požádat
+  // o otevření konkrétní faktury v sekci Faktury. FakturyView toto pole čte v useEffect a vyčistí.
+  pendingFakturaId?: string | null;
+  // Phase 8.5 (zápis 12. 6. 2026) — Banka → Trvalé příkazy: vytvořit TP z nespárované transakce
+  // (předvyplní firmu, částku, protiÚčet, VS). TrvalePrikazyView otevře form modal s těmito daty.
+  pendingTPFromTrans?: { firma: string; castka: number; protiUcet?: string; vs?: string } | null;
+  // Phase 8.5 (zápis 12. 6. 2026) — Banka → Poplatky: zaevidovat nespárovanou transakci jako bankovní poplatek
+  pendingPoplatekFromTrans?: { popis: string; castka: number; datum: string; provozovna: string } | null;
 }

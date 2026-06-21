@@ -8,7 +8,10 @@
 //   nová → čeká na schválení (od X) → schválená → v bance → uhrazená
 //   alternativně: schválená → pozastavená (jen po schválení) / zamítnutá
 //   alternativně: v bance → v bance neuhrazená (3+ dny po splatnosti)
+// Phase 8.4 (zápis 19. 6. 2026) — sjednocený typ pro přijaté i vydané faktury.
+// Přijaté procházejí workflow schvalování → platba; vydané mají odlišný workflow vystavení → úhrada.
 export type FakturaStavPlatby =
+  // ── Přijaté faktury (workflow schvalování + platba) ──
   | 'nova'                    // zadaná, čeká na přiřazení schvalovatele
   | 'ceka-na-schvaleni'       // má schvalovatele, čeká na rozhodnutí
   | 'schvalena'               // schválená k úhradě
@@ -16,7 +19,11 @@ export type FakturaStavPlatby =
   | 'zamitnuta'               // zamítnuta schvalovatelem
   | 'v-bance'                 // odeslaná do banky, čeká na zpracování
   | 'uhrazena'                // zaplacená, spárovaná, read-only
-  | 'v-bance-neuhrazena';     // odeslaná, ale po splatnosti nesedí — vysoká urgence
+  | 'v-bance-neuhrazena'      // odeslaná, ale po splatnosti nesedí — vysoká urgence
+  // ── Vydané faktury (workflow vystavení → úhrada zákazníkem) ──
+  | 'vystavena'               // vystavena a odeslána zákazníkovi, čeká na úhradu
+  | 'nezaplacena'             // po splatnosti, neuhrazena — vyžaduje upomínku
+  | 'zaplacena';              // uhrazena zákazníkem, spárovaná
 
 export type FakturaKategorie =
   | 'zbozi'
@@ -139,6 +146,63 @@ export const ENTITA_LABEL: Record<PravniEntita, string> = {
 export function getPravniEntita(provozovnaId: string): PravniEntita {
   return PRAVNI_ENTITA[provozovnaId] ?? 'con-gusto';
 }
+
+// Phase 8.5 (zápis 12. 6. 2026) — Auto-propagace stavu 'v-bance' → 'v-bance-neuhrazena'.
+// Pokud faktura byla odeslána do banky (stav 'v-bance') ale po 3+ dnech od splatnosti
+// stále není spárovaná (uhrazena), systém ji automaticky propaguje na 'v-bance-neuhrazena'
+// — vysoká urgence pro účetní, je potřeba ověřit u banky proč platba nedoběhla.
+//
+// REFERENČNÍ DATUM: 2026-04-17 (matchne ostatní mock data)
+const REF_TODAY = new Date('2026-04-17');
+export function getEffektivniStav(
+  rawStav: FakturaStavPlatby,
+  splatnost: string,
+): FakturaStavPlatby {
+  if (rawStav !== 'v-bance') return rawStav;
+  const splat = new Date(splatnost);
+  const diffDays = Math.floor((REF_TODAY.getTime() - splat.getTime()) / (1000 * 60 * 60 * 24));
+  // >3 dny po splatnosti + stále v bance = neuhrazená
+  if (diffDays > 3) return 'v-bance-neuhrazena';
+  return 'v-bance';
+}
+
+// Phase 8.4 (zápis 19. 6. 2026) — Šablony položek pro vydané faktury.
+// Účetní/kancelář spravuje přesné znění + správně určené DPH; provozní pak při vystavení
+// jen vybere ze seznamu (nebo si napíše vlastní). Cílem je sjednotit účtování a snížit
+// chybovost ve sazbě DPH.
+export interface PolozkaSablona {
+  id: string;
+  nazev: string;
+  kategorie: string;       // pro grupování v UI
+  jednotka: string;
+  dphSazba: 0 | 12 | 21;
+  cenaJednDefault?: number; // volitelná default cena (provozní může přepsat)
+  poznamka?: string;        // vnitřní poznámka pro účetní (proč tato sazba)
+}
+
+export const VYDANE_SABLONY: PolozkaSablona[] = [
+  // Catering / akce
+  { id: 's01', nazev: 'Catering — bohatý raut (osoba)',     kategorie: 'Catering',     jednotka: 'osoba',  dphSazba: 12, cenaJednDefault: 650 },
+  { id: 's02', nazev: 'Catering — slaná chuťovka (osoba)',  kategorie: 'Catering',     jednotka: 'osoba',  dphSazba: 12, cenaJednDefault: 220 },
+  { id: 's03', nazev: 'Catering — sladká chuťovka (osoba)', kategorie: 'Catering',     jednotka: 'osoba',  dphSazba: 12, cenaJednDefault: 180 },
+  { id: 's04', nazev: 'Coffee break',                       kategorie: 'Catering',     jednotka: 'osoba',  dphSazba: 12, cenaJednDefault: 95 },
+  { id: 's05', nazev: 'Pracovní oběd (3-chodový)',          kategorie: 'Catering',     jednotka: 'osoba',  dphSazba: 12, cenaJednDefault: 320 },
+  // Pronájmy
+  { id: 's10', nazev: 'Pronájem prostor — salonek',         kategorie: 'Pronájem',     jednotka: 'hod',    dphSazba: 21, cenaJednDefault: 1500 },
+  { id: 's11', nazev: 'Pronájem prostor — celá provozovna', kategorie: 'Pronájem',     jednotka: 'akce',   dphSazba: 21, cenaJednDefault: 15000 },
+  { id: 's12', nazev: 'Pronájem AV techniky',               kategorie: 'Pronájem',     jednotka: 'akce',   dphSazba: 21, cenaJednDefault: 2500, poznamka: 'Včetně obsluhy' },
+  // Služby
+  { id: 's20', nazev: 'Korkovné',                           kategorie: 'Služby',       jednotka: 'lahev',  dphSazba: 21, cenaJednDefault: 200 },
+  { id: 's21', nazev: 'Servisní poplatek',                  kategorie: 'Služby',       jednotka: 'akce',   dphSazba: 21, cenaJednDefault: 500 },
+  { id: 's22', nazev: 'Konzultace / poradenství',           kategorie: 'Služby',       jednotka: 'hod',    dphSazba: 21, cenaJednDefault: 1200 },
+  { id: 's23', nazev: 'Doprava',                            kategorie: 'Služby',       jednotka: 'km',     dphSazba: 21, cenaJednDefault: 12 },
+  // Poukazy / vouchery (vždy 0 % — jde o platební prostředek, ne plnění)
+  { id: 's30', nazev: 'Neúčelový dárkový poukaz',           kategorie: 'Poukazy',      jednotka: 'ks',     dphSazba: 0,  poznamka: 'Bez DPH — víceúčelový voucher se zdaňuje až při uplatnění' },
+  { id: 's31', nazev: 'Účelový dárkový poukaz (večeře)',    kategorie: 'Poukazy',      jednotka: 'ks',     dphSazba: 12, poznamka: 'Účelový voucher se zdaňuje při vydání sazbou plnění' },
+  { id: 's32', nazev: 'Dárkový poukaz na víno',             kategorie: 'Poukazy',      jednotka: 'ks',     dphSazba: 21 },
+  // Storno / refund
+  { id: 's40', nazev: 'Storno poplatek',                    kategorie: 'Storno',       jednotka: 'akce',   dphSazba: 0,  poznamka: 'Storno fee — bez plnění, mimo DPH' },
+];
 
 export interface BankovniUcet {
   provozovna: string;
@@ -343,6 +407,8 @@ export const FAKTURY_PLATBY: FakturaPlatby[] = [
     datumSchvaleni: '12. 4. 2026',
   },
   // ── NESCHVÁLENÉ (nova / ke-schvaleni) ──
+  // Phase 8.4 (zápis 19. 6. 2026) — vydané faktury mají jiný workflow (vystavena → nezaplacena → zaplacena),
+  // ne schvalovací proces přijatých.
   {
     id: 'fp08',
     cislo: 'VYD-2026-0018',
@@ -352,7 +418,7 @@ export const FAKTURY_PLATBY: FakturaPlatby[] = [
     castka: 3_500,
     datum: '2026-04-12',
     splatnost: '2026-04-19',
-    stav: 'nova',
+    stav: 'vystavena',
     typDokladu: 'vydana',
     poznamka: 'Pracovní obědy 9.–11.4.',
     prirazenaOsoba: 'u-tomas',
@@ -366,10 +432,59 @@ export const FAKTURY_PLATBY: FakturaPlatby[] = [
     castka: 18_400,
     datum: '2026-04-11',
     splatnost: '2026-04-22',
-    stav: 'ceka-na-schvaleni',
+    stav: 'nezaplacena',
     typDokladu: 'vydana',
-    poznamka: 'Smluvní catering 8.4.',
+    poznamka: 'Smluvní catering 8.4. — odeslána 2. upomínka',
     prirazenaOsoba: 'u-martin',
+  },
+  // Vydané – další mock data (různé stavy + různé provozovny)
+  {
+    id: 'fp09a', cislo: 'VYD-2026-0015',
+    dodavatel: 'Siemens s.r.o. (firemní akce)',
+    kategorie: 'sluzby', provozovna: 'cg-brno',
+    castka: 42_500, datum: '2026-03-28', splatnost: '2026-04-11',
+    stav: 'zaplacena', typDokladu: 'vydana',
+    poznamka: 'Firemní večírek 25.3., uhrazeno 8. 4.',
+  },
+  {
+    id: 'fp09b', cislo: 'VYD-2026-0019',
+    dodavatel: 'IT Solutions a.s.',
+    kategorie: 'sluzby', provozovna: 'piazza',
+    castka: 12_300, datum: '2026-04-13', splatnost: '2026-04-23',
+    stav: 'vystavena', typDokladu: 'vydana',
+    poznamka: 'Pracovní oběd 10.4.',
+  },
+  {
+    id: 'fp09c', cislo: 'VYD-2026-0020',
+    dodavatel: 'BeerLab CZ (degustace)',
+    kategorie: 'zbozi', provozovna: 'u-capa',
+    castka: 8_600, datum: '2026-04-08', splatnost: '2026-04-15',
+    stav: 'nezaplacena', typDokladu: 'vydana',
+    poznamka: 'Po splatnosti — 1. upomínka odeslána 16.4.',
+  },
+  {
+    id: 'fp09d', cislo: 'VYD-2026-0021',
+    dodavatel: 'Vinařství Bzenec',
+    kategorie: 'zbozi', provozovna: 'piazza',
+    castka: 24_900, datum: '2026-04-15', splatnost: '2026-04-25',
+    stav: 'vystavena', typDokladu: 'vydana',
+    poznamka: 'Korkovné + servis',
+  },
+  {
+    id: 'fp09e', cislo: 'VYD-2026-0016',
+    dodavatel: 'Soukromá akce — sv. Vít',
+    kategorie: 'sluzby', provozovna: 'monte',
+    castka: 67_200, datum: '2026-03-22', splatnost: '2026-04-05',
+    stav: 'zaplacena', typDokladu: 'vydana',
+    poznamka: 'Svatba 21.3., kompletní catering, uhrazeno 1. 4.',
+  },
+  {
+    id: 'fp09f', cislo: 'VYD-2026-0022',
+    dodavatel: 'Konferenční centrum Brno',
+    kategorie: 'sluzby', provozovna: 'cg-brno',
+    castka: 15_800, datum: '2026-04-16', splatnost: '2026-04-26',
+    stav: 'vystavena', typDokladu: 'vydana',
+    poznamka: 'Coffee break 14.4.',
   },
   // ── MIMO TÝDEN (pozdější splatnost) ──
   {
@@ -555,6 +670,15 @@ export const FAKTURY_PLATBY: FakturaPlatby[] = [
   // Editovatelná pouze kategorie pro přeúčtování; částka/IBAN/VS jsou zamčené
   { id: 'fp46', cislo: 'FAK-2026-0021', dodavatel: 'Makro Cash & Carry', kategorie: 'zbozi' as FakturaKategorie, provozovna: 'piazza', castka: 38_900, datum: '2026-03-05', splatnost: '2026-03-12', stav: 'uhrazena' as FakturaStavPlatby, typDokladu: 'prijata' as TypDokladu, isLocked: true, schvalil: 'Petr Dohnal', datumSchvaleni: '6. 3. 2026', poznamka: 'Měsíční nákup březen' },
   { id: 'fp47', cislo: 'FAK-2026-0024', dodavatel: 'E.ON Energie',       kategorie: 'energie' as FakturaKategorie, provozovna: 'monte', castka: 18_400, datum: '2026-03-10', splatnost: '2026-03-20', stav: 'uhrazena' as FakturaStavPlatby, typDokladu: 'prijata' as TypDokladu, isLocked: true, schvalil: 'Petr Dohnal', datumSchvaleni: '12. 3. 2026' },
+
+  // Phase 8.5 (zápis 12. 6. 2026) — Auto-propagace na 'v-bance-neuhrazena'.
+  // Faktura odeslána do banky 8. 4., splatnost 10. 4. 2026 — k 17. 4. je 7 dní po splatnosti, automaticky se propaguje.
+  { id: 'fp50', cislo: 'FAK-2026-0055', dodavatel: 'CEZ Distribuce a.s.', kategorie: 'energie' as FakturaKategorie, provozovna: 'monte', castka: 24_300, datum: '2026-04-01', splatnost: '2026-04-10', stav: 'v-bance' as FakturaStavPlatby, typDokladu: 'prijata' as TypDokladu, schvalil: 'Petr Dohnal', datumSchvaleni: '5. 4. 2026', poznamka: 'Pošlou avízo o nedoručené platbě — řeší účetní' },
+
+  // Phase 8.4 (zápis 19. 6. 2026) — Vydané PROFORMY bez navázané finální faktury (warning v hlavičce sekce Faktury)
+  // Po uhrazení proformy musí účetní vystavit řádnou fakturu. Systém upozorňuje, dokud spojenaSId nesměřuje na finální doklad.
+  { id: 'fp48', cislo: 'ZAL-2026-0008', dodavatel: 'AutoPalace a.s.',     kategorie: 'sluzby' as FakturaKategorie, provozovna: 'cg-brno', castka: 18_000, datum: '2026-04-05', splatnost: '2026-04-12', stav: 'zaplacena' as FakturaStavPlatby, typDokladu: 'vydana' as TypDokladu, forma: 'zalohova', poznamka: 'Záloha 50 % na firemní akci 28. 4.' },
+  { id: 'fp49', cislo: 'ZAL-2026-0010', dodavatel: 'Siemens s.r.o.',      kategorie: 'sluzby' as FakturaKategorie, provozovna: 'piazza', castka: 22_500, datum: '2026-04-09', splatnost: '2026-04-19', stav: 'zaplacena' as FakturaStavPlatby, typDokladu: 'vydana' as TypDokladu, forma: 'zalohova', poznamka: 'Záloha na cateringovou akci 15. 5.' },
 ];
 
 // ─── Ostatní platby v tomto týdnu (13–19.4.) ─────────────────

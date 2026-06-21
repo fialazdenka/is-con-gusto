@@ -110,6 +110,10 @@ const STAV_META: Record<FakturaStavPlatby, { cls: string; label: string; icon: s
   'v-bance':            { cls: 'bg-info-subtle text-info',           label: 'V bance',               icon: 'solar:bank-bold-duotone' },
   uhrazena:             { cls: 'bg-success text-white',              label: 'Uhrazená',              icon: 'solar:check-square-bold-duotone' },
   'v-bance-neuhrazena': { cls: 'platby-stav-chyba',                  label: 'V bance neuhrazená',    icon: 'solar:danger-circle-bold-duotone' },
+  // Phase 8.4 (zápis 19. 6. 2026) — stavy vydaných faktur
+  vystavena:            { cls: 'bg-info-subtle text-info',           label: 'Vystavená',             icon: 'solar:document-add-bold-duotone' },
+  nezaplacena:          { cls: 'bg-danger-subtle text-danger',       label: 'Nezaplacená',           icon: 'solar:danger-triangle-bold-duotone' },
+  zaplacena:            { cls: 'bg-success text-white',              label: 'Zaplacená',             icon: 'solar:check-square-bold-duotone' },
 };
 
 const MATCHING_META: Record<MatchingStav, { cls: string; label: string; icon: string; color: string }> = {
@@ -253,6 +257,12 @@ export default function FakturySidePanel({
   const isAprovable = !isLocked && (effectiveStav === 'nova' || effectiveStav === 'ceka-na-schvaleni');
   const isZastavena = !isLocked && effectiveStav === 'pozastavena';
   const isZamitnuta = !isLocked && effectiveStav === 'zamitnuta';
+  // Phase 8.4 (zápis 19. 6. 2026) — VYDANÉ faktury mají jiný workflow (vystavení → úhrada),
+  // ne schvalování. Skrýváme schvalovací proces, ukazujeme akce pro vystavení/odeslání/upomínku.
+  const isVydana    = faktura.typDokladu === 'vydana';
+  const isVystavena = isVydana && effectiveStav === 'vystavena';
+  const isNezaplacena = isVydana && effectiveStav === 'nezaplacena';
+  const isZaplacena = isVydana && effectiveStav === 'zaplacena';
   const mismatch    = matching?.stav === 'nesedi-dl';
   const isDuplikat  = matching?.stav === 'duplikat';
   const rozdil      = matching?.dlCastka != null ? faktura.castka - matching.dlCastka : 0; // pro alert banner
@@ -638,8 +648,8 @@ export default function FakturySidePanel({
           </div>
           )}
 
-          {/* ── Schvalovací proces (Phase 8.2 — zápis 10. 6. 2026) ─────── */}
-          {activeTab === 'detail' && isAprovable && !isLocked && (
+          {/* ── Schvalovací proces (Phase 8.2 — zápis 10. 6. 2026) — JEN PRO PŘIJATÉ ─ */}
+          {activeTab === 'detail' && isAprovable && !isLocked && !isVydana && (
           <div className="p-3 border-bottom">
             <div className="d-flex align-items-center gap-2 mb-2">
               <iconify-icon icon="solar:bolt-bold-duotone" style={{ fontSize: 14, color: '#0d6efd' }} />
@@ -726,8 +736,8 @@ export default function FakturySidePanel({
           </div>
           )}
 
-          {/* ── Workflow akce ────────────────────────────── */}
-          {activeTab === 'detail' && (
+          {/* ── Workflow akce — PŘIJATÉ (schvalování + platba) ───────── */}
+          {activeTab === 'detail' && !isVydana && (
           <div className="p-3 border-bottom d-flex flex-column gap-2">
             {isAprovable && !isDuplikat && (
               <>
@@ -758,11 +768,19 @@ export default function FakturySidePanel({
             )}
             {/* Pozastavit — Phase 8.2 (zápis 10. 6.): jen po schválení */}
             {effectiveStav === 'schvalena' && !isLocked && (
-              <button className="btn btn-outline-warning btn-sm w-100" onClick={() => onOdlozit(faktura.id)}
-                title="Pozastavit schválenou fakturu — vyžaduje důvod v chatu, odešle se účetním">
-                <iconify-icon icon="solar:pause-circle-bold-duotone" className="me-2" />
-                Pozastavit (s důvodem)
-              </button>
+              <>
+                <button className="btn btn-outline-warning btn-sm w-100" onClick={() => onOdlozit(faktura.id)}
+                  title="Pozastavit schválenou fakturu — vyžaduje důvod v chatu, odešle se účetním">
+                  <iconify-icon icon="solar:pause-circle-bold-duotone" className="me-2" />
+                  Pozastavit (s důvodem)
+                </button>
+                {/* Phase 8.5 (zápis 10. 6.) — Reverzní akce: vrátit schválenou fakturu zpět do procesu */}
+                <button className="btn btn-outline-secondary btn-sm w-100" onClick={() => onOdlozit(faktura.id)}
+                  title="Vrátit fakturu ke schválení — schválení bude zrušeno, faktura se vrátí ke schvalovateli">
+                  <iconify-icon icon="solar:undo-left-round-bold-duotone" className="me-2" />
+                  Vrátit ke schválení
+                </button>
+              </>
             )}
             {isAprovable && isDuplikat && (
               <div className="alert alert-danger py-2 mb-0 fs-12">
@@ -807,6 +825,89 @@ export default function FakturySidePanel({
                 onChange={(e) => onPoznamkaChange(faktura.id, e.target.value)}
                 style={{ fontSize: 12, resize: 'none', ...(isLocked ? { background: '#f8f9fa', cursor: 'not-allowed' } : {}) }}
               />
+            </div>
+          </div>
+          )}
+
+          {/* Phase 8.4 (zápis 19. 6. 2026) — Workflow akce pro VYDANÉ faktury */}
+          {activeTab === 'detail' && isVydana && (
+          <div className="p-3 border-bottom d-flex flex-column gap-2">
+            {isVystavena && (
+              <>
+                <div className="alert alert-info py-2 mb-1 fs-12">
+                  <iconify-icon icon="solar:info-circle-bold-duotone" className="me-1" />
+                  <strong>Vystavená faktura</strong> — čeká na úhradu zákazníkem
+                  <div className="fs-11 mt-1">Splatnost: <strong>{faktura.splatnost}</strong></div>
+                </div>
+                <button className="btn btn-success btn-sm w-100"
+                  onClick={() => onSchvalit(faktura.id)}
+                  title="Označit jako uhrazenou zákazníkem (přepne stav na Zaplacená)">
+                  <iconify-icon icon="solar:check-circle-bold-duotone" className="me-2" />
+                  Označit jako uhrazenou
+                </button>
+                <div className="d-flex gap-2 flex-wrap">
+                  <button className="btn btn-outline-secondary btn-sm flex-grow-1"
+                    title="Stáhnout PDF faktury">
+                    <iconify-icon icon="solar:download-bold-duotone" className="me-1" />
+                    Stáhnout PDF
+                  </button>
+                  <button className="btn btn-outline-primary btn-sm flex-grow-1"
+                    title="Odeslat fakturu zákazníkovi e-mailem">
+                    <iconify-icon icon="solar:letter-bold-duotone" className="me-1" />
+                    Odeslat e-mailem
+                  </button>
+                </div>
+              </>
+            )}
+            {isNezaplacena && (
+              <>
+                <div className="alert alert-danger py-2 mb-1 fs-12">
+                  <iconify-icon icon="solar:danger-triangle-bold-duotone" className="me-1" />
+                  <strong>Po splatnosti</strong> — odběratel neuhradil v termínu
+                  <div className="fs-11 mt-1">Splatnost: <strong>{faktura.splatnost}</strong></div>
+                </div>
+                <button className="btn btn-warning btn-sm w-100"
+                  title="Odeslat upomínku zákazníkovi e-mailem">
+                  <iconify-icon icon="solar:bell-bold-duotone" className="me-2" />
+                  Odeslat upomínku
+                </button>
+                <button className="btn btn-success btn-sm w-100"
+                  onClick={() => onSchvalit(faktura.id)}>
+                  <iconify-icon icon="solar:check-circle-bold-duotone" className="me-2" />
+                  Označit jako uhrazenou
+                </button>
+                <div className="d-flex gap-2 flex-wrap">
+                  <button className="btn btn-outline-secondary btn-sm flex-grow-1">
+                    <iconify-icon icon="solar:download-bold-duotone" className="me-1" />
+                    Stáhnout PDF
+                  </button>
+                  <button className="btn btn-outline-danger btn-sm flex-grow-1"
+                    title="Předat fakturu k vymáhání (mimosoudní inkaso)">
+                    <iconify-icon icon="solar:gavel-bold-duotone" className="me-1" />
+                    K vymáhání
+                  </button>
+                </div>
+              </>
+            )}
+            {isZaplacena && (
+              <>
+                <div className="alert alert-success py-2 mb-1 fs-12">
+                  <iconify-icon icon="solar:check-circle-bold-duotone" className="me-1" />
+                  <strong>Zaplaceno zákazníkem</strong> — faktura uzavřena, read-only
+                </div>
+                <button className="btn btn-outline-secondary btn-sm w-100"
+                  title="Stáhnout kopii faktury">
+                  <iconify-icon icon="solar:download-bold-duotone" className="me-2" />
+                  Stáhnout PDF
+                </button>
+              </>
+            )}
+            <div className="mt-1">
+              <textarea className="form-control form-control-sm" rows={2}
+                placeholder="Interní poznámka…"
+                value={localPoznamka}
+                onChange={(e) => onPoznamkaChange(faktura.id, e.target.value)}
+                style={{ fontSize: 12, resize: 'none' }} />
             </div>
           </div>
           )}

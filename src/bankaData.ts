@@ -482,6 +482,29 @@ export function getUctyForProvozovna(provozovnaId: string): BankaUcet[] {
   return BANKA_UCTY.filter((u) => u.provozovny.includes(provozovnaId));
 }
 
+// Phase 8.5 (zápis 12. 6. 2026) — Auto-identifikace typu transakce z popisu.
+// Vrací návrh, jak transakci klasifikovat (např. "Bankovní poplatek", "Úrok").
+// Použito v Banka side-panelu jako PředSchválený návrh "Označit jako…".
+export function detectTransType(firma: string, poznamka?: string): { typ: string; cilovaSekce: 'poplatky' | 'tp' | 'uvery' | 'mzdy' } | null {
+  const text = (firma + ' ' + (poznamka ?? '')).toLowerCase();
+  if (/(\bposlatek|\bvedeni\s*[uú][cč]tu|\btransakce|\bspravn[ií]\s*poplat|\bvyhotoven[ií]|poplat)/i.test(text)) {
+    return { typ: 'Bankovní poplatek', cilovaSekce: 'poplatky' };
+  }
+  if (/(\b[uú]rok|debetn|kreditn|sazba)/i.test(text)) {
+    return { typ: 'Úrok z účtu', cilovaSekce: 'poplatky' };
+  }
+  if (/(\bsankce|pen[aá]le|pokut|upomink)/i.test(text)) {
+    return { typ: 'Sankce / penále', cilovaSekce: 'poplatky' };
+  }
+  if (/(\bmzda|\bplat|\bvyplata|odm[eě]n)/i.test(text)) {
+    return { typ: 'Mzda', cilovaSekce: 'mzdy' };
+  }
+  if (/(splatka|leasing|[uú]v[eě]r)/i.test(text)) {
+    return { typ: 'Splátka úvěru', cilovaSekce: 'uvery' };
+  }
+  return null;
+}
+
 /** Vrací rozšířené info o provozovnách (objekty) pro daný účet. */
 export function getProvozovnyForUcet(ucet: BankaUcet): Provozovna[] {
   return ucet.provozovny

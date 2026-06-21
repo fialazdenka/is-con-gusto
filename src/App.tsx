@@ -14,6 +14,9 @@ export default function App() {
     drawerOpen: false,
     drawerProvozovnaId: null,
     sidebarCollapsed: false,
+    pendingFakturaId: null,
+    pendingTPFromTrans: null,
+    pendingPoplatekFromTrans: null,
   });
 
   function update(patch: Partial<AppState>) {

@@ -53,6 +53,10 @@ const STAV_META: Record<FakturaStavPlatby, { cls: string; label: string }> = {
   'v-bance':            { cls: 'bg-info-subtle text-info',           label: 'V bance' },
   uhrazena:             { cls: 'bg-success text-white',              label: 'Uhrazená' },
   'v-bance-neuhrazena': { cls: 'platby-stav-chyba',                  label: 'V bance neuhrazená' },
+  // Phase 8.4 (zápis 19. 6. 2026) — stavy vydaných faktur
+  vystavena:            { cls: 'bg-info-subtle text-info',           label: 'Vystavená' },
+  nezaplacena:          { cls: 'bg-danger-subtle text-danger',       label: 'Nezaplacená' },
+  zaplacena:            { cls: 'bg-success text-white',              label: 'Zaplacená' },
 };
 
 const ROLE_LABEL: Record<string, string> = {
