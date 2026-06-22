@@ -1771,7 +1771,7 @@ const KOD_SECTIONS: KodSekce[] = [
   { id: 'banka',           label: 'Banka',            icon: 'solar:bank-bold-duotone',           status: 'hotovo', intro: 'BalanceOverview + UcetCard + Tabulka transakcí + TransakceSidePanel + Návrh systému (detectTransactionType). Jediná dílčí komponenta s rozpracovaným statusem je AutoSyncBar (čeká na finální UX dávkového UI) — ostatní jsou připraveny k implementaci.' },
   { id: 'faktury',         label: 'Faktury',          icon: 'solar:document-text-bold-duotone',  status: 'ceka', intro: 'Workflow přijatých + vydaných faktur. Tabulka, schvalovací proces v panelu, Fakturoid-style editor, šablony položek.' },
   { id: 'trvale-prikazy',  label: 'Trvalé příkazy',   icon: 'solar:refresh-circle-bold-duotone', status: 'hotovo', intro: 'Trvalé příkazy (TP) — 3 typy (standard/leasing/záloha), splátkový kalendář per řádek edit, form modal s auto-generováním leasingových splátek. Eloquent: `StandingOrder` + `StandingOrderInstallment`. Cross-section nav z Banky (`pendingTPFromTrans`).' },
-  { id: 'uvery',           label: 'Úvěry',            icon: 'solar:hand-money-bold-duotone',     status: 'ceka' },
+  { id: 'uvery',           label: 'Úvěry',            icon: 'solar:hand-money-bold-duotone',     status: 'hotovo', intro: 'Úvěry — 4 typy (hypotéka/investiční/provozní/leasing), 2 sazby (fix vs. PRIBOR+marže), splátkový kalendář s rozpadem jistina/úrok, anuitní kalkulačka, předčasné splacení, mimořádná splátka. Pro majitele: rozpad zaplaceného jistina/úroky pod progress barem.' },
   { id: 'poplatky',        label: 'Poplatky',         icon: 'solar:tag-price-bold-duotone',      status: 'ceka' },
   { id: 'karty-platformy', label: 'Karty / Platformy', icon: 'solar:card-bold-duotone',          status: 'ceka' },
   { id: 'dane',            label: 'Daně',             icon: 'solar:scale-bold-duotone',          status: 'ceka' },
@@ -2577,8 +2577,318 @@ public static function generateInstallmentsArray(
             </>
           )}
 
+          {/* Sekce: Úvěry — Připraveno k implementaci */}
+          {aktivni === 'uvery' && (
+            <>
+              <div className="alert alert-success d-flex align-items-start gap-2 mb-3 fs-13">
+                <iconify-icon icon="solar:check-circle-bold-duotone" style={{ fontSize: 18 }} />
+                <div>
+                  <strong>Připraveno k implementaci.</strong> UX schválené 22. 6. 2026 vč. nového rozpadu zaplaceno (jistina/úroky) pro majitele.
+                  Eloquent modely + Livewire Volt komponenty níže. Pozor na 2 typy sazby (fix vs. PRIBOR+marže) a predikci finálních hodnot.
+                </div>
+              </div>
+
+              {/* Datový model */}
+              <div className="card mb-3" style={{ borderLeft: '4px solid #198754' }}>
+                <div className="card-body">
+                  <div className="d-flex justify-content-between align-items-start mb-2">
+                    <div>
+                      <h6 className="mb-1 fw-bold">Datový model (Eloquent)</h6>
+                      <code className="fs-12 text-muted">app/Models/Loan.php + LoanInstallment.php + LoanDocument.php</code>
+                    </div>
+                    <KodStatusBadge status="hotovo" />
+                  </div>
+                  <ul className="fs-13 mb-2" style={{ paddingLeft: 18 }}>
+                    <li><code>loans</code> — id, name, type (enum: hypoteka/investicni/provozni/leasing_financni), bank, contract_number, account_id (FK <code>bank_accounts</code>), principal_initial, principal_remaining, rate_type (enum: fix/pribor), rate_pct (marže pro PRIBOR), pribor_pct (jen pro pribor), monthly_payment, period_count, period_paid, start_date, end_date, status (enum: aktivni/splacen/predcasne_splacen/pozastaven), expense_type (kancelar/provoz/sdileny), branch_id? (FK), note?</li>
+                    <li><code>loan_installments</code> — id, loan_id (FK), sequence_number, due_date, vs, principal_amount, interest_amount, total_amount, principal_remaining_after, status (enum: planovana/odeslana/zaplacena/po_splatnosti/castecne_uhrazena), paid_amount? (pro částečnou), override_account_id? (FK)</li>
+                    <li><code>loan_documents</code> — id, loan_id (FK), name, type (smlouva/dodatek/oznameni_sazby), uploaded_at, file_path</li>
+                  </ul>
+                  <div className="alert alert-info py-2 mb-0 fs-12">
+                    <iconify-icon icon="solar:info-circle-bold-duotone" className="me-1" />
+                    <strong>fix vs. PRIBOR:</strong> pro fix se kalendář vygeneruje napevno při založení (anuita známá předem). Pro PRIBOR jsou hodnoty <em>predikované</em> a finalizují se po spárování platby v měsíci. Aktuální sazba = <code>rate_pct + (rate_type === 'pribor' ? pribor_pct : 0)</code>.
+                  </div>
+                </div>
+              </div>
+
+              {/* Hlavní view */}
+              <div className="card mb-3" style={{ borderLeft: '4px solid #198754' }}>
+                <div className="card-body">
+                  <div className="d-flex justify-content-between align-items-start mb-2">
+                    <div>
+                      <h6 className="mb-1 fw-bold">Hlavní view (Volt)</h6>
+                      <code className="fs-12 text-muted">resources/views/livewire/loans/index.blade.php</code>
+                    </div>
+                    <KodStatusBadge status="hotovo" />
+                  </div>
+                  <pre className="bg-light p-2 rounded fs-12 mb-2" style={{ overflow: 'auto' }}>
+{`public function with(): array {
+  $loans = Loan::query()
+    ->when($this->search, fn($q) => $q->where(function($q) {
+      $q->where('name', 'like', "%{$this->search}%")
+        ->orWhere('bank', 'like', "%{$this->search}%")
+        ->orWhere('contract_number', 'like', "%{$this->search}%");
+    }))
+    ->when($this->typeFilter, fn($q) => $q->where('type', $this->typeFilter))
+    ->when($this->rateFilter, fn($q) => $q->where('rate_type', $this->rateFilter))
+    ->when($this->statusFilter, fn($q) => $q->where('status', $this->statusFilter))
+    ->when($this->nonStandardOnly, fn($q) => $q->whereHas('installments',
+        fn($q) => $q->whereIn('status', ['po_splatnosti', 'castecne_uhrazena'])))
+    ->with(['installments' => fn($q) => $q->orderBy('sequence_number')])
+    ->orderBy('end_date')
+    ->get();
+
+  return compact('loans');
+}`}
+                  </pre>
+                </div>
+              </div>
+
+              {/* KPI strip */}
+              <div className="card mb-3" style={{ borderLeft: '4px solid #198754' }}>
+                <div className="card-body">
+                  <div className="d-flex justify-content-between align-items-start mb-2">
+                    <div>
+                      <h6 className="mb-1 fw-bold">KPI strip</h6>
+                      <code className="fs-12 text-muted">computed properties + Cache::remember</code>
+                    </div>
+                    <KodStatusBadge status="hotovo" />
+                  </div>
+                  <pre className="bg-light p-2 rounded fs-12 mb-2" style={{ overflow: 'auto' }}>
+{`#[Computed]
+public function totalDebt(): int {
+  return Cache::remember('loans:total-debt', 300,
+    fn() => Loan::where('status', 'aktivni')->sum('principal_remaining'));
+}
+
+#[Computed]
+public function monthlyPayments(): int {
+  return Cache::remember('loans:monthly-payments', 300,
+    fn() => Loan::where('status', 'aktivni')->sum('monthly_payment'));
+}
+
+#[Computed]
+public function nonStandardInstallmentsCount(): int {
+  return LoanInstallment::whereIn('status', ['po_splatnosti', 'castecne_uhrazena'])
+    ->whereHas('loan', fn($q) => $q->where('status', 'aktivni'))
+    ->count();
+}`}
+                  </pre>
+                </div>
+              </div>
+
+              {/* Anuitní kalkulačka */}
+              <div className="card mb-3" style={{ borderLeft: '4px solid #198754' }}>
+                <div className="card-body">
+                  <div className="d-flex justify-content-between align-items-start mb-2">
+                    <div>
+                      <h6 className="mb-1 fw-bold">Anuitní kalkulačka (form modal + live preview)</h6>
+                      <code className="fs-12 text-muted">resources/views/livewire/loans/form.blade.php</code>
+                    </div>
+                    <KodStatusBadge status="hotovo" />
+                  </div>
+                  <div className="fs-13 mb-2">Anuita: <code>splatka = J × (i/12) × (1 + i/12)^n / ((1 + i/12)^n − 1)</code>, kde J = jistina, i = roční sazba, n = počet splátek.</div>
+                  <pre className="bg-light p-2 rounded fs-12 mb-0" style={{ overflow: 'auto' }}>
+{`#[Computed]
+public function previewInstallments(): array {
+  if (!$this->principalInitial || !$this->periodCount) return [];
+
+  $rate = $this->rateType === 'pribor'
+    ? ($this->priborPct ?? 0) + $this->ratePct
+    : $this->ratePct;
+
+  $j = (float) $this->principalInitial;
+  $i = $rate / 100 / 12;  // měsíční sazba
+  $n = (int) $this->periodCount;
+
+  // Anuita
+  $monthly = $j * $i * pow(1 + $i, $n) / (pow(1 + $i, $n) - 1);
+
+  $items = [];
+  $remaining = $j;
+  $date = Carbon::parse($this->startDate);
+
+  for ($s = 1; $s <= $n; $s++) {
+    $interest = $remaining * $i;
+    $principal = $monthly - $interest;
+    $remaining -= $principal;
+    $items[] = [
+      'sequence_number' => $s,
+      'due_date' => $date->copy()->addMonths($s - 1)->toDateString(),
+      'vs' => str_pad($s, 6, '0', STR_PAD_LEFT),
+      'principal_amount' => round($principal),
+      'interest_amount' => round($interest),
+      'total_amount' => round($monthly),
+      'principal_remaining_after' => round($remaining),
+      'status' => 'planovana',
+    ];
+  }
+  return $items;
+}`}
+                  </pre>
+                </div>
+              </div>
+
+              {/* Side panel + rozpad pro majitele */}
+              <div className="card mb-3" style={{ borderLeft: '4px solid #198754' }}>
+                <div className="card-body">
+                  <div className="d-flex justify-content-between align-items-start mb-2">
+                    <div>
+                      <h6 className="mb-1 fw-bold">Side panel + rozpad zaplaceného (jistina vs. úroky)</h6>
+                      <code className="fs-12 text-muted">resources/views/livewire/loans/side-panel.blade.php</code>
+                    </div>
+                    <KodStatusBadge status="hotovo" />
+                  </div>
+                  <div className="alert alert-info py-2 mb-2 fs-12">
+                    <iconify-icon icon="solar:info-circle-bold-duotone" className="me-1" />
+                    <strong>Phase 8.8 (zápis 22. 6. 2026):</strong> pod progress barem 2 mini karty pro majitele —
+                    kolik už bylo zaplaceno na jistině a kolik na úrocích (z plně/částečně uhrazených splátek).
+                  </div>
+                  <pre className="bg-light p-2 rounded fs-12 mb-2" style={{ overflow: 'auto' }}>
+{`#[Computed]
+public function paidPrincipal(): int {
+  return $this->loan->installments
+    ->whereIn('status', ['zaplacena', 'castecne_uhrazena'])
+    ->sum('principal_amount');
+}
+
+#[Computed]
+public function paidInterest(): int {
+  return $this->loan->installments
+    ->whereIn('status', ['zaplacena', 'castecne_uhrazena'])
+    ->sum('interest_amount');
+}
+
+#[Computed]
+public function paidPercentage(): float {
+  return ($this->loan->principal_initial - $this->loan->principal_remaining)
+    / $this->loan->principal_initial * 100;
+}`}
+                  </pre>
+                  <div className="fs-13 mb-1"><strong>Blade — 2 mini karty:</strong></div>
+                  <pre className="bg-light p-2 rounded fs-12 mb-0" style={{ overflow: 'auto' }}>
+{`@php
+  $total = $this->paidPrincipal + $this->paidInterest;
+  $jistinaPct = $total > 0 ? $this->paidPrincipal / $total * 100 : 0;
+  $urokyPct = $total > 0 ? $this->paidInterest / $total * 100 : 0;
+@endphp
+
+<div class="mt-3 pt-3 border-top">
+  <div class="text-uppercase text-muted fw-semibold mb-2"
+       style="font-size: 10px; letter-spacing: 0.4px;">
+    Z toho už splaceno
+  </div>
+  <div class="d-flex flex-column gap-2">
+    {{-- Jistina --}}
+    <div class="d-flex align-items-center gap-2 p-2 rounded"
+         style="background: #fff; border: 1px solid #e9ecef;
+                border-left: 3px solid #198754;">
+      <div class="d-flex align-items-center justify-content-center rounded-circle"
+           style="width: 32px; height: 32px;
+                  background: rgba(25, 135, 84, 0.12);">
+        <i class="solar:wallet-money-bold-duotone"
+           style="font-size: 16px; color: #198754;"></i>
+      </div>
+      <div class="flex-grow-1">
+        <div class="fw-semibold" style="font-size: 12px;">Jistina</div>
+        <div class="text-muted czk-num" style="font-size: 10px;">
+          {{ number_format($jistinaPct, 0) }} % ze zaplacených splátek
+        </div>
+      </div>
+      <div class="fw-bold czk-num text-success"
+           style="font-size: 14px; white-space: nowrap;">
+        {{ formatMoney($this->paidPrincipal, false) }}
+      </div>
+    </div>
+    {{-- Úroky --}}
+    <div class="d-flex align-items-center gap-2 p-2 rounded"
+         style="background: #fff; border: 1px solid #e9ecef;
+                border-left: 3px solid #fd7e14;">
+      <div class="d-flex align-items-center justify-content-center rounded-circle"
+           style="width: 32px; height: 32px;
+                  background: rgba(253, 126, 20, 0.12);">
+        <i class="solar:graph-down-bold-duotone"
+           style="font-size: 16px; color: #fd7e14;"></i>
+      </div>
+      <div class="flex-grow-1">
+        <div class="fw-semibold" style="font-size: 12px;">Úroky</div>
+        <div class="text-muted czk-num" style="font-size: 10px;">
+          {{ number_format($urokyPct, 0) }} % ze zaplacených splátek
+        </div>
+      </div>
+      <div class="fw-bold czk-num" style="font-size: 14px;
+                                          white-space: nowrap; color: #fd7e14;">
+        {{ formatMoney($this->paidInterest, false) }}
+      </div>
+    </div>
+  </div>
+</div>`}
+                  </pre>
+                </div>
+              </div>
+
+              {/* Inline edit splátky + Mimořádná splátka + Předčasné splacení */}
+              <div className="card mb-3" style={{ borderLeft: '4px solid #198754' }}>
+                <div className="card-body">
+                  <div className="d-flex justify-content-between align-items-start mb-2">
+                    <div>
+                      <h6 className="mb-1 fw-bold">Inline edit + Mimořádná splátka + Předčasné splacení</h6>
+                      <code className="fs-12 text-muted">Volt actions</code>
+                    </div>
+                    <KodStatusBadge status="hotovo" />
+                  </div>
+                  <pre className="bg-light p-2 rounded fs-12 mb-0" style={{ overflow: 'auto' }}>
+{`public function updateInstallment(int $installmentId, array $patch): void {
+  $i = LoanInstallment::findOrFail($installmentId);
+  $this->authorize('update', $i->loan);
+  $i->update($patch);
+  activity()->performedOn($i)->log('Splátka upravena');
+}
+
+public function addExtraInstallment(int $loanId, array $data): void {
+  $loan = Loan::findOrFail($loanId);
+  $this->authorize('update', $loan);
+
+  $newRemaining = $loan->principal_remaining - $data['principal_amount'];
+  $loan->installments()->create([
+    'sequence_number' => $loan->installments()->max('sequence_number') + 1,
+    'due_date' => $data['due_date'],
+    'vs' => 'EXTRA-' . str_pad(now()->timestamp % 1000000, 6, '0', STR_PAD_LEFT),
+    'principal_amount' => $data['principal_amount'],
+    'interest_amount' => $data['interest_amount'] ?? 0,
+    'total_amount' => $data['principal_amount'] + ($data['interest_amount'] ?? 0),
+    'principal_remaining_after' => $newRemaining,
+    'status' => 'zaplacena',
+  ]);
+  $loan->update(['principal_remaining' => $newRemaining]);
+}
+
+public function payOffEarly(int $loanId): void {
+  $loan = Loan::findOrFail($loanId);
+  $this->authorize('update', $loan);
+
+  $loan->installments()->create([
+    'sequence_number' => $loan->installments()->max('sequence_number') + 1,
+    'due_date' => today()->toDateString(),
+    'vs' => 'PAYOFF-' . $loan->id,
+    'principal_amount' => $loan->principal_remaining,
+    'interest_amount' => 0,
+    'total_amount' => $loan->principal_remaining,
+    'principal_remaining_after' => 0,
+    'status' => 'zaplacena',
+  ]);
+  $loan->update([
+    'principal_remaining' => 0,
+    'status' => 'predcasne_splacen',
+  ]);
+}`}
+                  </pre>
+                </div>
+              </div>
+            </>
+          )}
+
           {/* Ostatní sekce — placeholder */}
-          {aktivni !== 'trzby' && aktivni !== 'banka' && aktivni !== 'trvale-prikazy' && (
+          {aktivni !== 'trzby' && aktivni !== 'banka' && aktivni !== 'trvale-prikazy' && aktivni !== 'uvery' && (
             <div className="card">
               <div className="card-body text-center text-muted py-5">
                 <iconify-icon icon="solar:clock-circle-bold-duotone" style={{ fontSize: 56, color: '#dee2e6' }} />

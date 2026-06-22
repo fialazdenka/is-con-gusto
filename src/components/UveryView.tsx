@@ -282,6 +282,11 @@ function UverSidePanel({ uver, ucty, onClose, onPredcasneSplatit, onEdit, onUpda
   const stavM = UVER_STAV_META[uver.stav];
   const splaceneProcento = ((uver.jistinaPocatecni - uver.jistinaZbytek) / uver.jistinaPocatecni) * 100;
   const aktualniSazba = uver.sazbaTyp === 'fix' ? uver.sazbaPct : (uver.priborPct ?? 0) + uver.sazbaPct;
+  // Phase 8.8 (zápis 22. 6. 2026) — Souhrn pro majitele: kolik už bylo zaplaceno na jistině + úrocích
+  // (z plně i částečně uhrazených splátek). Důležité pro pohled, jak si úvěr stojí v čase.
+  const zaplaceneSplatky = uver.splatky.filter((s) => s.stav === 'zaplacena' || s.stav === 'castecne-uhrazena');
+  const zaplacenaJistina = zaplaceneSplatky.reduce((sum, s) => sum + s.jistina, 0);
+  const zaplaceneUroky   = zaplaceneSplatky.reduce((sum, s) => sum + s.urok, 0);
 
   return (
     <div style={{
@@ -325,6 +330,59 @@ function UverSidePanel({ uver, ucty, onClose, onPredcasneSplatit, onEdit, onUpda
               </div>
               <span className="text-muted fs-11 czk-num">{splaceneProcento.toFixed(0)}% splaceno</span>
             </div>
+            {/* Phase 8.8 (zápis 22. 6. 2026) — Pro majitele: rozpad zaplaceného na jistinu vs. úroky.
+                Mini KPI: ikona vlevo (kruhové barevné pozadí), label + sub-text, suma vpravo (large bold).
+                whiteSpace:nowrap na sumě zabraňuje zalomení Kč na druhý řádek. */}
+            {(() => {
+              const totalZaplaceno = zaplacenaJistina + zaplaceneUroky;
+              const jistinaPct = totalZaplaceno > 0 ? (zaplacenaJistina / totalZaplaceno) * 100 : 0;
+              const urokyPct = totalZaplaceno > 0 ? (zaplaceneUroky / totalZaplaceno) * 100 : 0;
+              return (
+                <div className="mt-3 pt-3 border-top">
+                  <div className="text-uppercase text-muted fw-semibold mb-2" style={{ fontSize: 10, letterSpacing: '0.4px' }}>
+                    Z toho už splaceno
+                  </div>
+                  <div className="d-flex flex-column gap-2">
+                    {/* Jistina */}
+                    <div className="d-flex align-items-center gap-2 p-2 rounded"
+                         style={{ background: '#fff', border: '1px solid #e9ecef', borderLeft: '3px solid #198754' }}
+                         title="Kolik z původního dluhu jste už splatil (jistina)">
+                      <div className="d-flex align-items-center justify-content-center rounded-circle flex-shrink-0"
+                           style={{ width: 32, height: 32, background: 'rgba(25, 135, 84, 0.12)' }}>
+                        <iconify-icon icon="solar:wallet-money-bold-duotone" style={{ fontSize: 16, color: '#198754' }} />
+                      </div>
+                      <div className="flex-grow-1 min-width-0">
+                        <div className="fw-semibold" style={{ fontSize: 12 }}>Jistina</div>
+                        <div className="text-muted czk-num" style={{ fontSize: 10 }}>
+                          {jistinaPct.toFixed(0)} % ze zaplacených splátek
+                        </div>
+                      </div>
+                      <div className="fw-bold czk-num text-success flex-shrink-0" style={{ fontSize: 14, whiteSpace: 'nowrap' }}>
+                        {fCzk(zaplacenaJistina)}
+                      </div>
+                    </div>
+                    {/* Úroky */}
+                    <div className="d-flex align-items-center gap-2 p-2 rounded"
+                         style={{ background: '#fff', border: '1px solid #e9ecef', borderLeft: '3px solid #fd7e14' }}
+                         title="Kolik jste zaplatil bance na úrocích (cena za půjčku)">
+                      <div className="d-flex align-items-center justify-content-center rounded-circle flex-shrink-0"
+                           style={{ width: 32, height: 32, background: 'rgba(253, 126, 20, 0.12)' }}>
+                        <iconify-icon icon="solar:graph-down-bold-duotone" style={{ fontSize: 16, color: '#fd7e14' }} />
+                      </div>
+                      <div className="flex-grow-1 min-width-0">
+                        <div className="fw-semibold" style={{ fontSize: 12 }}>Úroky</div>
+                        <div className="text-muted czk-num" style={{ fontSize: 10 }}>
+                          {urokyPct.toFixed(0)} % ze zaplacených splátek
+                        </div>
+                      </div>
+                      <div className="fw-bold czk-num flex-shrink-0" style={{ fontSize: 14, whiteSpace: 'nowrap', color: '#fd7e14' }}>
+                        {fCzk(zaplaceneUroky)}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              );
+            })()}
           </div>
           <button className="btn-close flex-shrink-0 mt-1" style={{ fontSize: 11 }} onClick={onClose} />
         </div>

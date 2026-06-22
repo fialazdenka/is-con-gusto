@@ -308,9 +308,103 @@ const SECTIONS: Section[] = [
     id: 'uvery',
     label: 'Úvěry',
     icon: 'solar:hand-money-bold-duotone',
-    status: 'ceka',
-    intro: '4 typy úvěrů (hypotéka / investiční / provozní / leasing-finanční), rozpad jistina/úrok per splátka, inline edit + mimořádná splátka + předčasné splacení, anuita preview.',
-    components: [],
+    status: 'hotovo',
+    intro:
+      'Sekce pro správu úvěrů. 4 typy (hypotéka / investiční / provozní / leasing-finanční), 2 typy sazby (fix vs. PRIBOR + marže — predikce u PRIBORU finalizuje po spárování). Tabulka + side panel s rozpadem jistina/úrok per splátka + auta-anuitní kalkulačka při novém úvěru. Pro majitele: rozpad zaplaceného na jistinu vs. úroky pod progress barem. UX schválené 22. 6. 2026.',
+    components: [
+      {
+        name: 'UveryView',
+        file: 'UveryView.tsx',
+        pattern: 'Page Layout (compound view)',
+        larkon: 'Card grid + Table + Side Panel + Modal',
+        subcomponents: 'KpiStrip + UveryTable + UverSidePanel + UverFormModal',
+        implementation:
+          'Root view, drží lokální state: `localUvery: Record<id, Uver>` (přepisuje + nové), `formState: null | {mode, initial}`. `mergedData` skládá mock + localUvery → komponenty pracují s merged. Filtr `provozovnaId` přes topbar (cascading).',
+        custom: 'NO',
+        status: 'hotovo',
+      },
+      {
+        name: 'KpiStrip',
+        file: 'UveryView.tsx (uvnitř)',
+        pattern: 'KPI Strip',
+        larkon: 'StatisticsWidget × 4',
+        subcomponents: 'Aktivní úvěry (count) · Celkový dluh (jistinaZbytek sum) · Měsíční splátky (sum) · Nestandardní splátky (count, klikatelný)',
+        implementation:
+          'Klik na „Nestandardní splátky" → callback `onClickNestandardni` toggluje filter „Jen nestandardní" v UveryTable. Helpery `getCelkovyDluhVse()`, `getMesicniSplatkaVse()`, `maNestandardniSplatku(uver)` v `uveryData.ts`.',
+        custom: 'NO',
+        status: 'hotovo',
+      },
+      {
+        name: 'UveryTable',
+        file: 'UveryView.tsx (uvnitř)',
+        pattern: 'Data Table + Filter chips',
+        larkon: 'Table + Form controls',
+        subcomponents:
+          'Filtry: hledání, Typ, Sazba (fix/PRIBOR), Stav, chip „Jen nestandardní", CTA „Nový úvěr" · Sloupce: Název / Typ badge / Banka / Sazba (fix vs. PRIBOR + marže) / Měsíční splátka / Splaceno (progress bar + %) / Zbývá / Stav',
+        implementation:
+          'Progress bar = `((jistinaPocatecni - jistinaZbytek) / jistinaPocatecni) × 100`. Sazba badge pro PRIBOR ukazuje „PRIBOR + X %" + total `priborPct + sazbaPct`. Klik na řádek → `onSelect(id)` otevírá side panel.',
+        custom: 'NO',
+        status: 'hotovo',
+      },
+      {
+        name: 'UverSidePanel',
+        file: 'UveryView.tsx (uvnitř)',
+        pattern: 'Sticky Side Panel + Inline Edit',
+        larkon: 'Card s position:sticky',
+        subcomponents:
+          'Header (badges + název + banka + dluh + progress bar + **rozpad Jistina/Úroky pro majitele**) · Akce (Upravit / Předčasně splatit) · Detail (sazba, splátka, příští splatnost) · **Splátkový kalendář** (jistina/úrok rozpad per řádek, inline edit) · Mimořádná splátka (form) · Dokumenty',
+        implementation:
+          'Sticky `top: calc(var(--bs-topbar-height) + 16px)`. **Phase 8.8 (22. 6. 2026):** pod progress barem 2 mini karty (Jistina zelená / Úroky oranžová) — `zaplaceneSplatky.reduce((s, x) => s + x.jistina, 0)` a totéž pro úrok. Karty: bílé pozadí, 3px colored left border, kruhová ikona vlevo (32×32, 12% tinted bg), label + subtext s % podílu, vpravo bold barevná částka (`whiteSpace: nowrap`).',
+        custom: 'YES',
+        customReason: 'Mini KPI karty + inline edit splátkového kalendáře + override účtu — vlastní layout, ne standardní Larkon.',
+        status: 'hotovo',
+      },
+      {
+        name: 'Splátkový kalendář (jistina/úrok rozpad)',
+        file: 'UveryView.tsx + uveryData.ts',
+        pattern: 'Inline editable table',
+        larkon: 'Table + Form controls',
+        subcomponents: 'Sloupce: # · Datum splatnosti · VS · Jistina · Úrok · Celkem · Zůstatek po · Stav · Override účtu · Edit',
+        implementation:
+          'Pro fix sazbu se kalendář vygeneruje napevno přes anuitní vzorec při založení úvěru. Pro PRIBOR sazbu se predikuje a finalizuje po spárování platby v měsíci. Pole `jistina`, `urok`, `celkem`, `zustatekJistinyPo`, `stav` v `UverSplatkaItem`. Stav: `planovana / odeslana / zaplacena / po-splatnosti / castecne-uhrazena` (volitelné `zaplaceno?` pro částečné).',
+        custom: 'NO',
+        status: 'hotovo',
+      },
+      {
+        name: 'UverFormModal (anuitní kalkulačka)',
+        file: 'UveryView.tsx (uvnitř)',
+        pattern: 'Modal Form',
+        larkon: 'Modal + Form controls',
+        subcomponents:
+          'Typ / Banka / Číslo smlouvy / Provozovna / Jistina počáteční / Sazba (fix vs. PRIBOR + marže) / Datum začátku / Počet splátek / **Preview anuitního kalendáře** (live výpočet) / Měsíční splátka / Odchozí účet / NakladKomu + provozovnaId / Upload smluv',
+        implementation:
+          'Live anuita: `splatka = jistina × (sazba/12) × (1 + sazba/12)^n / ((1 + sazba/12)^n − 1)` kde n = počet splátek. Změna `jistinaPocatecni`/`sazbaPct`/`pocetSplatek` triggeruje rekalkulaci + preview tabulky všech splátek s jistinou/úrokem rozpadem.',
+        custom: 'NO',
+        status: 'hotovo',
+      },
+      {
+        name: 'Předčasné splacení + Mimořádná splátka',
+        file: 'UveryView.tsx (uvnitř panelu)',
+        pattern: 'Action button + Inline form',
+        larkon: 'Button + Confirm dialog + Inline form',
+        subcomponents: 'Předčasné splatit → confirm dialog s částkou zbývajícího dluhu. Mimořádná splátka → inline form (datum / jistina / úrok / poznámka)',
+        implementation:
+          'Předčasné splacení: `onPredcasneSplatit(id)` přepne stav úvěru na `predcasne-splacen`, vygeneruje finální splátku se sumou `jistinaZbytek`. Mimořádná splátka: `onAddSplatka(uverId, splatka)` přidá nový řádek do `splatky` kalendáře (mimo pravidelnou periodicitu, sníží `jistinaZbytek`).',
+        custom: 'NO',
+        status: 'hotovo',
+      },
+      {
+        name: 'Inline edit splátky (datum / jistina / úrok)',
+        file: 'UveryView.tsx (uvnitř panelu)',
+        pattern: 'Inline edit',
+        larkon: 'Form inputs',
+        subcomponents: 'Klik na řádek splátky → edit mode: input datum, input jistina, input úrok, Uložit / Zrušit',
+        implementation:
+          '`editDraft` state se 3 poli (datum, jistina, urok). Uložit → `onUpdateSplatka(uverId, splatkaId, patch)`. Pro fix sazbu fixní, pro PRIBOR editace přepisuje predikované hodnoty po spárování.',
+        custom: 'NO',
+        status: 'hotovo',
+      },
+    ],
   },
   {
     id: 'poplatky',
