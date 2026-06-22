@@ -410,9 +410,91 @@ const SECTIONS: Section[] = [
     id: 'poplatky',
     label: 'Poplatky',
     icon: 'solar:tag-price-bold-duotone',
-    status: 'ceka',
-    intro: '9 typů poplatků, klikatelný barbar breakdown, měsíční souhrny, provozovna filter.',
-    components: [],
+    status: 'hotovo',
+    intro:
+      'Sekce pro evidenci bankovních poplatků (per zápis 22. 6. 2026 NIKDY ne ručně — vždy generované z Banky přes detectTransType auto-klasifikaci nebo manuální označení transakce). 9 typů poplatků, KPI strip, klikatelný breakdown po typech, měsíční souhrny, filtr per provozovna z topbaru.',
+    components: [
+      {
+        name: 'PoplatkyView',
+        file: 'PoplatkyView.tsx',
+        pattern: 'Page Layout (compound view)',
+        larkon: 'Card grid + Table + Modal',
+        subcomponents: 'KpiStrip + TypeBreakdown + MesicniChips + PoplatkyTable + PoplatekFormModal (jen pro EDIT)',
+        implementation:
+          'Root view, drží state: filtry (search, typ, účet, měsíc), formState pro EDIT existujícího záznamu. **Read-only z pohledu vstupu** — nové záznamy nelze vytvořit ručně (CTA odebráno per zápis 22. 6.). Editace existujícího záznamu (klik na řádek) funguje. Cascading filter `selectedProvozovna` z topbaru.',
+        custom: 'NO',
+        status: 'hotovo',
+      },
+      {
+        name: 'KpiStrip',
+        file: 'PoplatkyView.tsx (uvnitř)',
+        pattern: 'KPI Strip',
+        larkon: 'StatisticsWidget × 4',
+        subcomponents: 'Tento měsíc s trendem (vs. minulý) · Průměr/měsíc · Nejdražší typ · Záznamů celkem',
+        implementation:
+          'Helpery `getSumaZaObdobi(data, odMesic, doMesic)` a `getBreakdownPoTypech(data)` v `poplatkyData.ts`. Trend % = `(thisMonth - lastMonth) / lastMonth * 100`, barva podle směru (zelená pokles, červená růst — protože poplatky chceme nízké).',
+        custom: 'NO',
+        status: 'hotovo',
+      },
+      {
+        name: 'TypeBreakdown (klikatelný barbar)',
+        file: 'PoplatkyView.tsx (uvnitř)',
+        pattern: 'Stacked horizontal bar + List',
+        larkon: 'ProgressBar + List Group',
+        subcomponents: 'Horizontální barbar s 9 segmenty (podíl per typ) · pod ním seznam typů s częsckou, počtem, podílem',
+        implementation:
+          'Klik na segment / řádek filtruje tabulku podle `activeTyp`. Druhý klik = zrušit filter. `getBreakdownPoTypech(data)` vrací `[{typ, castka, pocet, pct}]` setříděné sestupně podle částky.',
+        custom: 'YES',
+        customReason: 'Klikatelný stacked barbar — vlastní SVG/divové komponenta, ne standardní Larkon ProgressBar.',
+        status: 'hotovo',
+      },
+      {
+        name: 'MesicniChips (klikatelné měsíční souhrny)',
+        file: 'PoplatkyView.tsx (uvnitř)',
+        pattern: 'Filter chips',
+        larkon: 'Badge group',
+        subcomponents: 'Chip per měsíc se sumou + počtem záznamů. Klik = filtruje tabulku',
+        implementation:
+          '`getMesicniSouhrn(data)` vrací `[{mesic: "YYYY-MM", castka, pocet}]`. Aktivní chip = modré pozadí + bílý text. Klik na aktivní = zrušit filter.',
+        custom: 'NO',
+        status: 'hotovo',
+      },
+      {
+        name: 'PoplatkyTable',
+        file: 'PoplatkyView.tsx (uvnitř)',
+        pattern: 'Data Table + Filter bar',
+        larkon: 'Table + Form controls',
+        subcomponents:
+          'Filter bar: hledání · Typ select · Účet select · Měsíc filter · CTA "Zrušit filtry" (no "Nový" tlačítko per zápis 22. 6.) · Sloupce: Datum / Typ badge / Popis / Účet / Provozovna / Částka · Klik na řádek → edit modal',
+        implementation:
+          'Klik na celý řádek otevírá `PoplatekFormModal` v EDIT módu (per memory rule: row-click pattern, ne ikona pera). Filtry aplikované `useMemo`. Pole `provozovnaId?` na `Poplatek` (volitelné) — pokud chybí, poplatek je celofiremní.',
+        custom: 'NO',
+        status: 'hotovo',
+      },
+      {
+        name: 'PoplatekFormModal (jen EDIT)',
+        file: 'PoplatkyView.tsx (uvnitř)',
+        pattern: 'Modal Form',
+        larkon: 'Modal + Form controls',
+        subcomponents:
+          'Typ poplatku (9 možností) · Datum · Účet · Provozovna (volitelná) · Popis · Částka · Smazat (jen pro existující) · Uložit',
+        implementation:
+          'Existuje pro editaci, ne pro vstup nových. Při editaci může uživatel přepsat typ klasifikace (audit zápis pro změny). Smazání → `onDelete(id)` + confirm.',
+        custom: 'NO',
+        status: 'hotovo',
+      },
+      {
+        name: 'Auto-evidence z Banky (workflow vstup)',
+        file: 'BankaView.tsx → bankaData.detectTransType + manualReason',
+        pattern: 'Cross-section auto-input',
+        larkon: 'N/A (data flow)',
+        subcomponents: '`detectTransType` v Bance rozpozná poplatek/úrok/sankci → klik na "Přijmout návrh" → vytvoří se záznam v sekci Poplatky',
+        implementation:
+          '**Phase 8.9 (zápis 22. 6. 2026):** vstup do Poplatků JE EXKLUZIVNĚ z Banky — buď automaticky přes `detectTransType()` regex (poplatek / úrok / sankce), nebo manuálně tlačítkem „Označit jako poplatek" v Banka side-panelu. V produkci by `BankTransaction::markAsFee()` create-or-update do `bank_fees` tabulky a smazalo by tlačítko „Nový poplatek" z PoplatkyView (jen edit existujících).',
+        custom: 'NO',
+        status: 'hotovo',
+      },
+    ],
   },
   {
     id: 'karty-platformy',

@@ -177,10 +177,9 @@ function PoplatkyTable({ data, ucty, search, setSearch, typFilter, setTypFilter,
               suma {fCzk(Math.round(data.reduce((s, p) => s + p.castka, 0)))}
             </small>
           </h5>
-          <button className="btn btn-primary btn-sm ms-auto d-flex align-items-center gap-1" onClick={onNew}>
-            <iconify-icon icon="solar:add-square-bold-duotone" />
-            Nový poplatek
-          </button>
+          {/* Phase 8.9 (zápis 22. 6. 2026) — CTA "Nový poplatek" odebráno. Poplatky se evidují
+              automaticky z Banky (přes detectTransType → "Bankovní poplatek" / "Úrok") + případně
+              z manuálního označení transakce v Banka side-panelu. Žádný manuální vstup zde. */}
         </div>
         <div className="d-flex align-items-center gap-2 flex-wrap mt-2">
           <div className="position-relative" style={{ width: 220 }}>

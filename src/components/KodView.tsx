@@ -1772,7 +1772,7 @@ const KOD_SECTIONS: KodSekce[] = [
   { id: 'faktury',         label: 'Faktury',          icon: 'solar:document-text-bold-duotone',  status: 'ceka', intro: 'Workflow přijatých + vydaných faktur. Tabulka, schvalovací proces v panelu, Fakturoid-style editor, šablony položek.' },
   { id: 'trvale-prikazy',  label: 'Trvalé příkazy',   icon: 'solar:refresh-circle-bold-duotone', status: 'hotovo', intro: 'Trvalé příkazy (TP) — 3 typy (standard/leasing/záloha), splátkový kalendář per řádek edit, form modal s auto-generováním leasingových splátek. Eloquent: `StandingOrder` + `StandingOrderInstallment`. Cross-section nav z Banky (`pendingTPFromTrans`).' },
   { id: 'uvery',           label: 'Úvěry',            icon: 'solar:hand-money-bold-duotone',     status: 'hotovo', intro: 'Úvěry — 4 typy (hypotéka/investiční/provozní/leasing), 2 sazby (fix vs. PRIBOR+marže), splátkový kalendář s rozpadem jistina/úrok, anuitní kalkulačka, předčasné splacení, mimořádná splátka. Pro majitele: rozpad zaplaceného jistina/úroky pod progress barem.' },
-  { id: 'poplatky',        label: 'Poplatky',         icon: 'solar:tag-price-bold-duotone',      status: 'ceka' },
+  { id: 'poplatky',        label: 'Poplatky',         icon: 'solar:tag-price-bold-duotone',      status: 'hotovo', intro: 'Poplatky — read-only z pohledu vstupu (nikdy ne ručně přidat, vždy z Banky přes detectTransType + manuální označení). 9 typů, KPI strip, klikatelný breakdown, měsíční souhrny.' },
   { id: 'karty-platformy', label: 'Karty / Platformy', icon: 'solar:card-bold-duotone',          status: 'ceka' },
   { id: 'dane',            label: 'Daně',             icon: 'solar:scale-bold-duotone',          status: 'ceka' },
   { id: 'trzby',           label: 'Tržby',            icon: 'solar:graph-up-bold-duotone',       status: 'hotovo', intro: 'Tržby detail + Vývoj tržeb (ApexCharts) v Livewire Volt. Volt single-file + Eloquent + Cache::remember. Brand color border-top, live tečka, K/B split.' },
@@ -2887,8 +2887,233 @@ public function payOffEarly(int $loanId): void {
             </>
           )}
 
+          {/* Sekce: Poplatky — Připraveno k implementaci */}
+          {aktivni === 'poplatky' && (
+            <>
+              <div className="alert alert-success d-flex align-items-start gap-2 mb-3 fs-13">
+                <iconify-icon icon="solar:check-circle-bold-duotone" style={{ fontSize: 18 }} />
+                <div>
+                  <strong>Připraveno k implementaci.</strong> UX schválené 22. 6. 2026 vč. odstranění CTA „Nový poplatek".
+                  <br /><strong>Důležité:</strong> Poplatky jsou <em>read-only z pohledu vstupu</em> — vznikají výhradně automaticky
+                  v Banka modulu (přes <code>BankTransactionClassifier</code>) nebo manuálním označením v Banka side-panelu.
+                </div>
+              </div>
+
+              {/* Datový model */}
+              <div className="card mb-3" style={{ borderLeft: '4px solid #198754' }}>
+                <div className="card-body">
+                  <div className="d-flex justify-content-between align-items-start mb-2">
+                    <div>
+                      <h6 className="mb-1 fw-bold">Datový model (Eloquent)</h6>
+                      <code className="fs-12 text-muted">app/Models/BankFee.php</code>
+                    </div>
+                    <KodStatusBadge status="hotovo" />
+                  </div>
+                  <ul className="fs-13 mb-2" style={{ paddingLeft: 18 }}>
+                    <li><code>bank_fees</code> — id, type (enum: 9 typů — account_management/transaction/card/withdrawal/deposit/debt_interest/service/sanction/other), date, description, account_id (FK <code>bank_accounts</code>), branch_id? (FK, volitelný — chybí = celofiremní), amount, source_transaction_id? (FK <code>bank_transactions</code> — odkaz na bankovní transakci, ze které poplatek vznikl), created_via (enum: auto_classified/manual_marked/edit)</li>
+                  </ul>
+                  <div className="alert alert-info py-2 mb-0 fs-12">
+                    <iconify-icon icon="solar:info-circle-bold-duotone" className="me-1" />
+                    <strong>9 typů poplatků</strong> jako PHP enum: vedení účtu / transakce / karta / výběr / vklad / úrok z debetu / služby / sankce / jiné. Každý má vlastní barvu, ikonu (Solar) a label v <code>config/bank-fees.php</code>.
+                  </div>
+                </div>
+              </div>
+
+              {/* Auto-evidence z Banky */}
+              <div className="card mb-3" style={{ borderLeft: '4px solid #198754' }}>
+                <div className="card-body">
+                  <div className="d-flex justify-content-between align-items-start mb-2">
+                    <div>
+                      <h6 className="mb-1 fw-bold">Vstup výhradně z Banky (auto + manual)</h6>
+                      <code className="fs-12 text-muted">app/Services/BankFeeFactory.php</code>
+                    </div>
+                    <KodStatusBadge status="hotovo" />
+                  </div>
+                  <pre className="bg-light p-2 rounded fs-12 mb-2" style={{ overflow: 'auto' }}>
+{`class BankFeeFactory {
+  /** Z auto-klasifikace v BankTransactionClassifier (přijatý návrh systému) */
+  public function fromClassification(BankTransaction $t, array $classification): BankFee {
+    return BankFee::create([
+      'type' => $this->mapClassificationToType($classification['type']),
+      'date' => $t->date,
+      'description' => $t->counterparty . ($t->note ? ' — ' . $t->note : ''),
+      'account_id' => $t->account_id,
+      'branch_id' => $t->account->branch_ids[0] ?? null,  // first branch
+      'amount' => abs($t->amount),
+      'source_transaction_id' => $t->id,
+      'created_via' => 'auto_classified',
+    ]);
+  }
+
+  /** Manuální označení uživatelem v Banka side-panelu */
+  public function fromManualMark(BankTransaction $t, string $reason): BankFee {
+    return BankFee::create([
+      'type' => $this->mapReasonToType($reason),
+      'date' => $t->date,
+      'description' => $t->counterparty,
+      'account_id' => $t->account_id,
+      'branch_id' => $t->account->branch_ids[0] ?? null,
+      'amount' => abs($t->amount),
+      'source_transaction_id' => $t->id,
+      'created_via' => 'manual_marked',
+    ]);
+  }
+
+  private function mapClassificationToType(string $classification): string {
+    return match($classification) {
+      'Bankovní poplatek' => 'account_management',
+      'Úrok z účtu'       => 'debt_interest',
+      'Sankce / penále'   => 'sanction',
+      default             => 'other',
+    };
+  }
+}`}
+                  </pre>
+                  <div className="alert alert-warning py-2 mb-0 fs-12">
+                    <iconify-icon icon="solar:danger-triangle-bold-duotone" className="me-1" />
+                    V PoplatkyView (Volt) <strong>NENÍ tlačítko „Nový poplatek"</strong>. Pouze edit existujících. Vstup výhradně přes <code>BankFeeFactory</code> z Banky.
+                  </div>
+                </div>
+              </div>
+
+              {/* Hlavní view */}
+              <div className="card mb-3" style={{ borderLeft: '4px solid #198754' }}>
+                <div className="card-body">
+                  <div className="d-flex justify-content-between align-items-start mb-2">
+                    <div>
+                      <h6 className="mb-1 fw-bold">Hlavní view (Volt)</h6>
+                      <code className="fs-12 text-muted">resources/views/livewire/fees/index.blade.php</code>
+                    </div>
+                    <KodStatusBadge status="hotovo" />
+                  </div>
+                  <pre className="bg-light p-2 rounded fs-12 mb-2" style={{ overflow: 'auto' }}>
+{`public function with(): array {
+  $branchId = auth()->user()->activeBranch()?->id;
+
+  $fees = BankFee::query()
+    ->when($branchId !== mainBranchGet(),
+      fn($q) => $q->where('branch_id', $branchId)->orWhereNull('branch_id'))
+    ->when($this->search, fn($q) => $q->where('description', 'like', "%{$this->search}%"))
+    ->when($this->typeFilter, fn($q) => $q->where('type', $this->typeFilter))
+    ->when($this->accountFilter, fn($q) => $q->where('account_id', $this->accountFilter))
+    ->when($this->monthFilter, fn($q) => $q->where('date', 'like', "{$this->monthFilter}%"))
+    ->orderBy('date', 'desc')
+    ->get();
+
+  return compact('fees');
+}`}
+                  </pre>
+                  <div className="fs-13"><strong>Filter chips a klikatelný breakdown:</strong></div>
+                  <pre className="bg-light p-2 rounded fs-12 mb-0" style={{ overflow: 'auto' }}>
+{`<x-fee-type-breakdown :fees="$fees" :active-type="$typeFilter">
+  {{-- Klik na segment / řádek → wire:click="setTypeFilter('account_management')" --}}
+</x-fee-type-breakdown>
+
+<x-fee-monthly-chips :fees="$fees" :active-month="$monthFilter">
+  {{-- Chip per měsíc → wire:click="setMonthFilter('2026-04')" --}}
+</x-fee-monthly-chips>`}
+                  </pre>
+                </div>
+              </div>
+
+              {/* KPI strip */}
+              <div className="card mb-3" style={{ borderLeft: '4px solid #198754' }}>
+                <div className="card-body">
+                  <div className="d-flex justify-content-between align-items-start mb-2">
+                    <div>
+                      <h6 className="mb-1 fw-bold">KPI strip + breakdown</h6>
+                      <code className="fs-12 text-muted">computed properties</code>
+                    </div>
+                    <KodStatusBadge status="hotovo" />
+                  </div>
+                  <pre className="bg-light p-2 rounded fs-12 mb-0" style={{ overflow: 'auto' }}>
+{`#[Computed]
+public function thisMonthSum(): int {
+  return BankFee::whereYear('date', now()->year)
+    ->whereMonth('date', now()->month)
+    ->sum('amount');
+}
+
+#[Computed]
+public function lastMonthSum(): int {
+  return BankFee::whereYear('date', now()->subMonth()->year)
+    ->whereMonth('date', now()->subMonth()->month)
+    ->sum('amount');
+}
+
+#[Computed]
+public function monthlyAverage(): int {
+  return BankFee::whereYear('date', now()->year)
+    ->selectRaw('SUM(amount) / 12 as avg')
+    ->value('avg') ?? 0;
+}
+
+#[Computed]
+public function breakdownByType(): array {
+  $total = BankFee::sum('amount');
+  return BankFee::selectRaw('type, SUM(amount) as sum, COUNT(*) as count')
+    ->groupBy('type')
+    ->orderByDesc('sum')
+    ->get()
+    ->map(fn($r) => [
+      'type' => $r->type,
+      'sum' => $r->sum,
+      'count' => $r->count,
+      'pct' => $total > 0 ? $r->sum / $total * 100 : 0,
+    ])
+    ->all();
+}`}
+                  </pre>
+                </div>
+              </div>
+
+              {/* Edit modal */}
+              <div className="card mb-3" style={{ borderLeft: '4px solid #198754' }}>
+                <div className="card-body">
+                  <div className="d-flex justify-content-between align-items-start mb-2">
+                    <div>
+                      <h6 className="mb-1 fw-bold">FeeEditModal (jen edit existujících)</h6>
+                      <code className="fs-12 text-muted">resources/views/livewire/fees/edit-modal.blade.php</code>
+                    </div>
+                    <KodStatusBadge status="hotovo" />
+                  </div>
+                  <pre className="bg-light p-2 rounded fs-12 mb-0" style={{ overflow: 'auto' }}>
+{`public function save(): void {
+  $fee = BankFee::findOrFail($this->feeId);
+  $this->authorize('update', $fee);
+
+  // Audit změny typu (klasifikace upravená uživatelem)
+  if ($this->type !== $fee->type) {
+    activity()->performedOn($fee)
+      ->causedBy(auth()->user())
+      ->withProperties(['from' => $fee->type, 'to' => $this->type])
+      ->log('Změna typu poplatku');
+  }
+
+  $fee->update([
+    'type' => $this->type,
+    'description' => $this->description,
+    'branch_id' => $this->branchId,
+    'amount' => $this->amount,
+  ]);
+
+  $this->dispatch('fee-updated');
+  $this->closeModal();
+}
+
+public function delete(): void {
+  $fee = BankFee::findOrFail($this->feeId);
+  $this->authorize('delete', $fee);
+  $fee->delete();  // soft-delete v produkci
+}`}
+                  </pre>
+                </div>
+              </div>
+            </>
+          )}
+
           {/* Ostatní sekce — placeholder */}
-          {aktivni !== 'trzby' && aktivni !== 'banka' && aktivni !== 'trvale-prikazy' && aktivni !== 'uvery' && (
+          {aktivni !== 'trzby' && aktivni !== 'banka' && aktivni !== 'trvale-prikazy' && aktivni !== 'uvery' && aktivni !== 'poplatky' && (
             <div className="card">
               <div className="card-body text-center text-muted py-5">
                 <iconify-icon icon="solar:clock-circle-bold-duotone" style={{ fontSize: 56, color: '#dee2e6' }} />
