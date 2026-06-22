@@ -1768,9 +1768,9 @@ interface KodSekce {
 }
 
 const KOD_SECTIONS: KodSekce[] = [
-  { id: 'banka',           label: 'Banka',            icon: 'solar:bank-bold-duotone',           status: 'rozpracovane', intro: 'AutoSyncBar + UcetCard + TransakceSidePanel + Tabulka transakcí. Část komponent je rozpracovaná (AutoSyncBar — dořešení dávkového UI), nepouštět celý kód do produkce, dokud nedořešíme finální UX.' },
+  { id: 'banka',           label: 'Banka',            icon: 'solar:bank-bold-duotone',           status: 'hotovo', intro: 'BalanceOverview + UcetCard + Tabulka transakcí + TransakceSidePanel + Návrh systému (detectTransactionType). Jediná dílčí komponenta s rozpracovaným statusem je AutoSyncBar (čeká na finální UX dávkového UI) — ostatní jsou připraveny k implementaci.' },
   { id: 'faktury',         label: 'Faktury',          icon: 'solar:document-text-bold-duotone',  status: 'ceka', intro: 'Workflow přijatých + vydaných faktur. Tabulka, schvalovací proces v panelu, Fakturoid-style editor, šablony položek.' },
-  { id: 'trvale-prikazy',  label: 'Trvalé příkazy',   icon: 'solar:refresh-circle-bold-duotone', status: 'ceka' },
+  { id: 'trvale-prikazy',  label: 'Trvalé příkazy',   icon: 'solar:refresh-circle-bold-duotone', status: 'hotovo', intro: 'Trvalé příkazy (TP) — 3 typy (standard/leasing/záloha), splátkový kalendář per řádek edit, form modal s auto-generováním leasingových splátek. Eloquent: `StandingOrder` + `StandingOrderInstallment`. Cross-section nav z Banky (`pendingTPFromTrans`).' },
   { id: 'uvery',           label: 'Úvěry',            icon: 'solar:hand-money-bold-duotone',     status: 'ceka' },
   { id: 'poplatky',        label: 'Poplatky',         icon: 'solar:tag-price-bold-duotone',      status: 'ceka' },
   { id: 'karty-platformy', label: 'Karty / Platformy', icon: 'solar:card-bold-duotone',          status: 'ceka' },
@@ -1889,20 +1889,317 @@ export default function KodView() {
             </div>
           </div>
 
-          {/* Sekce: Banka — rozpracované */}
+          {/* Sekce: Banka — Připraveno k implementaci (jen AutoSyncBar zůstává rozpracovaný) */}
           {aktivni === 'banka' && (
             <>
-              <div className="alert alert-warning d-flex align-items-start gap-2 mb-3 fs-13">
-                <iconify-icon icon="solar:hammer-bold-duotone" style={{ fontSize: 18 }} />
+              <div className="alert alert-success d-flex align-items-start gap-2 mb-3 fs-13">
+                <iconify-icon icon="solar:check-circle-bold-duotone" style={{ fontSize: 18 }} />
                 <div>
-                  <strong>Rozpracované — neimplementovat zatím.</strong>
-                  <br />
-                  Finální podoba dílčích komponent (zejména <code>AutoSyncBar</code>, dávkové platby, error stav)
-                  bude dořešena v dalších feedback iteracích. Mezitím kód průběžně dokumentujeme,
-                  ale držte produkční implementaci do potvrzení finálního UX.
+                  <strong>Připraveno k implementaci.</strong> UX schválené v meetingu 22. 6. 2026.
+                  Eloquent modely + Livewire Volt komponenty níže.
+                  <br /><strong>Pozor:</strong> dílčí komponenta <code>AutoSyncBar</code> má status „Rozpracované" —
+                  finální dávkové UI bude dořešeno v dalším kole. Implementujte zatím jen status-only verzi (viz karta níže).
                 </div>
               </div>
 
+              {/* Datový model */}
+              <div className="card mb-3" style={{ borderLeft: '4px solid #198754' }}>
+                <div className="card-body">
+                  <div className="d-flex justify-content-between align-items-start mb-2">
+                    <div>
+                      <h6 className="mb-1 fw-bold">Datový model (Eloquent)</h6>
+                      <code className="fs-12 text-muted">app/Models/BankAccount.php + BankTransaction.php + …</code>
+                    </div>
+                    <KodStatusBadge status="hotovo" />
+                  </div>
+                  <ul className="fs-13 mb-2" style={{ paddingLeft: 18 }}>
+                    <li><code>bank_accounts</code> — id, name, iban, bank, currency (CZK/EUR), branch_ids (JSON array — multi-venue), account_balance, available_funds, last_sync, sync_status, status (ok/low/critical/sync_error), history_balance (JSON — 37 bodů: 30 minulých + dnes + 6 budoucích), week_prediction, month_prediction</li>
+                    <li><code>bank_transactions</code> — id, account_id (FK), type (incoming/outgoing), date, amount (negative=outgoing), counterparty, note, vs?, status (paired/unpaired/manual_paired), paired_invoice_id? (FK), candidates (JSON — SuggestedMatch[]), outside_reason?, outside_note?, no_invoice_reason?, manual_reason?, manual_note?, counter_account?, delegated_to_user_id? (FK)</li>
+                    <li><code>transaction_audit_entries</code> — id, transaction_id (FK), time, user_id (FK), action, icon, color</li>
+                    <li><code>transaction_notes</code> — id, transaction_id (FK), time, user_id (FK), text</li>
+                  </ul>
+                  <div className="alert alert-info py-2 mb-0 fs-12">
+                    <iconify-icon icon="solar:info-circle-bold-duotone" className="me-1" />
+                    <strong>Multi-venue účet:</strong> <code>branch_ids</code> je JSON array → konsolidované účty (Hlavní, Mzdy, Marketing, Catering) mají více <code>branch_id</code>, single-venue mají jeden. Border-top karty: jeden branch → barva té branche, multi → Con Gusto gold <code>#c9911a</code>.
+                  </div>
+                </div>
+              </div>
+
+              {/* Main view */}
+              <div className="card mb-3" style={{ borderLeft: '4px solid #198754' }}>
+                <div className="card-body">
+                  <div className="d-flex justify-content-between align-items-start mb-2">
+                    <div>
+                      <h6 className="mb-1 fw-bold">Hlavní view (Volt)</h6>
+                      <code className="fs-12 text-muted">resources/views/livewire/banka/index.blade.php</code>
+                    </div>
+                    <KodStatusBadge status="hotovo" />
+                  </div>
+                  <div className="fs-13 mb-2"><strong>State:</strong></div>
+                  <ul className="fs-13 mb-2" style={{ paddingLeft: 18 }}>
+                    <li><code>$dateFrom</code>, <code>$dateTo</code>, <code>$amountFrom</code>, <code>$amountTo</code>, <code>$search</code> — filtry</li>
+                    <li><code>$statusFilter</code> (Set), <code>$typeFilter</code> — multiselect chipy</li>
+                    <li><code>$selectedTransactionId</code> — který řádek je otevřený v panelu</li>
+                    <li><code>$activeWorkQueue</code> — null / 'unpaired' / 'multiple-candidates' / 'no-vs' / 'no-branch' / 'waiting-review' / 'error'</li>
+                  </ul>
+                  <div className="fs-13"><strong>Query:</strong></div>
+                  <pre className="bg-light p-2 rounded fs-12 mb-2" style={{ overflow: 'auto' }}>
+{`public function with(): array {
+  $branchId = auth()->user()->activeBranch()?->id;
+  $accounts = BankAccount::query()
+    ->when($branchId !== mainBranchGet(), fn($q) =>
+      $q->whereJsonContains('branch_ids', $branchId))
+    ->orderBy('name')
+    ->get();
+
+  $transactions = BankTransaction::query()
+    ->whereIn('account_id', $accounts->pluck('id'))
+    ->whereBetween('date', [$this->dateFrom, $this->dateTo])
+    ->when($this->search, fn($q) => $q->where(function($q) {
+      $q->where('counterparty', 'like', "%{$this->search}%")
+        ->orWhere('vs', 'like', "%{$this->search}%")
+        ->orWhere('note', 'like', "%{$this->search}%");
+    }))
+    ->when($this->statusFilter, fn($q) => $q->whereIn('status', $this->statusFilter))
+    ->orderBy('date', 'desc')
+    ->get();
+
+  return compact('accounts', 'transactions');
+}`}
+                  </pre>
+                  <div className="alert alert-info py-2 mb-0 fs-12">
+                    <iconify-icon icon="solar:info-circle-bold-duotone" className="me-1" />
+                    Multi-tenancy přes <code>auth()-&gt;user()-&gt;activeBranch()</code> + <code>mainBranchGet()</code> — main branch vidí všechny účty, jinak jen ty s daným branch_id v JSON arrayi.
+                  </div>
+                </div>
+              </div>
+
+              {/* BalanceOverview */}
+              <div className="card mb-3" style={{ borderLeft: '4px solid #198754' }}>
+                <div className="card-body">
+                  <div className="d-flex justify-content-between align-items-start mb-2">
+                    <div>
+                      <h6 className="mb-1 fw-bold">BalanceOverview (collapsible)</h6>
+                      <code className="fs-12 text-muted">resources/views/livewire/banka/balance-overview.blade.php</code>
+                    </div>
+                    <KodStatusBadge status="hotovo" />
+                  </div>
+                  <pre className="bg-light p-2 rounded fs-12 mb-0" style={{ overflow: 'auto' }}>
+{`#[Computed]
+public function totalCzk(): float {
+  return BankAccount::where('currency', 'CZK')
+    ->whereJsonContains('branch_ids', auth()->user()->activeBranch()?->id)
+    ->sum('account_balance');
+}
+
+#[Computed]
+public function totalEur(): float {
+  return BankAccount::where('currency', 'EUR')
+    ->whereJsonContains('branch_ids', auth()->user()->activeBranch()?->id)
+    ->sum('account_balance');
+}
+
+// Blade — collapsible Bootstrap accordion
+<div class="accordion">
+  <div class="accordion-item">
+    <h2 class="accordion-header">
+      <button class="accordion-button collapsed" data-bs-toggle="collapse"
+              data-bs-target="#accountsList">
+        Zůstatek celkem: {{ formatMoney($this->totalCzk, false) }}
+        @if($this->totalEur > 0) + {{ number_format($this->totalEur, 2) }} € @endif
+      </button>
+    </h2>
+    <div id="accountsList" class="accordion-collapse collapse">
+      <div class="accordion-body">
+        @foreach($accounts as $account)
+          <div class="d-flex justify-content-between py-1">
+            <span>{{ $account->name }}</span>
+            <span class="czk-num">{{ formatMoney($account->account_balance, false) }}</span>
+          </div>
+        @endforeach
+      </div>
+    </div>
+  </div>
+</div>`}
+                  </pre>
+                </div>
+              </div>
+
+              {/* UcetCard se sparkline */}
+              <div className="card mb-3" style={{ borderLeft: '4px solid #198754' }}>
+                <div className="card-body">
+                  <div className="d-flex justify-content-between align-items-start mb-2">
+                    <div>
+                      <h6 className="mb-1 fw-bold">UcetCard (SVG sparkline + brand color)</h6>
+                      <code className="fs-12 text-muted">resources/views/livewire/banka/ucet-card.blade.php</code>
+                    </div>
+                    <KodStatusBadge status="hotovo" />
+                  </div>
+                  <div className="fs-13 mb-2">
+                    Sparkline = inline SVG 37 bodů. 30 minulých = solid line, dnes = circle, 7 budoucích = dashed.
+                    Area fill 0.08 opacity. Border-top barva podle počtu branche.
+                  </div>
+                  <pre className="bg-light p-2 rounded fs-12 mb-0" style={{ overflow: 'auto' }}>
+{`@php
+  $borderColor = match(true) {
+    count($account->branch_ids) === 1 =>
+      Branch::find($account->branch_ids[0])->color,
+    count($account->branch_ids) > 1 => '#c9911a',  // Con Gusto gold
+    default => '#9097a7',                            // unassigned
+  };
+@endphp
+
+<div class="card ucet-card" style="border-top: 3px solid {{ $borderColor }};">
+  <div class="card-body">
+    <h5>{{ $account->name }}</h5>
+    <div>{{ $account->iban }}</div>
+    <div>Účetní bilance: {{ formatMoney($account->account_balance, false) }}</div>
+    <div>Dostupní prostředky: {{ formatMoney($account->available_funds, false) }}</div>
+
+    {{-- SVG sparkline 37 bodů --}}
+    <svg viewBox="0 0 200 40" class="ucet-sparkline">
+      @php $points = json_decode($account->history_balance); @endphp
+      <path d="..." fill="{{ $borderColor }}" fill-opacity="0.08" />
+      <path d="..." stroke="{{ $borderColor }}" fill="none" />
+    </svg>
+
+    <div class="d-flex justify-content-between fs-12">
+      <span>Týden: {{ formatMoney($account->week_prediction, false) }}</span>
+      <span>Měsíc: {{ formatMoney($account->month_prediction, false) }}</span>
+    </div>
+  </div>
+</div>`}
+                  </pre>
+                </div>
+              </div>
+
+              {/* TransakceSidePanel */}
+              <div className="card mb-3" style={{ borderLeft: '4px solid #198754' }}>
+                <div className="card-body">
+                  <div className="d-flex justify-content-between align-items-start mb-2">
+                    <div>
+                      <h6 className="mb-1 fw-bold">TransakceSidePanel (single-scroll)</h6>
+                      <code className="fs-12 text-muted">resources/views/livewire/banka/transaction-side-panel.blade.php</code>
+                    </div>
+                    <KodStatusBadge status="hotovo" />
+                  </div>
+                  <div className="fs-13 mb-2">
+                    Sticky pravý panel, progressive disclosure (žádné taby, vše v jednom plynulém scrollu).
+                    Sekce shora dolů: Akční zóna → Detail → Aktivita (audit + poznámky chronologicky).
+                  </div>
+                  <pre className="bg-light p-2 rounded fs-12 mb-2" style={{ overflow: 'auto' }}>
+{`public function confirmCandidate(int $candidateInvoiceId): void {
+  $invoice = Invoice::findOrFail($candidateInvoiceId);
+  $this->transaction->update([
+    'status' => 'paired',
+    'paired_invoice_id' => $invoice->id,
+  ]);
+  $invoice->update(['status' => 'paid']);
+  TransactionAuditEntry::create([
+    'transaction_id' => $this->transaction->id,
+    'time' => now(),
+    'user_id' => auth()->id(),
+    'action' => "Spárováno s fakturou {$invoice->number}",
+    'icon' => 'solar:check-circle-bold-duotone',
+    'color' => '#198754',
+  ]);
+  $this->feedback = 'Transakce spárována s ' . $invoice->number;
+}
+
+public function markAs(string $reason, string $targetSection): void {
+  $this->transaction->update([
+    'status' => 'manual_paired',
+    'manual_reason' => $reason,
+    'manual_note' => "Auto-klasifikace dle popisu",
+  ]);
+  TransactionAuditEntry::create([
+    'transaction_id' => $this->transaction->id,
+    'action' => "Přijat návrh: {$reason} → {$targetSection}",
+    'icon' => 'solar:magic-stick-3-bold-duotone',
+    'color' => '#0d6efd',
+  ]);
+}`}
+                  </pre>
+                </div>
+              </div>
+
+              {/* Návrh systému */}
+              <div className="card mb-3" style={{ borderLeft: '4px solid #198754' }}>
+                <div className="card-body">
+                  <div className="d-flex justify-content-between align-items-start mb-2">
+                    <div>
+                      <h6 className="mb-1 fw-bold">Návrh systému (detectTransactionType)</h6>
+                      <code className="fs-12 text-muted">app/Services/BankTransactionClassifier.php</code>
+                    </div>
+                    <KodStatusBadge status="hotovo" />
+                  </div>
+                  <pre className="bg-light p-2 rounded fs-12 mb-0" style={{ overflow: 'auto' }}>
+{`class BankTransactionClassifier {
+  public function detect(BankTransaction $t): ?array {
+    $text = strtolower($t->counterparty . ' ' . ($t->note ?? ''));
+
+    if (preg_match('/(poplatek|vedeni\\s*[uú][cč]tu|transakce|sprav)/i', $text)) {
+      return ['type' => 'Bankovní poplatek', 'target' => 'fees'];
+    }
+    if (preg_match('/([uú]rok|debetn|kreditn|sazba)/i', $text)) {
+      return ['type' => 'Úrok z účtu', 'target' => 'fees'];
+    }
+    if (preg_match('/(sankce|pen[aá]le|pokut|upomink)/i', $text)) {
+      return ['type' => 'Sankce / penále', 'target' => 'fees'];
+    }
+    if (preg_match('/(mzda|plat|vyplata|odm[eě]n)/i', $text)) {
+      return ['type' => 'Mzda', 'target' => 'salaries'];
+    }
+    if (preg_match('/(splatka|leasing|[uú]v[eě]r)/i', $text)) {
+      return ['type' => 'Splátka úvěru', 'target' => 'loans'];
+    }
+    return null;
+  }
+}
+
+// Použití v Volt — Návrh systému alert:
+#[Computed]
+public function systemSuggestion(): ?array {
+  return app(BankTransactionClassifier::class)->detect($this->transaction);
+}`}
+                  </pre>
+                </div>
+              </div>
+
+              {/* Cross-section nav */}
+              <div className="card mb-3" style={{ borderLeft: '4px solid #198754' }}>
+                <div className="card-body">
+                  <div className="d-flex justify-content-between align-items-start mb-2">
+                    <div>
+                      <h6 className="mb-1 fw-bold">Cross-section navigace (Otevřít fakturu / Vytvořit TP)</h6>
+                      <code className="fs-12 text-muted">Session flash + redirect</code>
+                    </div>
+                    <KodStatusBadge status="hotovo" />
+                  </div>
+                  <pre className="bg-light p-2 rounded fs-12 mb-0" style={{ overflow: 'auto' }}>
+{`// Otevřít detail spárované faktury
+public function openPairedInvoice(): void {
+  $this->redirect(
+    route('invoices.index', ['open' => $this->transaction->paired_invoice_id]),
+    navigate: true
+  );
+}
+
+// Vytvořit trvalý příkaz z nespárované transakce
+public function createStandingOrder(): void {
+  session()->flash('pending_tp_from_transaction', [
+    'counterparty' => $this->transaction->counterparty,
+    'amount' => abs($this->transaction->amount),
+    'counter_account' => $this->transaction->counter_account,
+    'vs' => $this->transaction->vs,
+  ]);
+  $this->redirect(route('standing-orders.index'), navigate: true);
+}`}
+                  </pre>
+                </div>
+              </div>
+
+              {/* AutoSyncBar — ROZPRACOVANÉ */}
               <div className="card mb-3" style={{ borderLeft: '4px solid #fd7e14' }}>
                 <div className="card-body">
                   <div className="d-flex justify-content-between align-items-start mb-2 flex-wrap gap-2">
@@ -1914,32 +2211,34 @@ export default function KodView() {
                   </div>
                   <div className="alert alert-warning py-2 mb-2 fs-12">
                     <iconify-icon icon="solar:hammer-bold-duotone" className="me-1" />
-                    <strong>Phase 8.6 (zápis 22. 6. 2026):</strong> odebráno CTA „Odeslat dávku" + celá spodní řada
-                    (Živě / Znovu načíst / Simulovat chybu) + error stav UI. Zůstává jen status-only verze
-                    (auto-sync aktivní, interval, last/next sync, API limit).
-                    Finální dávkové UI bude dořešeno v dalším feedback kole — neimplementovat zatím v Laravelu.
+                    <strong>Phase 8.6 (zápis 22. 6. 2026):</strong> v této iteraci implementujte jen <strong>status-only verzi</strong>.
+                    Finální dávkové UI bude dořešeno v dalším feedback kole.
                   </div>
-                  <div className="row g-2 fs-12">
+                  <div className="row g-2 fs-12 mb-2">
                     <div className="col-md-6">
-                      <div className="text-muted fs-11 text-uppercase mb-1">Status-only verze (aktuální)</div>
-                      <div>Status indikátor (Aktivní) + interval (15 min) + Poslední sync + Příští sync + API limit (X/300)</div>
+                      <div className="text-muted fs-11 text-uppercase mb-1">Implementujte teď</div>
+                      <div>Status indikátor (Aktivní), interval (15 min), Poslední sync, Příští sync, API limit (X/300)</div>
                     </div>
                     <div className="col-md-6">
-                      <div className="text-muted fs-11 text-uppercase mb-1">Bude dořešeno</div>
+                      <div className="text-muted fs-11 text-uppercase mb-1">Počkat na finální UX</div>
                       <div>Dávkové platby (Odeslat dávku / Vrátit poslední krok / audit), Error stav (Auto-sync vypnut + Zapnout znovu), Manuální akce (Živě / Znovu načíst)</div>
                     </div>
                   </div>
-                </div>
-              </div>
-
-              <div className="card">
-                <div className="card-body text-center text-muted py-5">
-                  <iconify-icon icon="solar:clock-circle-bold-duotone" style={{ fontSize: 56, color: '#dee2e6' }} />
-                  <div className="mt-3 fs-15">Ostatní komponenty Banky — kód v přípravě</div>
-                  <div className="fs-13 mt-1">
-                    BalanceOverview, UcetCard, Tabulka transakcí, TransakceSidePanel, Modals — Volt/Blade kód
-                    doplníme jakmile dořešíme UX těchto dílčích komponent.
-                  </div>
+                  <pre className="bg-light p-2 rounded fs-12 mb-0" style={{ overflow: 'auto' }}>
+{`{{-- Status-only verze — pouze pro tento iterativní krok --}}
+<div class="d-flex align-items-center gap-2 px-3 py-2 mb-3 rounded"
+     style="background: #f8f9fa; border: 1px solid #e9ecef; font-size: 12px;">
+  <span class="rounded-circle d-inline-block"
+        style="width: 8px; height: 8px; background: #198754;
+               box-shadow: 0 0 0 3px rgba(25,135,84,0.15);"></span>
+  <span class="fw-semibold">Auto-sync</span>
+  <span class="badge bg-success-subtle text-success">Aktivní</span>
+  <span class="text-muted">15 min</span>
+  <span class="text-muted">Poslední: {{ $lastSync }}</span>
+  <span class="text-muted">Příští: {{ $nextSync }}</span>
+  <span class="text-muted ms-auto">API: {{ $apiUsage }}/300</span>
+</div>`}
+                  </pre>
                 </div>
               </div>
             </>
@@ -2015,8 +2314,271 @@ export default function KodView() {
             </>
           )}
 
+          {/* Sekce: Trvalé příkazy — Připraveno k implementaci */}
+          {aktivni === 'trvale-prikazy' && (
+            <>
+              <div className="alert alert-success d-flex align-items-start gap-2 mb-3 fs-13">
+                <iconify-icon icon="solar:check-circle-bold-duotone" style={{ fontSize: 18 }} />
+                <div>
+                  <strong>Připraveno k implementaci.</strong> UX schválené v meetingu 22. 6. 2026 (žádné změny).
+                  Eloquent modely + Livewire Volt komponenty níže. Stack: Laravel 11+ · Livewire Volt · Eloquent · Cache::remember.
+                </div>
+              </div>
+
+              {/* Datový model */}
+              <div className="card mb-3" style={{ borderLeft: '4px solid #198754' }}>
+                <div className="card-body">
+                  <div className="d-flex justify-content-between align-items-start mb-2">
+                    <div>
+                      <h6 className="mb-1 fw-bold">Datový model (Eloquent)</h6>
+                      <code className="fs-12 text-muted">app/Models/StandingOrder.php + StandingOrderInstallment.php</code>
+                    </div>
+                    <KodStatusBadge status="hotovo" />
+                  </div>
+                  <div className="fs-13 mb-2">2 tabulky + enum:</div>
+                  <ul className="fs-13 mb-2" style={{ paddingLeft: 18 }}>
+                    <li><code>standing_orders</code> — id, name, type (enum: standard/leasing/zaloha), counterparty, counterparty_account, account_id (FK <code>bank_accounts</code>), period (enum: weekly/monthly/quarterly/yearly), amount, vs, ks?, ss?, start_date, end_date?, next_due_date, status (active/paused/cancelled), expense_type (kancelar/provoz/sdileny), branch_id? (FK), note?</li>
+                    <li><code>standing_order_installments</code> — id, standing_order_id (FK), sequence_number, due_date, vs, amount, status (paid/pending/overdue), override_account_id? (FK)</li>
+                    <li><code>standing_order_documents</code> — id, standing_order_id (FK), name, type (smlouva/dodatek/jiný), uploaded_at, file_path</li>
+                  </ul>
+                  <div className="alert alert-info py-2 mb-0 fs-12">
+                    <iconify-icon icon="solar:info-circle-bold-duotone" className="me-1" />
+                    <strong>Pro leasing:</strong> splátkový kalendář (<code>standing_order_installments</code>) se generuje při založení TP přes <code>StandingOrder::generateInstallments($count, $vsTemplate)</code> — VS každé splátky = <code>$vsTemplate . str_pad($i + 1, 3, "0", STR_PAD_LEFT)</code>. Standard/záloha typy nemají splátky (jen <code>next_due_date</code> + opakovaný auto-generated record při zaúčtování).
+                  </div>
+                </div>
+              </div>
+
+              {/* Hlavní view */}
+              <div className="card mb-3" style={{ borderLeft: '4px solid #198754' }}>
+                <div className="card-body">
+                  <div className="d-flex justify-content-between align-items-start mb-2">
+                    <div>
+                      <h6 className="mb-1 fw-bold">Hlavní view (Volt)</h6>
+                      <code className="fs-12 text-muted">resources/views/livewire/standing-orders/index.blade.php</code>
+                    </div>
+                    <KodStatusBadge status="hotovo" />
+                  </div>
+                  <div className="fs-13">
+                    <strong>Volt single-file</strong> komponenta s <code>#[Defer]</code> lazy loadingem. State:
+                  </div>
+                  <ul className="fs-13 mb-2" style={{ paddingLeft: 18 }}>
+                    <li><code>$search</code>, <code>$statusFilter</code>, <code>$typeFilter</code>, <code>$unpaidOnly</code> — filtry (Livewire reactive)</li>
+                    <li><code>$selectedId</code> — který TP je otevřený v side panelu</li>
+                    <li><code>$formMode</code> — null / 'new' / 'edit' — řídí modal</li>
+                  </ul>
+                  <div className="fs-13"><strong>Query:</strong></div>
+                  <pre className="bg-light p-2 rounded fs-12 mb-2" style={{ overflow: 'auto' }}>
+{`public function with(): array {
+  $orders = StandingOrder::query()
+    ->when($this->search, fn($q) => $q->where(function($q) {
+      $q->where('name', 'like', "%{$this->search}%")
+        ->orWhere('counterparty', 'like', "%{$this->search}%")
+        ->orWhere('vs', 'like', "%{$this->search}%");
+    }))
+    ->when($this->statusFilter, fn($q) => $q->where('status', $this->statusFilter))
+    ->when($this->typeFilter, fn($q) => $q->where('type', $this->typeFilter))
+    ->when($this->unpaidOnly, fn($q) => $q->whereHas('installments',
+        fn($q) => $q->where('status', 'overdue')))
+    ->withCount(['installments as unpaid_count' => fn($q) => $q->where('status', 'overdue')])
+    ->orderBy('next_due_date')
+    ->get();
+
+  return compact('orders');
+}`}
+                  </pre>
+                  <div className="alert alert-info py-2 mb-0 fs-12">
+                    <iconify-icon icon="solar:info-circle-bold-duotone" className="me-1" />
+                    Cross-section nav z Banky: <code>session('pendingTPFromTrans')</code> v <code>mount()</code> → pokud existuje, auto-otevří formulář v <code>'new'</code> módu s předvyplněnými údaji (firma → counterparty, částka, protiÚčet, VS) a vyčistí session pole.
+                  </div>
+                </div>
+              </div>
+
+              {/* KPI strip */}
+              <div className="card mb-3" style={{ borderLeft: '4px solid #198754' }}>
+                <div className="card-body">
+                  <div className="d-flex justify-content-between align-items-start mb-2">
+                    <div>
+                      <h6 className="mb-1 fw-bold">KPI strip</h6>
+                      <code className="fs-12 text-muted">computed properties v Volt</code>
+                    </div>
+                    <KodStatusBadge status="hotovo" />
+                  </div>
+                  <pre className="bg-light p-2 rounded fs-12 mb-2" style={{ overflow: 'auto' }}>
+{`#[Computed]
+public function activeCount(): int {
+  return Cache::remember("standing-orders:active-count", 300,
+    fn() => StandingOrder::where('status', 'active')->count());
+}
+
+#[Computed]
+public function monthlyBurden(): int {
+  return Cache::remember("standing-orders:monthly-burden", 300, function() {
+    return StandingOrder::active()->get()->sum(function($o) {
+      return match($o->period) {
+        'weekly' => $o->amount * 4.33,
+        'monthly' => $o->amount,
+        'quarterly' => $o->amount / 3,
+        'yearly' => $o->amount / 12,
+      };
+    });
+  });
+}
+
+#[Computed]
+public function unpaidInstallmentsCount(): int {
+  return StandingOrderInstallment::where('status', 'overdue')->count();
+}`}
+                  </pre>
+                </div>
+              </div>
+
+              {/* Form modal */}
+              <div className="card mb-3" style={{ borderLeft: '4px solid #198754' }}>
+                <div className="card-body">
+                  <div className="d-flex justify-content-between align-items-start mb-2">
+                    <div>
+                      <h6 className="mb-1 fw-bold">Form modal (new/edit) + leasing auto-preview</h6>
+                      <code className="fs-12 text-muted">resources/views/livewire/standing-orders/form.blade.php</code>
+                    </div>
+                    <KodStatusBadge status="hotovo" />
+                  </div>
+                  <div className="fs-13 mb-2">
+                    Formulář používá <code>{'<x-input>'}</code> Blade komponentu (jako Tržby). Validace přes Livewire rules.
+                  </div>
+                  <div className="fs-13 mb-2"><strong>Auto-preview leasingových splátek:</strong></div>
+                  <pre className="bg-light p-2 rounded fs-12 mb-2" style={{ overflow: 'auto' }}>
+{`#[Computed]
+public function previewInstallments(): array {
+  if ($this->type !== 'leasing' || !$this->installmentCount || !$this->vsTemplate) {
+    return [];
+  }
+  return StandingOrder::generateInstallmentsArray(
+    $this->startDate,
+    (int)$this->installmentCount,
+    (float)$this->amount,
+    $this->vsTemplate
+  );
+}
+
+// V Modelu:
+public static function generateInstallmentsArray(
+  string $start, int $count, float $baseAmount, string $vsTemplate
+): array {
+  $items = [];
+  $date = Carbon::parse($start);
+  for ($i = 0; $i < $count; $i++) {
+    $items[] = [
+      'sequence_number' => $i + 1,
+      'due_date' => $date->copy()->addMonths($i)->toDateString(),
+      'vs' => $vsTemplate . str_pad($i + 1, 3, '0', STR_PAD_LEFT),
+      'amount' => $baseAmount,
+      'status' => 'pending',
+    ];
+  }
+  return $items;
+}`}
+                  </pre>
+                  <div className="fs-13"><strong>Blade preview:</strong></div>
+                  <pre className="bg-light p-2 rounded fs-12 mb-0" style={{ overflow: 'auto' }}>
+{`@if($this->type === 'leasing' && count($this->previewInstallments) > 0)
+  <div class="alert alert-info py-2">
+    <strong>Auto-preview {{ count($this->previewInstallments) }} splátek</strong>
+  </div>
+  <table class="table table-sm">
+    <thead><tr><th>#</th><th>Datum</th><th>VS</th><th>Částka</th></tr></thead>
+    <tbody>
+      @foreach($this->previewInstallments as $i => $s)
+        <tr>
+          <td>{{ $s['sequence_number'] }}</td>
+          <td>{{ $s['due_date'] }}</td>
+          <td class="czk-num">{{ $s['vs'] }}</td>
+          <td class="text-end czk-num">{{ formatMoney($s['amount'], false) }}</td>
+        </tr>
+      @endforeach
+    </tbody>
+  </table>
+@endif`}
+                  </pre>
+                </div>
+              </div>
+
+              {/* Side panel */}
+              <div className="card mb-3" style={{ borderLeft: '4px solid #198754' }}>
+                <div className="card-body">
+                  <div className="d-flex justify-content-between align-items-start mb-2">
+                    <div>
+                      <h6 className="mb-1 fw-bold">Side panel + inline edit splátek</h6>
+                      <code className="fs-12 text-muted">resources/views/livewire/standing-orders/side-panel.blade.php</code>
+                    </div>
+                    <KodStatusBadge status="hotovo" />
+                  </div>
+                  <div className="fs-13 mb-2">
+                    Sticky pravý panel <code>style="top: calc(var(--bs-topbar-height) + 16px)"</code>.
+                    Per-řádek edit splátky:
+                  </div>
+                  <pre className="bg-light p-2 rounded fs-12 mb-2" style={{ overflow: 'auto' }}>
+{`public function updateInstallment(int $installmentId, array $patch): void {
+  $installment = StandingOrderInstallment::findOrFail($installmentId);
+  $this->authorize('update', $installment->standingOrder);
+  $installment->update($patch);
+
+  // Audit zápis
+  activity()->performedOn($installment)
+    ->causedBy(auth()->user())
+    ->withProperties(['changes' => $patch])
+    ->log('Splátka upravena');
+}`}
+                  </pre>
+                  <div className="fs-13"><strong>Override odchozího účtu:</strong> per splátka jiný účet než default (např. když jeden účet má nedostatek). Select v inline editu:</div>
+                  <pre className="bg-light p-2 rounded fs-12 mb-0" style={{ overflow: 'auto' }}>
+{`<select wire:change="updateInstallment({{ $s->id }}, ['override_account_id' => $event.target.value])">
+  <option value="">— Výchozí účet ({{ $order->account->name }}) —</option>
+  @foreach($availableAccounts as $acc)
+    <option value="{{ $acc->id }}" @selected($s->override_account_id === $acc->id)>
+      {{ $acc->name }} — {{ $acc->balance_formatted }}
+    </option>
+  @endforeach
+</select>`}
+                  </pre>
+                </div>
+              </div>
+
+              {/* CSS */}
+              <div className="card mb-3" style={{ borderLeft: '4px solid #198754' }}>
+                <div className="card-body">
+                  <div className="d-flex justify-content-between align-items-start mb-2">
+                    <div>
+                      <h6 className="mb-1 fw-bold">CSS</h6>
+                      <code className="fs-12 text-muted">resources/css/standing-orders.css</code>
+                    </div>
+                    <KodStatusBadge status="hotovo" />
+                  </div>
+                  <pre className="bg-light p-2 rounded fs-12 mb-0" style={{ overflow: 'auto' }}>
+{`/* Type badge colors */
+.tp-type-standard { background: #e3f2fd; color: #1976d2; }
+.tp-type-leasing  { background: #fff3e0; color: #f57c00; }
+.tp-type-zaloha   { background: #f3e5f5; color: #7b1fa2; }
+
+/* Installment status */
+.tp-splatka-zaplacena { background: #e8f5e9; color: #2e7d32; }
+.tp-splatka-cekajici  { background: #fff8e1; color: #f57c00; }
+.tp-splatka-zpozdeni  { background: #ffebee; color: #c62828; }
+
+/* Side panel sticky */
+.tp-side-panel {
+  position: sticky;
+  top: calc(var(--bs-topbar-height, 100px) + 16px);
+  max-height: calc(100vh - var(--bs-topbar-height, 100px) - 32px);
+  overflow-y: auto;
+}`}
+                  </pre>
+                </div>
+              </div>
+            </>
+          )}
+
           {/* Ostatní sekce — placeholder */}
-          {aktivni !== 'trzby' && aktivni !== 'banka' && (
+          {aktivni !== 'trzby' && aktivni !== 'banka' && aktivni !== 'trvale-prikazy' && (
             <div className="card">
               <div className="card-body text-center text-muted py-5">
                 <iconify-icon icon="solar:clock-circle-bold-duotone" style={{ fontSize: 56, color: '#dee2e6' }} />

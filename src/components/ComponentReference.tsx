@@ -37,7 +37,7 @@ const SECTIONS: Section[] = [
     id: 'banka',
     label: 'Banka',
     icon: 'solar:bank-bold-duotone',
-    status: 'rozpracovane',
+    status: 'hotovo',
     intro:
       'Operační workspace pro majitele / finančního ředitele. Zobrazuje bankovní účty (konsolidované + per-provozovna), transakce, auto-sync stav, a side-panel s rozpadem (kandidáti na párování, audit, poznámky, návrh systému). Cíl: rychlé řešení nesparovaných plateb. Sekce má ~20 dílčích komponent.',
     components: [
@@ -205,9 +205,104 @@ const SECTIONS: Section[] = [
     id: 'trvale-prikazy',
     label: 'Trvalé příkazy',
     icon: 'solar:refresh-circle-bold-duotone',
-    status: 'ceka',
-    intro: '3 typy příkazů (standard / leasing / záloha), inline edit splátkového kalendáře, form modal s auto-generováním leasingových splátek, upload smluv.',
-    components: [],
+    status: 'hotovo',
+    intro:
+      'Sekce pro správu trvalých plateb (TP). 3 typy: standard (energie, nájmy) / leasing (auta, technika — fixní splátkový kalendář) / záloha (energie 2× ročně vyúčtování). KPI strip + tabulka + form modal pro new/edit + side panel s detailem a editovatelným splátkovým kalendářem. Cross-section nav z Banky (Vytvořit TP z nespárované transakce). UX schválené — připraveno k implementaci.',
+    components: [
+      {
+        name: 'TrvalePrikazyView',
+        file: 'TrvalePrikazyView.tsx',
+        pattern: 'Page Layout (compound view)',
+        larkon: 'Card grid + Table + Side Panel + Modal',
+        subcomponents: 'KpiStrip + PrikazyTable + PrikazSidePanel + PrikazFormModal',
+        implementation:
+          'Root view, drží 4 lokální state: `localStavy` (override stav per ID), `localPrikazy` (přepisuje + nové), `formState` (null=zavřený / {mode, initial}). `mergedData` skládá mock + localPrikazy + localStavy → komponenty pracují s merged. `useEffect` reaguje na `state.pendingTPFromTrans` (cross-section nav z Banky) — auto-otevře form modal s předvyplněnými údaji z transakce a vyčistí pole.',
+        custom: 'NO',
+        status: 'hotovo',
+      },
+      {
+        name: 'KpiStrip',
+        file: 'TrvalePrikazyView.tsx (uvnitř)',
+        pattern: 'KPI Strip (4× karta)',
+        larkon: 'StatisticsWidget × 4',
+        subcomponents: 'Aktivní (count) · Měsíční zátěž (Kč) · Nezaplacené splátky (count, klikatelný) · Pozastavené (count)',
+        implementation:
+          'Pole `<StatisticsWidget>` v `row g-3` (col-md-3). Klik na „Nezaplacené splátky" → callback `onClickNezaplacene` toggluje filter chip „Jen nezaplacené" v PrikazyTable. Měsíční zátěž = `getMesicniZatez()` helper z dat.',
+        custom: 'NO',
+        status: 'hotovo',
+      },
+      {
+        name: 'PrikazyTable',
+        file: 'TrvalePrikazyView.tsx (uvnitř)',
+        pattern: 'Data Table + Filter chips',
+        larkon: 'Table + Form controls',
+        subcomponents:
+          'Header: hledání + Stav select + Typ select + chip „Jen nezaplacené" + CTA „Nový příkaz" · Sloupce: Název / Typ badge / Protistrana / Perioda / Příští splatnost / Částka / Stav badge / Akce',
+        implementation:
+          'Filtry řešeny `useMemo(filtered)` přes 4 podmínky (search OR název/protistrana/VS, stavFilter, typFilter, nezaplaceneOnly). Klik na řádek → `onSelect(id)` otevírá side panel. „Nový příkaz" → otevírá `PrikazFormModal` s `mode: "new"`.',
+        custom: 'NO',
+        status: 'hotovo',
+      },
+      {
+        name: 'PrikazSidePanel',
+        file: 'TrvalePrikazyView.tsx (uvnitř)',
+        pattern: 'Sticky Side Panel',
+        larkon: 'Card s position:sticky',
+        subcomponents:
+          'Header (název + typ badge + stav + Editovat + Close) · Základní info (protistrana, perioda, částka, příští splatnost) · Akce (Pozastavit / Aktivovat / Ukončit) · **Splátkový kalendář** (inline editovatelný per řádek) · Dokumenty (upload smluv)',
+        implementation:
+          'Sticky `top: calc(var(--bs-topbar-height) + 16px)`. Splátkový kalendář per leasing = tabulka řádků s `<input>` pro datum / VS / částka + override odchozího účtu (`<select>`). Per-řádek edit → `onUpdateSplatka(prikazId, splatkaIdx, patch)`. Helper `generateLeasingSplatky()` v `trvalePrikazyData.ts` vyrobí kalendář z `(start, count, baseAmount, vsTemplate)` — VS každé splátky = `vsTemplate + index.padStart(3, "0")`.',
+        custom: 'YES',
+        customReason: 'Splátkový kalendář per řádek edit + override účtu — vlastní inline form pattern.',
+        status: 'hotovo',
+      },
+      {
+        name: 'PrikazFormModal',
+        file: 'TrvalePrikazyView.tsx (uvnitř)',
+        pattern: 'Modal Form',
+        larkon: 'Modal + Form controls',
+        subcomponents:
+          'Typ (radio: standard/leasing/záloha) · Název · Protistrana · Číslo účtu protistrany · Perioda · Částka · VS · Datum začátku · Datum konce · Odchozí účet · NakladKomu (kancelar/provoz/sdileny) + provozovnaId · **Pro leasing: počet splátek + vsTemplate → auto-preview splátkového kalendáře** · Upload smluv',
+        implementation:
+          'Validace povinných polí. Pro leasing: změna `pocetSplatek` nebo `vsTemplate` triggeruje `generateLeasingSplatky()` a zobrazí preview tabulky se všemi splátkami. Submit → `onSave(prikaz)` → `TrvalePrikazyView` přidá do `localPrikazy`. **Cross-section payload** z Banky předvyplňuje formulář (firma → protistrana, částka, protiÚčet, VS) — viz `TrvalePrikazyView.useEffect(state.pendingTPFromTrans)`.',
+        custom: 'NO',
+        status: 'hotovo',
+      },
+      {
+        name: 'Splátkový kalendář (leasing)',
+        file: 'TrvalePrikazyView.tsx + trvalePrikazyData.ts',
+        pattern: 'Inline editable table',
+        larkon: 'Table + Form controls',
+        subcomponents: 'Sloupce: Pořadí (#) · Datum splatnosti · VS · Částka · Stav (zaplacena/cekajici/zpozdeni) · Override účtu · Edit',
+        implementation:
+          '`generateLeasingSplatky(start, count, baseAmount, vsTemplate)` v `trvalePrikazyData.ts` vrátí `TrvalySplatkaItem[]`. Stav splátky se odvozuje od dnešního data (referenční `today = 2026-06-09`): `ds < today` → zaplacena, jinak cekajici (pokud past + nezaplaceno → zpozdeni). Helper `maNezaplacenouSplatku(p)` v dat.ts kontroluje, jestli má příkaz alespoň jednu nesplacenou.',
+        custom: 'NO',
+        status: 'hotovo',
+      },
+      {
+        name: 'Upload dokumentů (smlouvy / dodatky)',
+        file: 'TrvalePrikazyView.tsx (uvnitř panelu)',
+        pattern: 'File upload + List',
+        larkon: 'Card + List Group + File input',
+        subcomponents: 'Drop area + seznam přiložených dokumentů s ikonou typu + datum + akce (stáhnout / odebrat)',
+        implementation:
+          'Mock — typ dokumentu se auto-detekuje z názvu souboru (smlouva.pdf → typ "smlouva", dodatek_1.pdf → typ "dodatek"). V produkci → multipart upload do storage + `TrvalyDokument` záznam v DB.',
+        custom: 'YES',
+        customReason: 'File upload UI (drag & drop) není v Larkonu standard.',
+        status: 'hotovo',
+      },
+      {
+        name: 'Cross-section nav (Vytvořit TP z transakce)',
+        file: 'TrvalePrikazyView.tsx + AppState.pendingTPFromTrans',
+        pattern: 'Cross-section navigation',
+        larkon: 'Custom React state pattern',
+        subcomponents: '`AppState.pendingTPFromTrans: { firma, castka, protiUcet?, vs? }`',
+        implementation:
+          'Banka side-panel má tlačítko „Vytvořit trvalý příkaz" → `update({ selectedSection: "trvale-prikazy", pendingTPFromTrans: payload })`. TrvalePrikazyView `useEffect([state.pendingTPFromTrans])` přečte payload, vytvoří initial `TrvalyPrikaz` s předvyplněnými údaji, otevře form modal v `new` módu, ukáže toast a vyčistí pendingTPFromTrans.',
+        custom: 'NO',
+        status: 'hotovo',
+      },
+    ],
   },
   {
     id: 'uvery',
