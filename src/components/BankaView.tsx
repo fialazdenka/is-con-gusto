@@ -468,51 +468,9 @@ function AutoSyncBar({ pendingCount, paymentsQueueCount, apiCallsUsed }: {
   paymentsQueueCount: number;
   apiCallsUsed: number;
 }) {
-  const [syncError, setSyncError]       = useState(false);
-  const [lastBatch,  setLastBatch]      = useState<{ id: string; count: number; cas: string } | null>(null);
-  // Phase 8.5 (zápis 12. 6. 2026) — Confirm dialog před anulováním dávky + audit toast
-  const [revertConfirm, setRevertConfirm] = useState(false);
-  const [batchAudit, setBatchAudit] = useState<string[]>([]);
-
-  const handleSendBatch = () => {
-    if (paymentsQueueCount === 0) return;
-    const id = `BATCH-${Date.now().toString().slice(-6)}`;
-    const cas = new Date().toISOString().slice(11, 16);
-    setLastBatch({ id, count: paymentsQueueCount, cas });
-    setBatchAudit((a) => [...a, `${cas} • Dávka ${id} odeslána (${paymentsQueueCount} plateb)`]);
-  };
-
-  const handleRevertBatch = () => {
-    if (!lastBatch) return;
-    const cas = new Date().toISOString().slice(11, 16);
-    setBatchAudit((a) => [...a, `${cas} • Dávka ${lastBatch.id} anulována (vrácena do fronty)`]);
-    setLastBatch(null);
-    setRevertConfirm(false);
-  };
-
-  const handleToggleSyncError = () => {
-    setSyncError((v) => !v);
-  };
-
-  if (syncError) {
-    return (
-      <div className="d-flex align-items-center gap-2 flex-wrap row-gap-2 px-3 py-2 mb-3 rounded"
-        style={{ background: '#f8d7da', border: '1px solid #f5c2c7', fontSize: 12 }}>
-        <div className="d-flex align-items-center gap-2 flex-shrink-0">
-          <iconify-icon icon="solar:danger-circle-bold-duotone" style={{ fontSize: 16, color: '#dc3545' }} />
-          <span className="fw-semibold text-danger">Auto-sync vypnut</span>
-          <span className="badge bg-danger" style={{ fontSize: 10 }}>Chyba</span>
-        </div>
-        <div className="text-muted flex-grow-1">
-          Banka vrátila chybu při poslední synchronizaci v 14:32. Auto-sync byl pozastaven, aby nedošlo k duplicitnímu zápisu.
-        </div>
-        <button className="btn btn-danger btn-sm py-1 px-2" style={{ fontSize: 11 }} onClick={handleToggleSyncError}>
-          <iconify-icon icon="solar:play-circle-bold-duotone" className="me-1" />
-          Zapnout znovu
-        </button>
-      </div>
-    );
-  }
+  // Phase 8.6 (zápis 22. 6. 2026) — AutoSyncBar dočasně zjednodušen na status-only.
+  // Hromadné dávky + error UI (manual trigger) + ručně spouštěné akce odebrány do dořešení finální podoby.
+  void paymentsQueueCount;
 
   return (
     <div className="d-flex align-items-center gap-2 flex-wrap row-gap-2 px-3 py-2 mb-3 rounded"
@@ -544,98 +502,7 @@ function AutoSyncBar({ pendingCount, paymentsQueueCount, apiCallsUsed }: {
         <span className="d-none d-md-inline">API:</span>
         <span className={`fw-semibold czk-num ${apiCallsUsed > 250 ? 'text-warning' : 'text-dark'}`}>{apiCallsUsed}/300</span>
       </div>
-      {/* Hromadné platby */}
-      {lastBatch ? (
-        <div className="d-flex align-items-center gap-2 ms-auto flex-shrink-0">
-          <span className="badge bg-success-subtle text-success" style={{ fontSize: 10 }} title={`${lastBatch.count} plateb v ${lastBatch.cas}`}>
-            <iconify-icon icon="solar:check-circle-bold-duotone" className="me-1" style={{ fontSize: 10 }} />
-            Dávka {lastBatch.id} ({lastBatch.count}) odeslána v {lastBatch.cas}
-          </span>
-          <button className="btn btn-outline-danger btn-sm py-1 px-2" style={{ fontSize: 11 }}
-            onClick={() => setRevertConfirm(true)} title="Anulovat poslední odeslanou dávku">
-            <iconify-icon icon="solar:undo-left-round-bold-duotone" className="me-1" />
-            Vrátit poslední krok
-          </button>
-        </div>
-      ) : (
-        <div className="d-flex align-items-center gap-2 ms-auto flex-shrink-0">
-          <button className="btn btn-primary btn-sm py-1 px-2" style={{ fontSize: 11 }}
-            disabled={paymentsQueueCount === 0} onClick={handleSendBatch}
-            title="Odeslat všechny připravené platby jednou dávkou (šetří API limit)">
-            <iconify-icon icon="solar:upload-bold-duotone" className="me-1" />
-            Odeslat dávku {paymentsQueueCount > 0 && `(${paymentsQueueCount})`}
-          </button>
-        </div>
-      )}
-
-      {/* Spodní řada — Akce sync */}
-      <div className="d-flex align-items-center gap-2 flex-shrink-0" style={{ flexBasis: '100%' }}>
-        <button className="btn btn-light btn-sm py-1 px-2" style={{ fontSize: 11 }} title="Načíst aktuální data z banky">
-          <iconify-icon icon="solar:refresh-bold-duotone" className="me-1" />
-          Živě
-        </button>
-        <button className="btn btn-light btn-sm py-1 px-2" style={{ fontSize: 11 }} title="Znovu načíst všechny transakce">
-          <iconify-icon icon="solar:download-minimalistic-bold-duotone" className="me-1" />
-          Znovu načíst
-        </button>
-        {batchAudit.length > 0 && (
-          <div className="dropdown ms-2">
-            <button className="btn btn-link btn-sm py-1 text-muted" style={{ fontSize: 11 }}
-              data-bs-toggle="dropdown" title="Historie dávek a anulací">
-              <iconify-icon icon="solar:history-bold-duotone" className="me-1" />
-              Audit ({batchAudit.length})
-            </button>
-            <ul className="dropdown-menu" style={{ minWidth: 320, fontSize: 11 }}>
-              {batchAudit.slice().reverse().map((line, i) => (
-                <li key={i}><span className="dropdown-item-text py-1 czk-num">{line}</span></li>
-              ))}
-            </ul>
-          </div>
-        )}
-        <button className="btn btn-link btn-sm py-1 text-muted ms-auto" style={{ fontSize: 11 }}
-          onClick={handleToggleSyncError} title="Simulovat chybu autosync — demo">
-          Simulovat chybu
-        </button>
-      </div>
-
-      {/* Phase 8.5 (zápis 12. 6. 2026) — Confirm dialog před anulováním dávky */}
-      {revertConfirm && lastBatch && (
-        <>
-          <div className="modal-backdrop fade show" style={{ zIndex: 1500 }} onClick={() => setRevertConfirm(false)} />
-          <div className="modal fade show d-block" style={{ zIndex: 1600 }} tabIndex={-1}>
-            <div className="modal-dialog modal-dialog-centered">
-              <div className="modal-content">
-                <div className="modal-header bg-warning-subtle">
-                  <h5 className="modal-title d-flex align-items-center gap-2">
-                    <iconify-icon icon="solar:danger-triangle-bold-duotone" style={{ color: '#fd7e14' }} />
-                    Anulovat dávku {lastBatch.id}?
-                  </h5>
-                  <button className="btn-close" onClick={() => setRevertConfirm(false)} />
-                </div>
-                <div className="modal-body">
-                  <p className="mb-2 fs-13">
-                    Skutečně chcete vrátit poslední odeslanou dávku <strong>{lastBatch.id}</strong> ({lastBatch.count} plateb)?
-                  </p>
-                  <div className="alert alert-warning py-2 mb-0 fs-12">
-                    <iconify-icon icon="solar:info-circle-bold-duotone" className="me-1" />
-                    Banka pokusí stornovat všechny platby, které ještě nebyly zaúčtované. Akce se zapíše do auditu a může způsobit
-                    dočasné zablokování limitu API.
-                  </div>
-                </div>
-                <div className="modal-footer">
-                  <button className="btn btn-light btn-sm" onClick={() => setRevertConfirm(false)}>
-                    Zpět
-                  </button>
-                  <button className="btn btn-danger btn-sm" onClick={handleRevertBatch}>
-                    <iconify-icon icon="solar:undo-left-round-bold-duotone" className="me-1" />
-                    Ano, anulovat dávku
-                  </button>
-                </div>
-              </div>
-            </div>
-          </div>
-        </>
-      )}
+      {/* Phase 8.6 (zápis 22. 6. 2026) — odebráno per zpětnou vazba: CTA "Odeslat dávku" + celá spodní řada (Živě / Znovu načíst / Simulovat chybu). Komponenta je v mapě + Kódu označená jako "rozpracované" — finální podoba bude dořešena. */}
     </div>
   );
 }

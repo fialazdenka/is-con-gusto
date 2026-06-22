@@ -1752,9 +1752,58 @@ function renderAccordionItem(
   );
 }
 
+// Phase 8.6 (zápis 22. 6. 2026) — KodView refactor na NESTED SUBPAGES.
+// Levý nav se sekcemi (Banka, Faktury, Tržby, …) + pravý content area pro zvolenou sekci.
+// Tržby sekce má kompletní Volt/ApexCharts kód (převzato z předchozí verze),
+// Banka sekce má placeholder s "rozpracované" notice, ostatní sekce čekají.
+
+type KodStatus = 'hotovo' | 'rozpracovane' | 'ceka';
+
+interface KodSekce {
+  id: string;
+  label: string;
+  icon: string;
+  status: KodStatus;
+  intro?: string;
+}
+
+const KOD_SECTIONS: KodSekce[] = [
+  { id: 'banka',           label: 'Banka',            icon: 'solar:bank-bold-duotone',           status: 'rozpracovane', intro: 'AutoSyncBar + UcetCard + TransakceSidePanel + Tabulka transakcí. Část komponent je rozpracovaná (AutoSyncBar — dořešení dávkového UI), nepouštět celý kód do produkce, dokud nedořešíme finální UX.' },
+  { id: 'faktury',         label: 'Faktury',          icon: 'solar:document-text-bold-duotone',  status: 'ceka', intro: 'Workflow přijatých + vydaných faktur. Tabulka, schvalovací proces v panelu, Fakturoid-style editor, šablony položek.' },
+  { id: 'trvale-prikazy',  label: 'Trvalé příkazy',   icon: 'solar:refresh-circle-bold-duotone', status: 'ceka' },
+  { id: 'uvery',           label: 'Úvěry',            icon: 'solar:hand-money-bold-duotone',     status: 'ceka' },
+  { id: 'poplatky',        label: 'Poplatky',         icon: 'solar:tag-price-bold-duotone',      status: 'ceka' },
+  { id: 'karty-platformy', label: 'Karty / Platformy', icon: 'solar:card-bold-duotone',          status: 'ceka' },
+  { id: 'dane',            label: 'Daně',             icon: 'solar:scale-bold-duotone',          status: 'ceka' },
+  { id: 'trzby',           label: 'Tržby',            icon: 'solar:graph-up-bold-duotone',       status: 'hotovo', intro: 'Tržby detail + Vývoj tržeb (ApexCharts) v Livewire Volt. Volt single-file + Eloquent + Cache::remember. Brand color border-top, live tečka, K/B split.' },
+  { id: 'platby',          label: 'Platby',           icon: 'solar:wallet-money-bold-duotone',   status: 'ceka' },
+  { id: 'pohledavky',      label: 'Pohledávky',       icon: 'solar:hand-money-bold-duotone',     status: 'ceka' },
+  { id: 'cashflow',        label: 'Cashflow',         icon: 'solar:chart-bold-duotone',          status: 'ceka' },
+  { id: 'dashboard',       label: 'Dashboard',        icon: 'solar:widget-bold-duotone',         status: 'ceka' },
+  { id: 'nastaveni',       label: 'Nastavení',        icon: 'solar:settings-bold-duotone',       status: 'ceka' },
+  { id: 'shell',           label: 'AppShell / Sidebar / Topbar', icon: 'solar:sidebar-minimalistic-bold-duotone', status: 'ceka' },
+];
+
+function KodStatusBadge({ status }: { status: KodStatus }) {
+  // Phase 8.6 (zápis 22. 6. 2026) — Status 'hotovo' = "Připraveno k implementaci"
+  // (kódový podklad je finální a nasazený na live, kodér může začít implementovat).
+  const cfg = {
+    hotovo:        { label: 'Připraveno k implementaci', cls: 'bg-success-subtle text-success',    icon: 'solar:check-circle-bold-duotone' },
+    rozpracovane:  { label: 'Rozpracované',              cls: 'bg-warning-subtle text-warning',    icon: 'solar:hammer-bold-duotone' },
+    ceka:          { label: 'Čeká',                      cls: 'bg-secondary-subtle text-secondary', icon: 'solar:clock-circle-bold-duotone' },
+  }[status];
+  return (
+    <span className={`badge ${cfg.cls} d-inline-flex align-items-center gap-1`} style={{ fontSize: 11 }}>
+      <iconify-icon icon={cfg.icon} style={{ fontSize: 12 }} />
+      {cfg.label}
+    </span>
+  );
+}
+
 export default function KodView() {
   const [openId,   setOpenId]   = useState<string | null>(null);
   const [copiedAt, setCopiedAt] = useState<string | null>(null);
+  const [aktivni,  setAktivni]  = useState<string>('trzby'); // default = Tržby (kompletní kód)
 
   function toggle(id: string) {
     setOpenId((cur) => cur === id ? null : id);
@@ -1770,133 +1819,225 @@ export default function KodView() {
     }
   }
 
+  const sekce = KOD_SECTIONS.find((s) => s.id === aktivni) ?? KOD_SECTIONS[0];
+
   return (
     <>
-      {/* Header */}
+      {/* Page header (společný pro celou stránku Kód) */}
       <div className="page-title-box">
-        <div className="d-flex align-items-center gap-3 flex-wrap">
-          <div>
-            <h4 className="mb-1">Kód pro backend implementaci</h4>
-            <div className="text-muted fs-13">
-              Podklady pro kodéra — <strong>Tržby detail</strong> (Volt + brand color + live tečka) a <strong>Vývoj tržeb</strong> (Volt + ApexCharts na celou šířku). Reálná Eloquent data.
+        <div className="d-flex align-items-center justify-content-between flex-wrap gap-2">
+          <h4 className="page-title mb-0 d-flex align-items-center gap-2">
+            <iconify-icon icon="solar:code-bold-duotone" style={{ color: '#6c757d' }} />
+            Kód pro backend implementaci
+          </h4>
+          <div className="d-flex gap-2 align-items-center flex-wrap">
+            <span className="badge bg-primary-subtle text-primary fs-11">PHP 8.2+</span>
+            <span className="badge bg-info-subtle text-info fs-11">Laravel 11+</span>
+            <span className="badge bg-success-subtle text-success fs-11">Livewire Volt</span>
+            <span className="badge bg-warning-subtle text-warning fs-11">Alpine.js 3</span>
+            <span className="badge bg-danger-subtle text-danger fs-11">ApexCharts</span>
+            <span className="badge bg-secondary-subtle text-secondary fs-11">Eloquent · CSS</span>
+          </div>
+        </div>
+      </div>
+
+      <div className="alert alert-info py-2 mb-3 fs-13 d-flex align-items-start gap-2">
+        <iconify-icon icon="solar:info-circle-bold-duotone" style={{ fontSize: 18 }} />
+        <div>
+          Backend implementace pro kodéra. Vyber sekci v levém panelu — uvidíš Volt/Blade/Alpine kód té sekce
+          (Eloquent query, Blade template, JS chart inicializaci, CSS). <strong>Postupně doplňujeme</strong> —
+          jak procházíme jednotlivé sekce, dokumentaci aktualizujeme.
+        </div>
+      </div>
+
+      <div className="row g-3">
+        {/* LEVÝ NAV — sekce */}
+        <div className="col-md-3">
+          <div className="card" style={{ position: 'sticky', top: 'calc(var(--bs-topbar-height, 100px) + 16px)' }}>
+            <div className="list-group list-group-flush">
+              {KOD_SECTIONS.map((s) => (
+                <button
+                  key={s.id}
+                  className={`list-group-item list-group-item-action d-flex align-items-center gap-2 ${aktivni === s.id ? 'active' : ''}`}
+                  onClick={() => setAktivni(s.id)}>
+                  <iconify-icon icon={s.icon} style={{ fontSize: 18 }} />
+                  <div className="flex-grow-1 text-start">
+                    <div className="fw-semibold fs-13">{s.label}</div>
+                  </div>
+                  <KodStatusBadge status={s.status} />
+                </button>
+              ))}
             </div>
           </div>
-          <div className="d-flex gap-2 ms-auto flex-wrap">
-            <span className="badge bg-primary-subtle text-primary">PHP 8.2+</span>
-            <span className="badge bg-info-subtle text-info">Laravel 11+</span>
-            <span className="badge bg-success-subtle text-success">Livewire Volt</span>
-            <span className="badge bg-warning-subtle text-warning">Alpine.js 3</span>
-            <span className="badge bg-danger-subtle text-danger">ApexCharts</span>
-            <span className="badge bg-secondary-subtle text-secondary">Eloquent · CSS</span>
+        </div>
+
+        {/* PRAVÝ OBSAH */}
+        <div className="col-md-9">
+          {/* Section header */}
+          <div className="card mb-3">
+            <div className="card-body">
+              <div className="d-flex justify-content-between align-items-start flex-wrap gap-2">
+                <div>
+                  <h5 className="mb-1 d-flex align-items-center gap-2">
+                    <iconify-icon icon={sekce.icon} style={{ color: '#0d6efd' }} />
+                    {sekce.label}
+                  </h5>
+                  {sekce.intro && <div className="text-muted fs-13 mt-1">{sekce.intro}</div>}
+                </div>
+                <KodStatusBadge status={sekce.status} />
+              </div>
+            </div>
           </div>
+
+          {/* Sekce: Banka — rozpracované */}
+          {aktivni === 'banka' && (
+            <>
+              <div className="alert alert-warning d-flex align-items-start gap-2 mb-3 fs-13">
+                <iconify-icon icon="solar:hammer-bold-duotone" style={{ fontSize: 18 }} />
+                <div>
+                  <strong>Rozpracované — neimplementovat zatím.</strong>
+                  <br />
+                  Finální podoba dílčích komponent (zejména <code>AutoSyncBar</code>, dávkové platby, error stav)
+                  bude dořešena v dalších feedback iteracích. Mezitím kód průběžně dokumentujeme,
+                  ale držte produkční implementaci do potvrzení finálního UX.
+                </div>
+              </div>
+
+              <div className="card mb-3" style={{ borderLeft: '4px solid #fd7e14' }}>
+                <div className="card-body">
+                  <div className="d-flex justify-content-between align-items-start mb-2 flex-wrap gap-2">
+                    <div>
+                      <h6 className="mb-1 fw-bold">AutoSyncBar</h6>
+                      <code className="fs-12 text-muted">resources/views/livewire/banka/auto-sync-bar.blade.php</code>
+                    </div>
+                    <KodStatusBadge status="rozpracovane" />
+                  </div>
+                  <div className="alert alert-warning py-2 mb-2 fs-12">
+                    <iconify-icon icon="solar:hammer-bold-duotone" className="me-1" />
+                    <strong>Phase 8.6 (zápis 22. 6. 2026):</strong> odebráno CTA „Odeslat dávku" + celá spodní řada
+                    (Živě / Znovu načíst / Simulovat chybu) + error stav UI. Zůstává jen status-only verze
+                    (auto-sync aktivní, interval, last/next sync, API limit).
+                    Finální dávkové UI bude dořešeno v dalším feedback kole — neimplementovat zatím v Laravelu.
+                  </div>
+                  <div className="row g-2 fs-12">
+                    <div className="col-md-6">
+                      <div className="text-muted fs-11 text-uppercase mb-1">Status-only verze (aktuální)</div>
+                      <div>Status indikátor (Aktivní) + interval (15 min) + Poslední sync + Příští sync + API limit (X/300)</div>
+                    </div>
+                    <div className="col-md-6">
+                      <div className="text-muted fs-11 text-uppercase mb-1">Bude dořešeno</div>
+                      <div>Dávkové platby (Odeslat dávku / Vrátit poslední krok / audit), Error stav (Auto-sync vypnut + Zapnout znovu), Manuální akce (Živě / Znovu načíst)</div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div className="card">
+                <div className="card-body text-center text-muted py-5">
+                  <iconify-icon icon="solar:clock-circle-bold-duotone" style={{ fontSize: 56, color: '#dee2e6' }} />
+                  <div className="mt-3 fs-15">Ostatní komponenty Banky — kód v přípravě</div>
+                  <div className="fs-13 mt-1">
+                    BalanceOverview, UcetCard, Tabulka transakcí, TransakceSidePanel, Modals — Volt/Blade kód
+                    doplníme jakmile dořešíme UX těchto dílčích komponent.
+                  </div>
+                </div>
+              </div>
+            </>
+          )}
+
+          {/* Sekce: Tržby — kompletní kód (původní obsah KodView) */}
+          {aktivni === 'trzby' && (
+            <>
+              {/* Vyřešené body banner */}
+              <div className="alert alert-success d-flex align-items-start gap-2 mb-3">
+                <iconify-icon icon="solar:check-circle-bold-duotone" className="fs-5 flex-shrink-0" />
+                <div className="fs-13">
+                  <strong>Vyřešené body (po feedbacku od kodéra):</strong>
+                  <ol className="mb-0 mt-1" style={{ paddingLeft: 18 }}>
+                    <li><strong>Kuchyň/Bar split</strong> — používáme <code>DailyClosingRow::SALES_K</code> + <code>SALES_B</code>. Single-venue mód má sloupce Datum · Kuchyň · Bar · Celkem.</li>
+                    <li><strong>Historické agregace</strong> — query přes <code>daily_closings</code> obalená v <code>Cache::remember(...)</code> s TTL 1h.</li>
+                    <li><strong>Rok vzniku</strong> — fallback <code>MIN(daily_closings.date)</code> s 24h cache.</li>
+                    <li><strong>Brand barvy</strong> — public <code>$brandColor</code> property + CSS proměnná <code>--prov-color</code>.</li>
+                    <li><strong>Live tečka</strong> — pulzující zelená <code>.trzby-live-dot</code> u dnešního data.</li>
+                    <li><strong>ApexCharts</strong> — graf Vývoj tržeb přes <code>chartData()</code> JSON + Alpine.js <code>vyvojTrzebChart</code> plugin.</li>
+                  </ol>
+                </div>
+              </div>
+
+              {/* Skupina: Tržby detail */}
+              <section className="mb-4">
+                <div className="d-flex align-items-center gap-2 mb-2">
+                  <iconify-icon icon="solar:table-bold-duotone" style={{ fontSize: 20, color: 'var(--prov-color, #c9911a)' }} />
+                  <h5 className="mb-0">Tržby detail</h5>
+                  <span className="text-muted fs-12 ms-2">Tabulka tržeb za období + filtry</span>
+                </div>
+                <div className="mb-3 p-3 rounded" style={{ background: 'rgba(13, 202, 240, 0.06)', border: '1px solid rgba(13, 202, 240, 0.25)' }}>
+                  <div className="d-flex align-items-center gap-2 mb-3">
+                    <iconify-icon icon="solar:eye-bold-duotone" style={{ fontSize: 16, color: '#0dcaf0' }} />
+                    <strong className="fs-13" style={{ color: '#0dcaf0' }}>Náhled — jak má výstup z Laravelu vypadat</strong>
+                  </div>
+                  <TrzbyDetailPreview />
+                </div>
+                <div className="d-flex flex-column gap-2">
+                  {ACCORDION.filter(s => s.id.startsWith('trzby-detail')).map((sec) => renderAccordionItem(sec, openId, toggle, copiedAt, copyCode))}
+                </div>
+              </section>
+
+              {/* Skupina: Vývoj tržeb */}
+              <section className="mb-4">
+                <div className="d-flex align-items-center gap-2 mb-2">
+                  <iconify-icon icon="solar:graph-up-bold-duotone" style={{ fontSize: 20, color: 'var(--prov-color, #c9911a)' }} />
+                  <h5 className="mb-0">Vývoj tržeb</h5>
+                  <span className="text-muted fs-12 ms-2">ApexCharts graf na celou šířku</span>
+                </div>
+                <div className="mb-3 p-3 rounded" style={{ background: 'rgba(13, 202, 240, 0.06)', border: '1px solid rgba(13, 202, 240, 0.25)' }}>
+                  <div className="d-flex align-items-center gap-2 mb-3">
+                    <iconify-icon icon="solar:eye-bold-duotone" style={{ fontSize: 16, color: '#0dcaf0' }} />
+                    <strong className="fs-13" style={{ color: '#0dcaf0' }}>Náhled</strong>
+                  </div>
+                  <VyvojTrzebPreview />
+                </div>
+                <div className="d-flex flex-column gap-2">
+                  {ACCORDION.filter(s => s.id.startsWith('vyvoj-trzeb')).map((sec) => renderAccordionItem(sec, openId, toggle, copiedAt, copyCode))}
+                </div>
+              </section>
+
+              {/* Sdílené */}
+              <section className="mb-4">
+                <div className="d-flex align-items-center gap-2 mb-3">
+                  <iconify-icon icon="solar:settings-bold-duotone" style={{ fontSize: 20, color: '#6c757d' }} />
+                  <h5 className="mb-0">Sdílené (CSS, routing, helpery)</h5>
+                </div>
+                <div className="d-flex flex-column gap-2">
+                  {ACCORDION.filter(s => !s.id.startsWith('trzby-detail') && !s.id.startsWith('vyvoj-trzeb')).map((sec) => renderAccordionItem(sec, openId, toggle, copiedAt, copyCode))}
+                </div>
+              </section>
+            </>
+          )}
+
+          {/* Ostatní sekce — placeholder */}
+          {aktivni !== 'trzby' && aktivni !== 'banka' && (
+            <div className="card">
+              <div className="card-body text-center text-muted py-5">
+                <iconify-icon icon="solar:clock-circle-bold-duotone" style={{ fontSize: 56, color: '#dee2e6' }} />
+                <div className="mt-3 fs-15">Sekce čeká na rozpis kódu</div>
+                <div className="fs-13 mt-1">
+                  Volt / Blade / Alpine kód doplníme, jakmile budeme tuto sekci procházet v rámci feedback meetingu.
+                </div>
+              </div>
+            </div>
+          )}
         </div>
       </div>
 
-      {/* Info banner */}
-      <div className="alert alert-info d-flex align-items-start gap-2 mb-3">
-        <iconify-icon icon="solar:info-circle-bold-duotone" className="fs-5 flex-shrink-0" />
-        <div className="fs-13">
-          <strong>Cíl:</strong> zachovat 1:1 vizuál Tržby (sekce „Vývoj tržeb" a „Tržby detail") z aktuálního React/TS prototypu.
-          <br />
-          <strong>Stack:</strong> Laravel 11+ s <strong>Livewire Volt</strong> (single-file komponenty s anonymní třídou + Blade v jednom souboru),
-          Alpine.js 3 (klientská interaktivita — tooltip), plain CSS, plain JS.
-          <br />
-          <strong>Reálná data:</strong> všechny query přes Eloquent — <code className="bg-light px-1 rounded">Branch</code> a <code className="bg-light px-1 rounded">DailyClosingRow</code>.
-          Tržba = <code className="bg-light px-1 rounded">SUM(value)</code> pro <code>type_id IN [SALES, SALE_MANUAL]</code>.
-          Multi-tenancy přes <code>auth()-&gt;user()-&gt;activeBranch()</code> + <code>mainBranchGet()</code>.
-          <br />
-          <strong>Styl podle vzoru:</strong> inspirováno kodérovým <code>sales-sum.blade.php</code> — <code>#[Defer]</code> lazy loading,
-          <code>@placeholder</code> UI, <code>formatMoney($n, false)</code> helper, <code>&lt;x-input&gt;</code> Blade komponenty.
-        </div>
-      </div>
-
-      {/* Vyřešené body banner */}
-      <div className="alert alert-success d-flex align-items-start gap-2 mb-4">
-        <iconify-icon icon="solar:check-circle-bold-duotone" className="fs-5 flex-shrink-0" />
-        <div className="fs-13">
-          <strong>Vyřešené body (po feedbacku od kodéra):</strong>
-          <ol className="mb-0 mt-1" style={{ paddingLeft: 18 }}>
-            <li><strong>Kuchyň/Bar split</strong> — používáme <code>DailyClosingRow::SALES_K</code> (kuchyň) a <code>DailyClosingRow::SALES_B</code> (bar). Single-venue mód v „Tržby detail" má sloupce <em>Datum · Kuchyň · Bar · Celkem</em>.</li>
-            <li><strong>Historické agregace</strong> — aggregate tabulka zatím neexistuje, query přes <code>daily_closings</code> obalená v <code>Cache::remember(...)</code> s TTL 1 hodina. Klíč obsahuje všechny parametry (mode/period/year/month/branchIds).</li>
-            <li><strong>Rok vzniku provozovny</strong> — <code>branches.opened_at</code> v DB není, použit fallback <code>MIN(daily_closings.date)</code> přes <code>DB::table('daily_closings')-&gt;min('date')</code> s 24h cache.</li>
-            <li><strong>Brand barvy (border-top karet)</strong> — public <code>$brandColor</code> property nastavená v <code>mount()</code>. Multi-venue / main branch = Con Gusto gold <code>#c9911a</code>, single-venue = <code>$branch-&gt;color</code> z DB. V Blade jako <code>{'<div style="--prov-color: {{ $brandColor }}; border-top: 3px solid var(--prov-color);">'}</code>.</li>
-            <li><strong>Live tečka</strong> — pulzující zelená <code>.trzby-live-dot</code> (CSS animace v <code>trzby.css</code>). Zobrazena vedle dnešního data v tabulce přes <code>{'@if($day[\'isToday\']) <span class="trzby-live-dot"></span>'}</code>.</li>
-            <li><strong>ApexCharts + plná šířka</strong> — graf Vývoj tržeb přepsán z SVG na ApexCharts. Volt vrací data přes <code>chartData()</code>, Alpine.js inicializuje chart, Livewire eventy invokují <code>updateOptions()</code>. Container <code>width: 100%</code>, responsive breakpoint pro mobil.</li>
-          </ol>
-        </div>
-      </div>
-
-      {/* Skupina 1 — Tržby detail */}
-      <section className="mb-5">
-        <div className="d-flex align-items-center gap-2 mb-2">
-          <iconify-icon icon="solar:table-bold-duotone" style={{ fontSize: 20, color: 'var(--prov-color, #c9911a)' }} />
-          <h4 className="mb-0">Tržby detail</h4>
-          <span className="text-muted fs-12 ms-2">Tabulka tržeb za období + přednastavené filtry</span>
-        </div>
-
-        {/* Náhled — jak má výstup vypadat */}
-        <div className="mb-3 p-3 rounded" style={{ background: 'rgba(13, 202, 240, 0.06)', border: '1px solid rgba(13, 202, 240, 0.25)' }}>
-          <div className="d-flex align-items-center gap-2 mb-3">
-            <iconify-icon icon="solar:eye-bold-duotone" style={{ fontSize: 16, color: '#0dcaf0' }} />
-            <strong className="fs-13" style={{ color: '#0dcaf0' }}>Náhled — jak má výstup z Laravelu vypadat</strong>
-            <span className="text-muted fs-11 ms-auto fst-italic">Plně funkční verze v sekci „Tržby" v levém menu</span>
-          </div>
-          <TrzbyDetailPreview />
-        </div>
-
-        {/* Kód — accordion */}
-        <div className="d-flex flex-column gap-2">
-          {ACCORDION.filter(s => s.id.startsWith('trzby-detail')).map((sec) => renderAccordionItem(sec, openId, toggle, copiedAt, copyCode))}
-        </div>
-      </section>
-
-      {/* Skupina 2 — Vývoj tržeb */}
-      <section className="mb-5">
-        <div className="d-flex align-items-center gap-2 mb-2">
-          <iconify-icon icon="solar:graph-up-bold-duotone" style={{ fontSize: 20, color: 'var(--prov-color, #c9911a)' }} />
-          <h4 className="mb-0">Vývoj tržeb</h4>
-          <span className="text-muted fs-12 ms-2">Multi-line SVG graf + tabulka po rocích/měsících</span>
-        </div>
-
-        <div className="mb-3 p-3 rounded" style={{ background: 'rgba(13, 202, 240, 0.06)', border: '1px solid rgba(13, 202, 240, 0.25)' }}>
-          <div className="d-flex align-items-center gap-2 mb-3">
-            <iconify-icon icon="solar:eye-bold-duotone" style={{ fontSize: 16, color: '#0dcaf0' }} />
-            <strong className="fs-13" style={{ color: '#0dcaf0' }}>Náhled — jak má výstup z Laravelu vypadat</strong>
-            <span className="text-muted fs-11 ms-auto fst-italic">Najeď myší na graf — uvidíš tooltip</span>
-          </div>
-          <VyvojTrzebPreview />
-        </div>
-
-        <div className="d-flex flex-column gap-2">
-          {ACCORDION.filter(s => s.id.startsWith('vyvoj-trzeb')).map((sec) => renderAccordionItem(sec, openId, toggle, copiedAt, copyCode))}
-        </div>
-      </section>
-
-      {/* Skupina 3 — Sdílené */}
-      <section className="mb-4">
-        <div className="d-flex align-items-center gap-2 mb-3">
-          <iconify-icon icon="solar:settings-bold-duotone" style={{ fontSize: 20, color: '#6c757d' }} />
-          <h4 className="mb-0">Sdílené (pro obě sekce)</h4>
-          <span className="text-muted fs-12 ms-2">Helpery, CSS, routing — bez vlastního vizuálu</span>
-        </div>
-        <div className="d-flex flex-column gap-2">
-          {ACCORDION.filter(s => !s.id.startsWith('trzby-detail') && !s.id.startsWith('vyvoj-trzeb')).map((sec) => renderAccordionItem(sec, openId, toggle, copiedAt, copyCode))}
-        </div>
-      </section>
-
-      {/* Footer note */}
-      <div className="alert alert-light border mt-3 mb-4 fs-12 text-muted">
-        <strong>Poznámky pro implementaci:</strong>
-        <ul className="mb-0 mt-1" style={{ paddingLeft: 18 }}>
-          <li><strong>Volt single-file</strong> — anonymní třída <code>{'new #[Defer] class extends Component { ... }'}</code> + Blade v jednom <code>.blade.php</code> souboru. Žádný oddělený <code>app/Livewire/*.php</code>.</li>
-          <li><strong>Eloquent</strong> — všechny query přes <code>Branch</code> + <code>DailyClosingRow</code>. Žádné mock generators, žádné hash funkce, žádné slugy provozoven. <code>$branch-&gt;id</code> je integer, <code>$branch-&gt;name</code> string.</li>
-          <li><strong>Tržba</strong> = <code>SUM(daily_closing_rows.value)</code> pro <code>type_id IN [DailyClosingRow::SALES, DailyClosingRow::SALE_MANUAL]</code>. JOIN přes <code>daily_closings</code> pro <code>branch_id</code> a <code>date</code>.</li>
-          <li><strong>Helper</strong> <code>formatMoney($n, false)</code> — globální funkce kodéra (asi v <code>app/helpers.php</code>). Druhý parametr <code>false</code> = bez haléřů.</li>
-          <li><strong>Multi-tenancy</strong> — pokud <code>auth()-&gt;user()-&gt;activeBranch()-&gt;id == mainBranchGet()</code>, uživatel vidí všechny <code>Branch::all()</code>. Jinak jen tu svou (single-venue mód).</li>
-          <li><strong>SVG</strong> je rendrované server-side v PHP (smooth Catmull-Rom path). Alpine.js obsluhuje jen hover state pro tooltip.</li>
-          <li><strong>x-input</strong> — kodérova vlastní Blade komponenta (<code>&lt;x-input label="Od" wire:model="from" type="date" /&gt;</code>). Pokud zatím neexistuje, lze nahradit standardním <code>&lt;input&gt;</code>.</li>
-        </ul>
-      </div>
+      <_KodViewOriginalEnd />
     </>
   );
 }
+
+// Pomocná no-op komponenta — drží původní footer s poznámkami (nepoužívá se aktivně v nové struktuře,
+// ale zachováváme ho jako referenci kdyby kodér chtěl). Skryto.
+function _KodViewOriginalEnd() {
+  return null;
+}
+
