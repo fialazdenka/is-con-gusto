@@ -29,6 +29,8 @@ interface NavItem {
   label: string;
   icon: string;  // iconify solar icon name
   badge?: number;
+  // Phase 8.10 (zápis 22. 6. 2026) — Některé položky mají vnořené pod-sekce (např. Faktury → Přijaté/Vydané)
+  children?: { id: SidebarSection; label: string; badge?: number }[];
 }
 
 // Phase 1 restrukturalizace per zápis 4. 6. 2026:
@@ -42,7 +44,14 @@ const MAIN_ITEMS: NavItem[] = [
 const EKONOMIKA_ITEMS: NavItem[] = [
   { id: 'trzby',      label: 'Tržby',         icon: 'solar:chart-2-bold-duotone' },
   { id: 'zavierky',   label: 'Denní závěrky', icon: 'solar:document-text-bold-duotone', badge: 2 },
-  { id: 'faktury',    label: 'Faktury',       icon: 'solar:bill-list-bold-duotone', badge: 1 },
+  // Phase 8.10 (zápis 22. 6. 2026) — Faktury rozdělené na 2 samostatné podsekce (přijaté + vydané)
+  {
+    id: 'faktury', label: 'Faktury', icon: 'solar:bill-list-bold-duotone', badge: 1,
+    children: [
+      { id: 'faktury-prijate', label: 'Přijaté', badge: 1 },
+      { id: 'faktury-vydane',  label: 'Vydané' },
+    ],
+  },
   { id: 'pohledavky', label: 'Pohledávky',    icon: 'solar:money-bag-bold-duotone', badge: 2 },
   { id: 'cashflow',   label: 'Cashflow',      icon: 'solar:dollar-minimalistic-bold-duotone' },
   { id: 'dane',       label: 'Daně',          icon: 'solar:bill-list-bold-duotone' },
@@ -149,22 +158,73 @@ function NavLink({
   active: SidebarSection;
   onSelect: (s: SidebarSection) => void;
 }) {
-  const isActive = active === item.id;
+  // Phase 8.10 (zápis 22. 6. 2026) — Profesionální nested nav s parent + children:
+  // - Parent JE KLIKATELNÝ — routuje na svou sekci (např. Faktury = kombinovaný přehled obou typů)
+  // - Children jsou vždy viditelné pod parentem (žádný expand/collapse)
+  // - Children mají decentní indent + tečku-rail pro vizuální hierarchii
+  const childIds = item.children?.map((c) => c.id) ?? [];
+  const isParentActive = active === item.id;
+  const isAnyChildActive = childIds.includes(active);
+  const hasChildren = (item.children?.length ?? 0) > 0;
+
+  if (!hasChildren) {
+    return (
+      <li className="nav-item">
+        <a
+          className={`nav-link${isParentActive ? ' active' : ''}`}
+          onClick={() => onSelect(item.id)}
+          style={{ cursor: 'pointer' }}
+        >
+          <span className="nav-icon">
+            <iconify-icon icon={item.icon} />
+          </span>
+          <span className="nav-text">{item.label}</span>
+          {item.badge ? (
+            <span className="badge bg-danger rounded-pill ms-auto">{item.badge}</span>
+          ) : null}
+        </a>
+      </li>
+    );
+  }
+
+  // Parent s vnořenými children — klikatelný (otevře svou sekci), zvýrazněný i když je aktivní child
   return (
-    <li className="nav-item">
-      <a
-        className={`nav-link${isActive ? ' active' : ''}`}
-        onClick={() => onSelect(item.id)}
-        style={{ cursor: 'pointer' }}
-      >
-        <span className="nav-icon">
-          <iconify-icon icon={item.icon} />
-        </span>
-        <span className="nav-text">{item.label}</span>
-        {item.badge ? (
-          <span className="badge bg-danger rounded-pill ms-auto">{item.badge}</span>
-        ) : null}
-      </a>
-    </li>
+    <>
+      <li className="nav-item">
+        <a
+          className={`nav-link${isParentActive || isAnyChildActive ? ' active' : ''}`}
+          onClick={() => onSelect(item.id)}
+          style={{ cursor: 'pointer' }}
+        >
+          <span className="nav-icon">
+            <iconify-icon icon={item.icon} />
+          </span>
+          <span className="nav-text">{item.label}</span>
+          {item.badge ? (
+            <span className="badge bg-danger rounded-pill ms-auto">{item.badge}</span>
+          ) : null}
+        </a>
+      </li>
+      {item.children && item.children.map((child, idx) => {
+        const isActive = active === child.id;
+        const isLast = idx === (item.children!.length - 1);
+        return (
+          <li key={child.id} className="nav-item sidebar-child-item">
+            <a
+              className={`nav-link sidebar-child-link${isActive ? ' active' : ''}`}
+              onClick={() => onSelect(child.id)}
+              style={{ cursor: 'pointer' }}
+              data-last={isLast ? 'true' : 'false'}
+            >
+              <span className="sidebar-child-connector" aria-hidden="true" />
+              <span className="nav-text">{child.label}</span>
+              {child.badge ? (
+                <span className="badge bg-danger rounded-pill ms-auto">{child.badge}</span>
+              ) : null}
+            </a>
+          </li>
+        );
+      })}
+    </>
   );
 }

@@ -8,6 +8,10 @@ export type SidebarSection =
   | 'provozovny'
   | 'cashflow'
   | 'faktury'
+  // Phase 8.10 (zápis 22. 6. 2026) — Faktury rozděleny na 2 samostatné podsekce v sidebar.
+  // Obě používají FakturyView se zafixovaným tabem (defaultTyp = 'prijata'/'vydana').
+  | 'faktury-prijate'
+  | 'faktury-vydane'
   | 'pohledavky'
   | 'platby'
   | 'banka'

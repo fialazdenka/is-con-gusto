@@ -1240,6 +1240,73 @@ tfoot .trzby-sticky-r {
 .main-nav .scrollbar::-webkit-scrollbar-thumb:hover { background: rgba(255, 255, 255, 0.32); }
 
 /* ============================================================
+   SIDEBAR — Vnořené sub-items (Faktury → Přijaté / Vydané)
+   Phase 8.10 (zápis 22. 6. 2026)
+   ============================================================ */
+.sidebar-child-item {
+  position: relative;
+}
+.sidebar-child-link {
+  padding-left: 48px !important;
+  font-size: 12.5px !important;
+  position: relative;
+  color: rgba(255, 255, 255, 0.65) !important;
+  transition: color 0.15s ease, background 0.15s ease;
+}
+.sidebar-child-link:hover {
+  color: rgba(255, 255, 255, 0.95) !important;
+  background: rgba(255, 255, 255, 0.04);
+}
+.sidebar-child-link.active {
+  color: #fff !important;
+  background: rgba(255, 255, 255, 0.06);
+  font-weight: 500;
+}
+/* Tree connector: svislá čára vlevo + horizontální „přípojka" k textu */
+.sidebar-child-connector {
+  position: absolute;
+  left: 27px;
+  top: 0;
+  bottom: 0;
+  width: 14px;
+  pointer-events: none;
+}
+.sidebar-child-connector::before {
+  /* Svislá čára */
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 50%;
+  width: 1.5px;
+  background: rgba(255, 255, 255, 0.18);
+}
+.sidebar-child-link[data-last='true'] .sidebar-child-connector::before {
+  /* Poslední child — čára končí v půlce řádku (tvar L) */
+  bottom: 50%;
+}
+.sidebar-child-link:not([data-last='true']) .sidebar-child-connector::before {
+  /* Ne poslední child — čára pokračuje až dolů (tvar T) */
+  bottom: 0;
+}
+.sidebar-child-connector::after {
+  /* Horizontální „přípojka" — krátká čára k labelu */
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 50%;
+  width: 10px;
+  height: 1.5px;
+  background: rgba(255, 255, 255, 0.18);
+  transform: translateY(-50%);
+}
+/* Active child má světlejší connector */
+.sidebar-child-link.active .sidebar-child-connector::before,
+.sidebar-child-link.active .sidebar-child-connector::after {
+  background: rgba(255, 255, 255, 0.45);
+}
+
+/* ============================================================
    BANKA — Work Queue „Vyžaduje pozornost" karty (hover lift)
    ============================================================ */
 .wq-card {

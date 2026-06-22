@@ -37,6 +37,9 @@ const SECTION_LABELS: Record<SidebarSection, string> = {
   cashflow:         'Cashflow',
   dane:             'Daně',
   faktury:          'Faktury',
+  // Phase 8.10 (zápis 22. 6. 2026) — Faktury rozdělené na 2 samostatné podsekce
+  'faktury-prijate': 'Přijaté faktury',
+  'faktury-vydane':  'Vydané faktury',
   pohledavky:       'Pohledávky',
   platby:           'Platby',
   banka:            'Banka',
@@ -59,6 +62,8 @@ const BREADCRUMB_PARENT: Partial<Record<SidebarSection, { label: string; section
   trzby:            { label: 'Ekonomika', section: 'dashboard' },
   zavierky:         { label: 'Ekonomika', section: 'dashboard' },
   faktury:          { label: 'Ekonomika', section: 'dashboard' },
+  'faktury-prijate':{ label: 'Ekonomika', section: 'dashboard' },
+  'faktury-vydane': { label: 'Ekonomika', section: 'dashboard' },
   pohledavky:       { label: 'Ekonomika', section: 'dashboard' },
   cashflow:         { label: 'Ekonomika', section: 'dashboard' },
   dane:             { label: 'Ekonomika', section: 'dashboard' },

@@ -19,6 +19,8 @@ const META: Record<SidebarSection, { icon: string; title: string; desc: string }
   cashflow:         { icon: 'solar:dollar-minimalistic-bold-duotone', title: 'Cashflow',        desc: 'Přehled peněžních toků' },
   dane:             { icon: 'solar:bill-list-bold-duotone',           title: 'Daně',            desc: 'Evidence daňových plateb per S.R.O.' },
   faktury:          { icon: 'solar:bill-list-bold-duotone',           title: 'Faktury',         desc: 'Přijaté a vydané faktury' },
+  'faktury-prijate':{ icon: 'solar:bill-list-bold-duotone',           title: 'Přijaté faktury', desc: 'Záznam přijatých faktur + schvalovací workflow' },
+  'faktury-vydane': { icon: 'solar:document-add-bold-duotone',        title: 'Vydané faktury',  desc: 'Vystavování + sledování úhrady' },
   pohledavky:       { icon: 'solar:money-bag-bold-duotone',           title: 'Pohledávky',      desc: 'Vydané faktury a sledování úhrad' },
   platby:           { icon: 'solar:card-send-bold-duotone',           title: 'Platby',          desc: 'Přehled plateb a transakcí' },
   banka:            { icon: 'solar:wallet-bold-duotone',              title: 'Banka',           desc: 'Bankovní účty a transakce' },

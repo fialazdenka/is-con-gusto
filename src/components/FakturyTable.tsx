@@ -47,6 +47,9 @@ interface Props {
   presetFilters?: Set<'po-splatnosti' | 'tydni' | 'uzamcene'>;       // preset filtry (po splatnosti, tento týden, uzamčené)
   castkaOd?: string;
   castkaDo?: string;
+  // Phase 8.11 (zápis 22. 6. 2026) — Datum filter (splatnost od/do)
+  datumOd?: string;
+  datumDo?: string;
   sortBy?: SortCol;
   sortDir?: 'asc' | 'desc';
   onSortChange?: (col: SortCol) => void;
@@ -121,6 +124,8 @@ export default function FakturyTable({
   presetFilters,
   castkaOd = '',
   castkaDo = '',
+  datumOd  = '',
+  datumDo  = '',
   sortBy = null,
   sortDir = 'asc',
   onSortChange,
@@ -152,6 +157,10 @@ export default function FakturyTable({
 
     if (typDokladu !== 'all' && f.typDokladu !== typDokladu) return false;
     if (kategorieFilter !== 'all' && f.kategorie !== kategorieFilter) return false;
+
+    // Phase 8.11 (zápis 22. 6. 2026) — Datum filter (splatnost od/do)
+    if (datumOd && f.splatnost < datumOd) return false;
+    if (datumDo && f.splatnost > datumDo) return false;
 
     // ── Multiselect stav (nová cesta) ──
     if (stavFilters && stavFilters.size > 0 && !stavFilters.has(f.stav)) return false;

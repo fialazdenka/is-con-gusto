@@ -85,6 +85,7 @@ export interface SessionAuditEntry {
 }
 import { PROVOZOVNY } from '../data';
 import PlatbyKPIStrip from './PlatbyKPIStrip';
+import FakturyKPIStrip from './FakturyKPIStrip';
 import FakturyTable from './FakturyTable';
 import FakturySidePanel from './FakturySidePanel';
 import type { KomentarEntry } from './FakturySidePanel';
@@ -92,9 +93,12 @@ import type { KomentarEntry } from './FakturySidePanel';
 interface Props {
   state: AppState;
   update: (p: Partial<AppState>) => void;
+  // Phase 8.10 (zápis 22. 6. 2026) — Faktury rozdělené na 2 samostatné podsekce v sidebar.
+  // Pokud je `fixedTyp` zadané, FakturyView zafixuje tab na daný typ a tab-switcher skryje.
+  fixedTyp?: TypDokladu;
 }
 
-export default function FakturyView({ state, update }: Props) {
+export default function FakturyView({ state, update, fixedTyp }: Props) {
   const { selectedProvozovna } = state;
 
   const [periodOd,        setPeriodOd]        = useState(TYDEN_OD);
@@ -108,9 +112,14 @@ export default function FakturyView({ state, update }: Props) {
   const [presetFilters,      setPresetFilters]      = useState<Set<'po-splatnosti' | 'tydni' | 'uzamcene'>>(new Set());
   const [castkaOd,           setCastkaOd]           = useState('');
   const [castkaDo,           setCastkaDo]           = useState('');
+  // Phase 8.11 (zápis 22. 6. 2026) — Datum filter (splatnost od/do) v dolním filter baru.
+  // Defaultně prázdné = bez omezení. Když je vyplněné, filtruje tabulku podle splatnosti.
+  const [datumOd,            setDatumOd]            = useState('');
+  const [datumDo,            setDatumDo]            = useState('');
   const [sortBy,             setSortBy]             = useState<SortCol>('splatnost');
   const [sortDir,            setSortDir]            = useState<'asc' | 'desc'>('asc');
-  const [typDokladu,         setTypDokladu]         = useState<TypDokladu | 'all'>('all');
+  // Phase 8.10 — když je fixedTyp zadané, použij ho jako default. Tab-switcher pak skryje.
+  const [typDokladu,         setTypDokladu]         = useState<TypDokladu | 'all'>(fixedTyp ?? 'all');
   const [search,             setSearch]             = useState('');
   const [selectedIds,        setSelectedIds]        = useState<Set<string>>(new Set());
 
@@ -300,6 +309,18 @@ export default function FakturyView({ state, update }: Props) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [state.pendingFakturaId]);
 
+  // Phase 8.10 (zápis 22. 6. 2026) — Když uživatel přepne v sidebaru mezi Přijaté/Vydané,
+  // FakturyView se rerendruje se stejným klíčem, ale fixedTyp se změní → sync interní typDokladu.
+  useEffect(() => {
+    if (fixedTyp && fixedTyp !== typDokladu) {
+      setTypDokladu(fixedTyp);
+      setStavFilters(new Set());        // přijaté ↔ vydané mají různé stavy
+      setSelectedIds(new Set());
+      setDrawerFakturaId(null);          // zavřít otevřený detail
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [fixedTyp]);
+
   // ── Saved filter presets ──
   type FilterPreset = {
     id: string;
@@ -399,6 +420,7 @@ export default function FakturyView({ state, update }: Props) {
     kategorieFilter !== 'all' || stavFilters.size > 0 || matchingFilters.size > 0
     || formaFilters.size > 0 || presetFilters.size > 0
     || castkaOd !== '' || castkaDo !== '' || search !== ''
+    || datumOd !== '' || datumDo !== ''
   );
 
   function pushAudit(id: string, entry: SessionAuditEntry) {
@@ -548,49 +570,10 @@ export default function FakturyView({ state, update }: Props) {
       {viewMode === 'list' && (
       <>
       {/* ACTION BAR – SOURCE: Larkon .page-title-box (title odstraněn, zobrazen v topbaru) */}
-      {/* Layout: levá skupina (Období) + pravá skupina (akční tlačítka) — wrap-row na úzkých */}
+      {/* Phase 8.11 (zápis 22. 6. 2026) — Levá skupina (Období + Entita) odebrána — filtruje se
+          provozovnou z topbaru + dolními filter chipy. Zůstávají jen akční tlačítka vpravo. */}
       <div className="page-title-box">
-        <div className="d-flex align-items-center justify-content-between flex-wrap gap-2 row-gap-2">
-          {/* Levá: Období */}
-          <div className="d-flex align-items-center gap-2 flex-wrap">
-            <span className="text-muted fs-13">Období:</span>
-            <input
-              type="date"
-              className="form-control form-control-sm"
-              value={periodOd}
-              onChange={(e) => setPeriodOd(e.target.value)}
-              style={{ width: 140 }}
-            />
-            <span className="text-muted">–</span>
-            <input
-              type="date"
-              className="form-control form-control-sm"
-              value={periodDo}
-              onChange={(e) => setPeriodDo(e.target.value)}
-              style={{ width: 140 }}
-            />
-            {/* Phase 8.5 (zápis 10. 6. 2026) — Celofiremní pohled napříč entitami */}
-            <span className="text-muted fs-13 ms-2 d-flex align-items-center gap-1">
-              <iconify-icon icon="solar:buildings-2-bold-duotone" style={{ color: '#6c757d' }} />
-              Entita:
-            </span>
-            <div className="btn-group btn-group-sm" role="group">
-              {([
-                { value: 'all-entity', label: 'Všechny' },
-                { value: 'con-gusto',  label: 'Con Gusto' },
-                { value: 'u-capa',     label: 'U Čápa' },
-                { value: 'korek',      label: 'KOREK' },
-              ] as { value: 'all-entity' | PravniEntita; label: string }[]).map((e) => (
-                <button key={e.value}
-                  className={`btn btn-sm ${entitaFilter === e.value ? 'btn-primary' : 'btn-outline-secondary'}`}
-                  style={{ fontSize: 11 }}
-                  onClick={() => setEntitaFilter(e.value)}
-                  title={e.value === 'all-entity' ? 'Faktury všech právních entit' : ENTITA_LABEL[e.value as PravniEntita]}>
-                  {e.label}
-                </button>
-              ))}
-            </div>
-          </div>
+        <div className="d-flex align-items-center justify-content-end flex-wrap gap-2 row-gap-2">
           {/* Pravá: akční tlačítka — zůstanou pohromadě, wrapnou jako blok */}
           <div className="d-flex align-items-center gap-2 flex-wrap">
             {keSchvaleni.length > 0 && (
@@ -603,7 +586,9 @@ export default function FakturyView({ state, update }: Props) {
               </button>
             )}
             {/* Phase 8.4 (zápis 19. 6. 2026) — 3 typy nového dokladu, každý vlastní formulář.
-                Přijatá = záznam přišlé faktury. Vystavit = plný invoice creator (jako Fakturoid). Proforma = záloha. */}
+                Přijatá = záznam přišlé faktury. Vystavit = plný invoice creator (jako Fakturoid). Proforma = záloha.
+                Phase 8.11 (zápis 22. 6. 2026) — v podstránce Přijaté faktury (fixedTyp='prijata') se zobrazí JEN
+                "Přijatá faktura" (kolegyně z obchodu zadávají faktury od dodavatelů; faktury nevystavují). */}
             <button className="btn btn-light btn-sm d-flex align-items-center gap-1" onClick={() => {
               setNovaFa((f) => ({ ...f, typDokladu: 'prijata', provozovna: selectedProvozovna === 'all' ? 'cg-brno' : selectedProvozovna }));
               setShowNovaFaktura(true);
@@ -611,20 +596,24 @@ export default function FakturyView({ state, update }: Props) {
               <iconify-icon icon="solar:download-square-bold-duotone" />
               Přijatá faktura
             </button>
-            <button className="btn btn-success btn-sm d-flex align-items-center gap-1" onClick={() => {
-              setNovaVyd((f) => ({ ...f, provozovna: selectedProvozovna === 'all' ? 'cg-brno' : selectedProvozovna }));
-              setShowVystavit(true);
-            }} title="Plný formulář pro vystavení vydané faktury — položky, DPH, náhled">
-              <iconify-icon icon="solar:document-add-bold-duotone" />
-              Vystavit fakturu
-            </button>
-            <button className="btn btn-outline-info btn-sm d-flex align-items-center gap-1" onClick={() => {
-              setNovaVyd((f) => ({ ...f, cislo: 'ZAL-2026-0013', provozovna: selectedProvozovna === 'all' ? 'cg-brno' : selectedProvozovna }));
-              setShowVystavitProforma(true);
-            }} title="Vystavit zálohovou (proforma) fakturu — bude započtena při finální fakturaci">
-              <iconify-icon icon="solar:wallet-money-bold-duotone" />
-              Vystavit proformu
-            </button>
+            {fixedTyp !== 'prijata' && (
+              <button className="btn btn-success btn-sm d-flex align-items-center gap-1" onClick={() => {
+                setNovaVyd((f) => ({ ...f, provozovna: selectedProvozovna === 'all' ? 'cg-brno' : selectedProvozovna }));
+                setShowVystavit(true);
+              }} title="Plný formulář pro vystavení vydané faktury — položky, DPH, náhled">
+                <iconify-icon icon="solar:document-add-bold-duotone" />
+                Vystavit fakturu
+              </button>
+            )}
+            {fixedTyp !== 'prijata' && (
+              <button className="btn btn-outline-info btn-sm d-flex align-items-center gap-1" onClick={() => {
+                setNovaVyd((f) => ({ ...f, cislo: 'ZAL-2026-0013', provozovna: selectedProvozovna === 'all' ? 'cg-brno' : selectedProvozovna }));
+                setShowVystavitProforma(true);
+              }} title="Vystavit zálohovou (proforma) fakturu — bude započtena při finální fakturaci">
+                <iconify-icon icon="solar:wallet-money-bold-duotone" />
+                Vystavit proformu
+              </button>
+            )}
             <button
               className="btn btn-primary btn-sm"
               onClick={() => update({ selectedSection: 'platby' })}
@@ -635,135 +624,93 @@ export default function FakturyView({ state, update }: Props) {
         </div>
       </div>
 
-      {/* Alert strips – SOURCE: Bootstrap .alert.alert-{danger|warning|info} */}
-      {(poSplatCnt > 0 || neschvaleneCnt > 0 || splatneVObdobi > 0 || duplikatCnt > 0 || proformyBezFinalCnt > 0) && (
-        <div className="d-flex flex-column gap-2 mb-4">
-          {/* Phase 8.4 (zápis 19. 6. 2026) — Proformy bez vystavené finální faktury */}
-          {proformyBezFinalCnt > 0 && (
-            <div className="alert alert-warning d-flex align-items-center gap-2 mb-0" style={{ borderLeft: '4px solid #0dcaf0' }}>
-              <iconify-icon icon="solar:wallet-money-bold-duotone" className="fs-5 flex-shrink-0" style={{ color: '#0dcaf0' }} />
-              <span className="flex-grow-1">
-                <strong>{proformyBezFinalCnt} {proformyBezFinalCnt === 1 ? 'uhrazená proforma čeká' : proformyBezFinalCnt < 5 ? 'uhrazené proformy čekají' : 'uhrazených proform čeká'} na vystavení finální faktury</strong>
-                <span className="text-muted ms-2">— po úhradě zálohy je nutné vystavit řádný daňový doklad</span>
-              </span>
-              <span className="alert-link fw-semibold text-nowrap ms-auto" style={{ cursor: 'pointer' }}
-                onClick={() => { setTypDokladu('vydana'); setFormaFilters(new Set(['zalohova'])); }}>
-                Vystavit finální faktury →
-              </span>
-            </div>
-          )}
-          {duplikatCnt > 0 && (
-            <div className="alert alert-danger d-flex align-items-center gap-2 mb-0">
-              <iconify-icon icon="solar:copy-bold-duotone" className="fs-5 flex-shrink-0" />
-              <span className="flex-grow-1">
-                <strong>{duplikatCnt} {duplikatCnt === 1 ? 'duplicitní faktura' : duplikatCnt < 5 ? 'duplicitní faktury' : 'duplicitních faktur'}</strong> – riziko dvojí platby, vyžaduje okamžité prověření
-              </span>
-              <span className="alert-link fw-semibold text-nowrap ms-auto" style={{ cursor: 'pointer' }} onClick={() => setMatchingFilters(new Set(['duplikat']))}>
-                Zkontrolovat →
-              </span>
-            </div>
-          )}
-          {poSplatCnt > 0 && (
-            <div className="alert alert-danger d-flex align-items-center gap-2 mb-0">
-              <iconify-icon icon="solar:danger-triangle-bold-duotone" className="fs-5 flex-shrink-0" />
-              <span className="flex-grow-1">
-                <strong>{poSplatCnt} faktur po splatnosti</strong> – vyžadují okamžitou pozornost
-              </span>
-              <span className="alert-link fw-semibold text-nowrap ms-auto" style={{ cursor: 'pointer' }} onClick={() => setPresetFilters(new Set(['po-splatnosti']))}>
-                Zobrazit →
-              </span>
-            </div>
-          )}
-          {neschvaleneCnt > 0 && (
-            <div className="alert alert-warning d-flex align-items-center gap-2 mb-0">
-              <iconify-icon icon="solar:clock-circle-bold-duotone" className="fs-5 flex-shrink-0" />
-              <span className="flex-grow-1">
-                <strong>{neschvaleneCnt} faktur čeká na schválení</strong> – nemohou být odeslány k platbě
-              </span>
-              <span className="alert-link fw-semibold text-nowrap ms-auto" style={{ cursor: 'pointer' }} onClick={() => setStavFilters(new Set(['nova', 'ceka-na-schvaleni']))}>
-                Schválit →
-              </span>
-            </div>
-          )}
-          {splatneVObdobi > 0 && (
-            <div className="alert alert-info d-flex align-items-center gap-2 mb-0">
-              <iconify-icon icon="solar:calendar-bold-duotone" className="fs-5 flex-shrink-0" />
-              <span className="flex-grow-1">
-                <strong>{splatneVObdobi} faktur splatných v tomto týdnu</strong>
-              </span>
-              <span className="alert-link fw-semibold text-nowrap ms-auto" style={{ cursor: 'pointer' }} onClick={() => setPresetFilters(new Set(['tydni']))}>
-                Filtrovat →
-              </span>
-            </div>
-          )}
-        </div>
-      )}
+      {/* Phase 8.11 (zápis 22. 6. 2026) — Alert strips (po splatnosti / duplicity / čeká na schválení /
+          splatné tento týden / proformy bez finální) odebrány. Jejich obsah se zobrazuje v KPI čtvercích
+          pod tímto blokem (PlatbyKPIStrip). */}
 
-      {/* Automatizace – cron status mini-card */}
-      <div
-        className="d-flex align-items-center gap-3 flex-wrap px-3 py-2 mb-3 rounded"
-        style={{ background: '#f8f9fa', border: '1px solid #e9ecef', fontSize: 12 }}
-      >
-        <div className="d-flex align-items-center gap-2">
-          <span
-            className="rounded-circle d-inline-block"
-            style={{ width: 8, height: 8, background: '#198754', boxShadow: '0 0 0 3px rgba(25,135,84,0.15)' }}
-          />
-          <span className="fw-semibold">Automatizace párování</span>
-          <span className="badge bg-success-subtle text-success" style={{ fontSize: 10 }}>Aktivní</span>
-        </div>
+      {/* Phase 8.11 (zápis 22. 6. 2026) — "Automatizace párování" cron status řádek odebrán per zpětnou vazbu. */}
 
-        <div className="d-flex align-items-center gap-1 text-muted">
-          <iconify-icon icon="solar:refresh-circle-bold-duotone" style={{ fontSize: 13 }} />
-          <span>Interval:</span>
-          <span className="fw-semibold text-dark">{CRON_INTERVAL_MIN} min</span>
-        </div>
-
-        <div className="d-flex align-items-center gap-1 text-muted">
-          <iconify-icon icon="solar:clock-circle-bold-duotone" style={{ fontSize: 13 }} />
-          <span>Poslední běh:</span>
-          <span className="fw-semibold text-dark czk-num">{cronLast}</span>
-        </div>
-
-        <div className="d-flex align-items-center gap-1 text-muted">
-          <iconify-icon icon="solar:alarm-bold-duotone" style={{ fontSize: 13 }} />
-          <span>Příští:</span>
-          <span className="fw-semibold text-dark czk-num">{cronNext}</span>
-        </div>
-
-        <div className="d-flex align-items-center gap-3 ms-auto">
-          {cekaCnt > 0 && (
-            <div className="d-flex align-items-center gap-1">
-              <iconify-icon icon="solar:hourglass-bold-duotone" style={{ fontSize: 13, color: '#0dcaf0' }} />
-              <span className="text-muted">Ve frontě:</span>
-              <span className="fw-bold" style={{ color: '#0dcaf0' }}>{cekaCnt}</span>
+      {/* Phase 8.11 (zápis 22. 6. 2026) — Top-level forma selector pro Přijaté faktury.
+          Kolegyně z obchodu zadávají buď Faktury / Dobropisy / Zálohové / Jiné — toto rozdělení je primární.
+          Selektor je NAD KPI čtverci, čtverce reflektují aktuální výběr. */}
+      {fixedTyp === 'prijata' && (() => {
+        const formaCounts = {
+          standard:  allFakturyRaw.filter((f) => !f.forma || f.forma === 'standard').length,
+          dobropis:  allFakturyRaw.filter((f) => f.forma === 'dobropis').length,
+          zalohova:  allFakturyRaw.filter((f) => f.forma === 'zalohova').length,
+          offset:    allFakturyRaw.filter((f) => f.forma === 'offset').length,
+        };
+        const formaTab: 'all' | FakturaForma = (() => {
+          if (formaFilters.size === 0) return 'all';
+          if (formaFilters.size === 1) return Array.from(formaFilters)[0];
+          return 'all';
+        })();
+        const setFormaTab = (tab: 'all' | FakturaForma) => {
+          if (tab === 'all') setFormaFilters(new Set());
+          else setFormaFilters(new Set([tab]));
+        };
+        const tabs: { value: 'all' | FakturaForma; label: string; count: number; icon: string; color: string }[] = [
+          { value: 'all',      label: 'Vše',              count: allFakturyRaw.length, icon: 'solar:layers-bold-duotone',          color: '#6c757d' },
+          { value: 'standard', label: 'Faktury',          count: formaCounts.standard, icon: 'solar:bill-list-bold-duotone',       color: '#0d6efd' },
+          { value: 'dobropis', label: 'Dobropisy',        count: formaCounts.dobropis, icon: 'solar:undo-left-round-bold-duotone', color: '#dc3545' },
+          { value: 'zalohova', label: 'Zálohové faktury', count: formaCounts.zalohova, icon: 'solar:wallet-money-bold-duotone',    color: '#0dcaf0' },
+          { value: 'offset',   label: 'Jiné',             count: formaCounts.offset,   icon: 'solar:transfer-horizontal-bold-duotone', color: '#fd7e14' },
+        ];
+        return (
+          <div className="card mb-3">
+            <div className="card-body py-2">
+              <div className="d-flex align-items-center gap-2 flex-wrap">
+                <span className="text-muted fs-12 me-1">Typ dokladu:</span>
+                {tabs.map((t) => {
+                  const active = formaTab === t.value;
+                  return (
+                    <button
+                      key={t.value}
+                      type="button"
+                      onClick={() => setFormaTab(t.value)}
+                      className="btn btn-sm d-flex align-items-center gap-1"
+                      style={{
+                        fontSize: 12,
+                        background: active ? t.color : 'transparent',
+                        color: active ? '#fff' : t.color,
+                        border: `1px solid ${active ? t.color : 'rgba(0,0,0,0.12)'}`,
+                        fontWeight: active ? 600 : 500,
+                        padding: '4px 10px',
+                      }}
+                    >
+                      <iconify-icon icon={t.icon} style={{ fontSize: 14 }} />
+                      {t.label}
+                      <span
+                        className="badge ms-1"
+                        style={{
+                          fontSize: 10,
+                          background: active ? 'rgba(255,255,255,0.25)' : 'rgba(0,0,0,0.06)',
+                          color: active ? '#fff' : '#212529',
+                        }}
+                      >
+                        {t.count}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
             </div>
-          )}
-          {nesediDLCnt > 0 && (
-            <div className="d-flex align-items-center gap-1">
-              <iconify-icon icon="solar:refresh-bold-duotone" style={{ fontSize: 13, color: '#ffc107' }} />
-              <span className="text-muted">K přepárování:</span>
-              <span className="fw-bold text-warning">{nesediDLCnt}</span>
-            </div>
-          )}
-          {duplikatCnt > 0 && (
-            <div className="d-flex align-items-center gap-1">
-              <iconify-icon icon="solar:copy-bold-duotone" style={{ fontSize: 13, color: '#dc3545' }} />
-              <span className="text-muted">Duplicity blokovány:</span>
-              <span className="fw-bold text-danger">{duplikatCnt}</span>
-            </div>
-          )}
-        </div>
-      </div>
+          </div>
+        );
+      })()}
 
-      {/* KPI strip */}
-      <PlatbyKPIStrip
+      {/* Phase 8.11 — KPI strip pro Faktury (4 karty: Po splatnosti / Nespárované / Neprovedené platby / Schválené).
+          Reflektuje aktuální výběr forma tabu — pokud je vybrán Dobropisy, počty zahrnují jen dobropisy atd. */}
+      <FakturyKPIStrip
         provozovna={selectedProvozovna}
-        periodOd={periodOd}
-        periodDo={periodDo}
+        formaFilters={formaFilters}
+        typDokladu={typDokladu}
       />
 
-      {/* Záložky Přijaté / Vydané – SOURCE: Bootstrap .nav.nav-tabs */}
+      {/* Záložky Přijaté / Vydané – SOURCE: Bootstrap .nav.nav-tabs.
+          Phase 8.10 (zápis 22. 6. 2026) — když je fixedTyp zadané ze sidebar (Přijaté/Vydané),
+          tab switcher skryjeme — uživatel přepíná přes sidebar, ne přes taby. */}
+      {!fixedTyp && (
       <ul className="nav nav-tabs mb-3">
         {([
           { value: 'all',     label: 'Všechny faktury' },
@@ -789,6 +736,7 @@ export default function FakturyView({ state, update }: Props) {
           </li>
         ))}
       </ul>
+      )}
 
       {/* Filter bar */}
       <div className="card mb-4">
@@ -887,6 +835,35 @@ export default function FakturyView({ state, update }: Props) {
               <span className="text-muted fs-12">Kč</span>
             </div>
 
+            {/* Phase 8.11 (zápis 22. 6. 2026) — Filter splatnosti od/do */}
+            <div className="d-flex align-items-center gap-1">
+              <span className="text-muted fs-12">Splatnost:</span>
+              <input
+                type="date"
+                className="form-control form-control-sm"
+                value={datumOd}
+                onChange={(e) => setDatumOd(e.target.value)}
+                style={{ width: 140 }}
+                title="Splatnost od"
+              />
+              <span className="text-muted">–</span>
+              <input
+                type="date"
+                className="form-control form-control-sm"
+                value={datumDo}
+                onChange={(e) => setDatumDo(e.target.value)}
+                style={{ width: 140 }}
+                title="Splatnost do"
+              />
+              {(datumOd || datumDo) && (
+                <button className="btn btn-link btn-sm text-muted p-0 ms-1" style={{ fontSize: 11 }}
+                  onClick={() => { setDatumOd(''); setDatumDo(''); }}
+                  title="Zrušit filtr splatnosti">
+                  <iconify-icon icon="solar:close-circle-bold-duotone" />
+                </button>
+              )}
+            </div>
+
             <div className="d-flex gap-1 ms-1 flex-wrap">
               {poSplatCnt > 0 && (
                 <button className={`badge border-0 ${presetFilters.has('po-splatnosti') ? 'bg-danger text-white' : 'bg-danger-subtle text-danger'}`}
@@ -925,6 +902,8 @@ export default function FakturyView({ state, update }: Props) {
                   setPresetFilters(new Set());
                   setCastkaOd('');
                   setCastkaDo('');
+                  setDatumOd('');
+                  setDatumDo('');
                   setSearch('');
                   setActivePresetId(null);
                 }}>
@@ -1039,6 +1018,8 @@ export default function FakturyView({ state, update }: Props) {
             presetFilters={presetFilters}
             castkaOd={castkaOd}
             castkaDo={castkaDo}
+            datumOd={datumOd}
+            datumDo={datumDo}
             sortBy={sortBy}
             sortDir={sortDir}
             onSortChange={handleSort}

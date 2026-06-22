@@ -90,6 +90,11 @@ export default function AppShell({ state, update }: Props) {
         return <TrzbyView state={state} update={update} />;
       case 'faktury':
         return <FakturyView state={state} update={update} />;
+      // Phase 8.10 (zápis 22. 6. 2026) — Faktury rozdělené na 2 samostatné podsekce
+      case 'faktury-prijate':
+        return <FakturyView state={state} update={update} fixedTyp="prijata" />;
+      case 'faktury-vydane':
+        return <FakturyView state={state} update={update} fixedTyp="vydana" />;
       case 'pohledavky':
         return <PohledavkyView state={state} update={update} />;
       case 'cashflow':
