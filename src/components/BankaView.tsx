@@ -31,6 +31,7 @@ import {
 import { FAKTURY_PLATBY } from '../platbyData';
 import { UVERY } from '../uveryData';
 import { fCzk, fDate, PROVOZOVNY } from '../data';
+import KpiBox from './KpiBox';
 
 interface Props {
   state: AppState;
@@ -348,28 +349,26 @@ function WorkQueue({ transakce, ucty, onSelectQueue, activeQueue }: {
 function SimpleMetrics({ transakce }: { transakce: BankaTransakce[] }) {
   const nespCount    = transakce.filter((t) => t.stav === 'unpaired').length;
   const rucneCount   = transakce.filter((t) => t.stav === 'manual-paired').length;
-  const tiles = [
-    { label: 'Nespárované platby',     value: nespCount,  icon: 'solar:danger-triangle-bold-duotone', color: nespCount > 0 ? '#ffc107' : '#9097a7', bg: '#fff8e6' },
-    { label: 'Ručně spárované platby', value: rucneCount, icon: 'solar:hand-stars-bold-duotone',      color: '#6c757d', bg: '#f1f3f5' },
-  ];
   return (
     <div className="row g-2 mb-3">
-      {tiles.map((t) => (
-        <div key={t.label} className="col-12 col-md-6">
-          <div className="card h-100" style={{ borderTop: `3px solid ${t.color}` }}>
-            <div className="card-body py-3 d-flex align-items-center gap-3">
-              <span className="d-flex align-items-center justify-content-center rounded-circle"
-                style={{ width: 44, height: 44, background: t.bg, color: t.color, flexShrink: 0 }}>
-                <iconify-icon icon={t.icon} style={{ fontSize: 24 }} />
-              </span>
-              <div className="min-width-0">
-                <div className="text-muted fs-12 text-uppercase fw-semibold" style={{ letterSpacing: '0.3px' }}>{t.label}</div>
-                <div className="fw-bold czk-num" style={{ fontSize: 24, lineHeight: 1.1 }}>{t.value}</div>
-              </div>
-            </div>
-          </div>
-        </div>
-      ))}
+      <div className="col-12 col-md-6">
+        <KpiBox
+          label="Nespárované platby"
+          value={String(nespCount)}
+          icon="solar:danger-triangle-bold-duotone"
+          iconColor={nespCount > 0 ? '#ffc107' : '#9097a7'}
+          sub="čekají na spárování s dokladem"
+        />
+      </div>
+      <div className="col-12 col-md-6">
+        <KpiBox
+          label="Ručně spárované platby"
+          value={String(rucneCount)}
+          icon="solar:hand-stars-bold-duotone"
+          iconColor="#6c757d"
+          sub="mimo systém / bez faktury"
+        />
+      </div>
     </div>
   );
 }

@@ -23,6 +23,7 @@ import {
 } from '../trvalePrikazyData';
 import { BANKA_UCTY } from '../bankaData';
 import { fCzk, fDate, PROVOZOVNY } from '../data';
+import KpiBox from './KpiBox';
 
 interface Props {
   state: AppState;
@@ -38,45 +39,41 @@ function KpiStrip({ data, onClickNezaplacene }: { data: TrvalyPrikaz[]; onClickN
   const nezaplaceneCount = getPocetNezaplacenychSplatek(data);
   const nezaplacenePrikazy = data.filter(maNezaplacenouSplatku).length;
 
-  type Tile = { label: string; value: string; icon: string; color: string; onClick?: () => void; alert?: boolean };
   // Phase 7 — „Zrušené" KPI dlaždice odstraněna (per feedback 18. 6. 2026)
-  const tiles: Tile[] = [
-    { label: 'Aktivní',          value: String(aktivni),                  icon: 'solar:play-circle-bold-duotone',          color: '#198754' },
-    { label: 'Měsíční zátěž',    value: fCzk(Math.round(mesicniZatez)),   icon: 'solar:dollar-minimalistic-bold-duotone',  color: '#0d6efd' },
-    { label: nezaplaceneCount === 1 ? 'Nezaplacená splátka' : 'Nezaplacené splátky',
-      value: nezaplaceneCount > 0 ? `${nezaplaceneCount} (${nezaplacenePrikazy} ${nezaplacenePrikazy === 1 ? 'TP' : 'TPs'})` : '0',
-      icon: 'solar:bell-bing-bold-duotone',
-      color: '#dc3545',
-      onClick: nezaplaceneCount > 0 ? onClickNezaplacene : undefined,
-      alert: nezaplaceneCount > 0,
-    },
-  ];
-
   return (
     <div className="row g-2 mb-3">
-      {tiles.map((t) => (
-        <div key={t.label} className="col-12 col-md-4">
-          <div className={`card h-100 ${t.onClick ? 'wq-card' : ''}`}
-               style={{
-                 borderTop: `3px solid ${t.color}`,
-                 cursor: t.onClick ? 'pointer' : 'default',
-                 background: t.alert ? '#fdf3f4' : undefined,
-               }}
-               onClick={t.onClick}
-               title={t.onClick ? 'Klikni pro filtr na nezaplacené' : undefined}>
-            <div className="card-body py-3 d-flex align-items-center gap-3">
-              <span className="d-flex align-items-center justify-content-center rounded-circle"
-                style={{ width: 40, height: 40, background: `${t.color}1a`, color: t.color, flexShrink: 0 }}>
-                <iconify-icon icon={t.icon} style={{ fontSize: 22 }} />
-              </span>
-              <div className="min-width-0">
-                <div className="text-muted fs-12 text-uppercase fw-semibold" style={{ letterSpacing: '0.3px' }}>{t.label}</div>
-                <div className="fw-bold czk-num text-truncate" style={{ fontSize: 18, lineHeight: 1.2 }}>{t.value}</div>
-              </div>
-            </div>
-          </div>
-        </div>
-      ))}
+      <div className="col-12 col-md-4">
+        <KpiBox
+          label="Aktivní příkazy"
+          value={String(aktivni)}
+          icon="solar:play-circle-bold-duotone"
+          iconColor="#198754"
+          sub="trvalé příkazy v běhu"
+          footer={{ label: 'Celkem evidováno', value: String(data.length) }}
+        />
+      </div>
+      <div className="col-12 col-md-4">
+        <KpiBox
+          label="Měsíční zátěž"
+          value={fCzk(Math.round(mesicniZatez))}
+          icon="solar:dollar-minimalistic-bold-duotone"
+          iconColor="#0d6efd"
+          sub="součet měsíčních plateb"
+          footer={{ label: 'Ročně', value: fCzk(Math.round(mesicniZatez * 12)) }}
+        />
+      </div>
+      <div className="col-12 col-md-4">
+        <KpiBox
+          label={nezaplaceneCount === 1 ? 'Nezaplacená splátka' : 'Nezaplacené splátky'}
+          value={nezaplaceneCount > 0 ? String(nezaplaceneCount) : '0'}
+          icon="solar:bell-bing-bold-duotone"
+          iconColor={nezaplaceneCount > 0 ? '#dc3545' : '#9097a7'}
+          sub={nezaplaceneCount > 0 ? `napříč ${nezaplacenePrikazy} ${nezaplacenePrikazy === 1 ? 'příkazem' : 'příkazy'}` : 'vše zaplaceno'}
+          badge={nezaplaceneCount > 0 ? { text: '', tone: 'danger', icon: 'solar:danger-triangle-bold-duotone' } : undefined}
+          alert={nezaplaceneCount > 0}
+          onClick={nezaplaceneCount > 0 ? onClickNezaplacene : undefined}
+        />
+      </div>
     </div>
   );
 }
