@@ -66,6 +66,14 @@ const FORMA_CHIPS: { value: FakturaForma; label: string; icon: string }[] = [
   { value: 'offset',   label: 'Offset',   icon: 'solar:transfer-horizontal-bold-duotone' },
 ];
 
+// Zjednodušený filtr „Stav úhrady" (mapuje na set FakturaStavPlatby)
+const STAV_UHRADY_OPTIONS: { value: string; label: string; set: FakturaStavPlatby[] }[] = [
+  { value: 'all',           label: 'Všechny',       set: [] },
+  { value: 'uhrazene',      label: 'Uhrazené',      set: ['uhrazena'] },
+  { value: 'neuhrazene',    label: 'Neuhrazené',    set: ['nova', 'ceka-na-schvaleni', 'schvalena', 'pozastavena', 'v-bance', 'v-bance-neuhrazena'] },
+  { value: 'po-splatnosti', label: 'Po splatnosti', set: ['v-bance-neuhrazena'] },
+];
+
 const MATCHING_CHIPS: { value: MatchingStav; label: string }[] = [
   { value: 'sparovana',          label: 'Spárováno' },
   { value: 'nesedi-dl',          label: 'Nesedí DL' },
@@ -83,9 +91,8 @@ export interface SessionAuditEntry {
   color: string;
   typ?: 'schvaleni' | 'editace' | 'parovani' | 'komunikace' | 'stav' | 'priloha' | 'zadani' | 'prirazeni';
 }
-import { PROVOZOVNY } from '../data';
+import { PROVOZOVNY, fCzk } from '../data';
 import PlatbyKPIStrip from './PlatbyKPIStrip';
-import FakturyKPIStrip from './FakturyKPIStrip';
 import FakturyTable from './FakturyTable';
 import FakturySidePanel from './FakturySidePanel';
 import type { KomentarEntry } from './FakturySidePanel';
@@ -118,6 +125,10 @@ export default function FakturyView({ state, update, fixedTyp }: Props) {
   const [datumDo,            setDatumDo]            = useState('');
   const [sortBy,             setSortBy]             = useState<SortCol>('splatnost');
   const [sortDir,            setSortDir]            = useState<'asc' | 'desc'>('asc');
+  // Zjednodušené filtry (zápis 13. 7. 2026 — dle reference)
+  const [searchBy,           setSearchBy]           = useState<'cislo' | 'dodavatel' | 'vs'>('cislo');
+  const [stavUhrady,         setStavUhrady]         = useState('all');
+  const [datumPodle,         setDatumPodle]         = useState<'vystaveni' | 'splatnost'>('vystaveni');
   // Phase 8.10 — když je fixedTyp zadané, použij ho jako default. Tab-switcher pak skryje.
   const [typDokladu,         setTypDokladu]         = useState<TypDokladu | 'all'>(fixedTyp ?? 'all');
   const [search,             setSearch]             = useState('');
@@ -153,16 +164,43 @@ export default function FakturyView({ state, update, fixedTyp }: Props) {
   const setShowVystavitProforma = (v: boolean) => setViewMode(v ? 'new-vydana-proforma' : 'list');
   const [novaFa, setNovaFa] = useState({
     typDokladu: 'prijata' as TypDokladu,
+    forma: 'standard' as FakturaForma,
     dodavatel: '',
+    kontaktEmail: '',
+    kontaktMobil: '',
+    ico: '',
+    dic: '',
+    osoba: '',
     cislo: '',
     kategorie: 'zbozi' as FakturaKategorie,
     provozovna: selectedProvozovna === 'all' ? 'cg-brno' : selectedProvozovna,
-    castka: '',
+    // Platební údaje
+    zpusobUhrady: '' as '' | 'prevod' | 'hotovost' | 'karta',
+    vs: '',
+    ksymbol: '',
+    ssymbol: '',
+    autoUhradit: false,
+    // Datumy
     datum: '2026-04-23',
     splatnost: '',
-    poznamka: '',
+    duzp: '2026-04-23',
+    // Detaily
+    zaokrouhleni: 'desetinne' as 'desetinne' | 'nahoru' | 'zadne',
+    mena: 'CZK',
+    castka: '',
+    spodniText: '',
+    poznamka: '',            // interní poznámka
     prirazenaOsoba: '',
+    // Automatické schválení
+    ucetPlatby: '',
+    autoSchvalit: false,
   });
+  // UI toggly detailního formuláře Nová přijatá faktura (dle reference Fakturoid)
+  const [novaFaViceDetailu, setNovaFaViceDetailu] = useState(false);
+  const [novaFaKontaktInfo, setNovaFaKontaktInfo] = useState(false);
+  // Schvalovatelé přijaté faktury (více osob — kdokoli z nich může fakturu schválit → jde k úhradě).
+  // Dává smysl jen u přijaté faktury (u vydané se neschvaluje).
+  const [novaFaSchvalovatele, setNovaFaSchvalovatele] = useState<string[]>([]);
   // Phase 8.3 (zápis 19. 6. 2026) — sledování, zda byl k formuláři přiložen dokument (PDF).
   // Při uložení bez dokumentu se zobrazí potvrzovací dialog (per zápis 10. 6. — fakturanti
   // občas ukládají bez PDF a pak ho dohledávají; systém má upozornit).
@@ -569,86 +607,20 @@ export default function FakturyView({ state, update, fixedTyp }: Props) {
       {/* Phase 8 (zápis 19. 6. 2026) — viewMode přepíná: list ↔ formulář pro Novou fakturu / Novou proformu (samostatné podstránky, ne modaly) */}
       {viewMode === 'list' && (
       <>
-      {/* ACTION BAR – SOURCE: Larkon .page-title-box (title odstraněn, zobrazen v topbaru) */}
-      {/* Phase 8.11 (zápis 22. 6. 2026) — Levá skupina (Období + Entita) odebrána — filtruje se
-          provozovnou z topbaru + dolními filter chipy. Zůstávají jen akční tlačítka vpravo. */}
-      <div className="page-title-box">
-        <div className="d-flex align-items-center justify-content-end flex-wrap gap-2 row-gap-2">
-          {/* Pravá: akční tlačítka — zůstanou pohromadě, wrapnou jako blok */}
-          <div className="d-flex align-items-center gap-2 flex-wrap">
-            {keSchvaleni.length > 0 && (
-              <button
-                className="btn btn-warning btn-sm fw-semibold"
-                onClick={spustitSchvalovani}
-              >
-                <iconify-icon icon="solar:check-circle-bold-duotone" className="me-1" style={{ fontSize: 16 }} />
-                Spustit schvalování ({keSchvaleni.length})
-              </button>
-            )}
-            {/* Phase 8.4 (zápis 19. 6. 2026) — 3 typy nového dokladu, každý vlastní formulář.
-                Přijatá = záznam přišlé faktury. Vystavit = plný invoice creator (jako Fakturoid). Proforma = záloha.
-                Phase 8.11 (zápis 22. 6. 2026) — v podstránce Přijaté faktury (fixedTyp='prijata') se zobrazí JEN
-                "Přijatá faktura" (kolegyně z obchodu zadávají faktury od dodavatelů; faktury nevystavují). */}
-            <button className="btn btn-light btn-sm d-flex align-items-center gap-1" onClick={() => {
-              setNovaFa((f) => ({ ...f, typDokladu: 'prijata', provozovna: selectedProvozovna === 'all' ? 'cg-brno' : selectedProvozovna }));
-              setShowNovaFaktura(true);
-            }} title="Záznam přijaté faktury — dodavatel, částka, příloha PDF">
-              <iconify-icon icon="solar:download-square-bold-duotone" />
-              Přijatá faktura
-            </button>
-            {fixedTyp !== 'prijata' && (
-              <button className="btn btn-success btn-sm d-flex align-items-center gap-1" onClick={() => {
-                setNovaVyd((f) => ({ ...f, provozovna: selectedProvozovna === 'all' ? 'cg-brno' : selectedProvozovna }));
-                setShowVystavit(true);
-              }} title="Plný formulář pro vystavení vydané faktury — položky, DPH, náhled">
-                <iconify-icon icon="solar:document-add-bold-duotone" />
-                Vystavit fakturu
-              </button>
-            )}
-            {fixedTyp !== 'prijata' && (
-              <button className="btn btn-outline-info btn-sm d-flex align-items-center gap-1" onClick={() => {
-                setNovaVyd((f) => ({ ...f, cislo: 'ZAL-2026-0013', provozovna: selectedProvozovna === 'all' ? 'cg-brno' : selectedProvozovna }));
-                setShowVystavitProforma(true);
-              }} title="Vystavit zálohovou (proforma) fakturu — bude započtena při finální fakturaci">
-                <iconify-icon icon="solar:wallet-money-bold-duotone" />
-                Vystavit proformu
-              </button>
-            )}
-            <button
-              className="btn btn-primary btn-sm"
-              onClick={() => update({ selectedSection: 'platby' })}
-            >
-              Přejít na platby →
-            </button>
-          </div>
-        </div>
-      </div>
+      {/* Horní action bar odebrán (zápis 13. 7. 2026) — CTA pro zadání dokladu je nově POD
+          výběrem typu dokladu a kontextově zohledňuje vybraný typ. */}
 
-      {/* Phase 8.11 (zápis 22. 6. 2026) — Alert strips (po splatnosti / duplicity / čeká na schválení /
-          splatné tento týden / proformy bez finální) odebrány. Jejich obsah se zobrazuje v KPI čtvercích
-          pod tímto blokem (PlatbyKPIStrip). */}
-
-      {/* Phase 8.11 (zápis 22. 6. 2026) — "Automatizace párování" cron status řádek odebrán per zpětnou vazbu. */}
-
-      {/* Phase 8.11 (zápis 22. 6. 2026) — Top-level forma selector pro Přijaté faktury.
-          Kolegyně z obchodu zadávají buď Faktury / Dobropisy / Zálohové / Jiné — toto rozdělení je primární.
-          Selektor je NAD KPI čtverci, čtverce reflektují aktuální výběr. */}
-      {fixedTyp === 'prijata' && (() => {
+      {/* Typ dokladu — NADŘAZENÝ výběr nad vším pod ním (KPI / filtry / tabulka reflektují výběr).
+          Zobrazeno jako hlavní tab bar (podtržení) pro přijaté i vydané faktury (zápis 13. 7. 2026). */}
+      {(() => {
         const formaCounts = {
           standard:  allFakturyRaw.filter((f) => !f.forma || f.forma === 'standard').length,
           dobropis:  allFakturyRaw.filter((f) => f.forma === 'dobropis').length,
           zalohova:  allFakturyRaw.filter((f) => f.forma === 'zalohova').length,
           offset:    allFakturyRaw.filter((f) => f.forma === 'offset').length,
         };
-        const formaTab: 'all' | FakturaForma = (() => {
-          if (formaFilters.size === 0) return 'all';
-          if (formaFilters.size === 1) return Array.from(formaFilters)[0];
-          return 'all';
-        })();
-        const setFormaTab = (tab: 'all' | FakturaForma) => {
-          if (tab === 'all') setFormaFilters(new Set());
-          else setFormaFilters(new Set([tab]));
-        };
+        const formaTab: 'all' | FakturaForma = formaFilters.size === 1 ? Array.from(formaFilters)[0] : 'all';
+        const setFormaTab = (tab: 'all' | FakturaForma) => setFormaFilters(tab === 'all' ? new Set() : new Set([tab]));
         const tabs: { value: 'all' | FakturaForma; label: string; count: number; icon: string; color: string }[] = [
           { value: 'all',      label: 'Vše',              count: allFakturyRaw.length, icon: 'solar:layers-bold-duotone',          color: '#6c757d' },
           { value: 'standard', label: 'Faktury',          count: formaCounts.standard, icon: 'solar:bill-list-bold-duotone',       color: '#0d6efd' },
@@ -657,55 +629,156 @@ export default function FakturyView({ state, update, fixedTyp }: Props) {
           { value: 'offset',   label: 'Jiné',             count: formaCounts.offset,   icon: 'solar:transfer-horizontal-bold-duotone', color: '#fd7e14' },
         ];
         return (
-          <div className="card mb-3">
-            <div className="card-body py-2">
-              <div className="d-flex align-items-center gap-2 flex-wrap">
-                <span className="text-muted fs-12 me-1">Typ dokladu:</span>
-                {tabs.map((t) => {
-                  const active = formaTab === t.value;
-                  return (
-                    <button
-                      key={t.value}
-                      type="button"
-                      onClick={() => setFormaTab(t.value)}
-                      className="btn btn-sm d-flex align-items-center gap-1"
-                      style={{
-                        fontSize: 12,
-                        background: active ? t.color : 'transparent',
-                        color: active ? '#fff' : t.color,
-                        border: `1px solid ${active ? t.color : 'rgba(0,0,0,0.12)'}`,
-                        fontWeight: active ? 600 : 500,
-                        padding: '4px 10px',
-                      }}
-                    >
-                      <iconify-icon icon={t.icon} style={{ fontSize: 14 }} />
-                      {t.label}
-                      <span
-                        className="badge ms-1"
-                        style={{
-                          fontSize: 10,
-                          background: active ? 'rgba(255,255,255,0.25)' : 'rgba(0,0,0,0.06)',
-                          color: active ? '#fff' : '#212529',
-                        }}
-                      >
-                        {t.count}
-                      </span>
-                    </button>
-                  );
-                })}
-              </div>
+          <div className="mb-3" style={{ borderBottom: '2px solid #e9ecef' }}>
+            <div className="d-flex align-items-center gap-1 flex-wrap">
+              {tabs.map((t) => {
+                const active = formaTab === t.value;
+                return (
+                  <button key={t.value} type="button" onClick={() => setFormaTab(t.value)}
+                    className="btn d-flex align-items-center gap-2"
+                    style={{
+                      fontSize: 14,
+                      fontWeight: active ? 700 : 500,
+                      color: active ? t.color : '#6c757d',
+                      background: 'transparent',
+                      border: 'none',
+                      borderBottom: `3px solid ${active ? t.color : 'transparent'}`,
+                      borderRadius: 0,
+                      padding: '9px 16px',
+                      marginBottom: -2,
+                    }}>
+                    <iconify-icon icon={t.icon} style={{ fontSize: 18 }} />
+                    {t.label}
+                    <span className="badge rounded-pill" style={{
+                      fontSize: 11,
+                      background: active ? t.color : '#eef0f2',
+                      color: active ? '#fff' : '#6c757d',
+                    }}>{t.count}</span>
+                  </button>
+                );
+              })}
             </div>
           </div>
         );
       })()}
 
-      {/* Phase 8.11 — KPI strip pro Faktury (4 karty: Po splatnosti / Nespárované / Neprovedené platby / Schválené).
-          Reflektuje aktuální výběr forma tabu — pokud je vybrán Dobropisy, počty zahrnují jen dobropisy atd. */}
-      <FakturyKPIStrip
-        provozovna={selectedProvozovna}
-        formaFilters={formaFilters}
-        typDokladu={typDokladu}
-      />
+      {/* Kontextové CTA POD výběrem typu — zohledňuje vybraný typ dokladu.
+          Přijaté → „Přijatá faktura/dobropis/…"; Vydané → „Vystavit fakturu/dobropis/…". */}
+      {(() => {
+        const forma: FakturaForma = formaFilters.size === 1 ? Array.from(formaFilters)[0] : 'standard';
+        const prijataLabel: Record<FakturaForma, string> = {
+          standard: 'Přijatá faktura',
+          dobropis: 'Přijatý dobropis',
+          zalohova: 'Přijatá zálohová faktura',
+          offset:   'Přijatý doklad',
+        };
+        const vydanaLabel: Record<FakturaForma, string> = {
+          standard: 'Vystavit fakturu',
+          dobropis: 'Vystavit dobropis',
+          zalohova: 'Vystavit zálohovou fakturu',
+          offset:   'Vystavit doklad',
+        };
+        const prov = selectedProvozovna === 'all' ? 'cg-brno' : selectedProvozovna;
+        const openPrijata = () => {
+          setNovaFa((f) => ({ ...f, typDokladu: 'prijata', forma, provozovna: prov }));
+          setShowNovaFaktura(true);
+        };
+        const openVydana = () => {
+          if (forma === 'zalohova') {
+            setNovaVyd((f) => ({ ...f, cislo: 'ZAL-2026-0013', provozovna: prov }));
+            setShowVystavitProforma(true);
+          } else {
+            setNovaVyd((f) => ({ ...f, provozovna: prov }));
+            setShowVystavit(true);
+          }
+        };
+        const showPrijata = fixedTyp === 'prijata' || !fixedTyp;
+        const showVydana  = fixedTyp === 'vydana'  || !fixedTyp;
+        return (
+          <div className="d-flex gap-2 flex-wrap mb-3">
+            {showPrijata && (
+              <button className="btn btn-primary btn-sm d-flex align-items-center gap-1" onClick={openPrijata}
+                title="Zadat přijatý doklad vybraného typu">
+                <iconify-icon icon="solar:download-square-bold-duotone" />
+                {prijataLabel[forma]}
+              </button>
+            )}
+            {showVydana && (
+              <button className="btn btn-success btn-sm d-flex align-items-center gap-1" onClick={openVydana}
+                title="Vystavit doklad vybraného typu">
+                <iconify-icon icon="solar:document-add-bold-duotone" />
+                {vydanaLabel[forma]}
+              </button>
+            )}
+          </div>
+        );
+      })()}
+
+      {/* Kompaktní upozornění (zápis 13. 7. 2026) — ve stejném duchu jako Banka/Trvalé příkazy,
+          ale ne přes celou šířku: řádek kompaktních klikatelných karet. Klik aplikuje filtr. */}
+      {(() => {
+        const stavOf = (f: typeof allFakturyRaw[number]) => localStavy[f.id] ?? f.stav;
+        const paid = (s: FakturaStavPlatby) => s === 'uhrazena' || s === 'zaplacena';
+        const base = allFakturyRaw.filter((f) => typDokladu === 'all' || f.typDokladu === typDokladu);
+        const dobropisNeuhr = base.filter((f) => f.forma === 'dobropis' && !paid(stavOf(f)) && stavOf(f) !== 'zamitnuta');
+        const zalohNeuhr    = base.filter((f) => f.forma === 'zalohova' && !paid(stavOf(f)) && stavOf(f) !== 'zamitnuta');
+        const zalohNespar   = base.filter((f) => f.forma === 'zalohova' && paid(stavOf(f)) && !f.spojenaSId);
+        const pozastavene   = base.filter((f) => stavOf(f) === 'pozastavena');
+
+        const neuhrSet = new Set(STAV_UHRADY_OPTIONS.find((o) => o.value === 'neuhrazene')?.set ?? []);
+        const uhrSet   = new Set(STAV_UHRADY_OPTIONS.find((o) => o.value === 'uhrazene')?.set ?? []);
+
+        // Upozornění reflektuje výběr v horní liště (Typ dokladu): při „Vše" se ukážou všechna,
+        // jinak jen ta, která patří k vybranému typu dokladu.
+        const formaTab: 'all' | FakturaForma = formaFilters.size === 1 ? Array.from(formaFilters)[0] : 'all';
+
+        const cards = [
+          {
+            key: 'dobropis-neuhr', forma: 'dobropis' as FakturaForma, show: dobropisNeuhr.length > 0, count: dobropisNeuhr.length,
+            label: 'Neuhrazené dobropisy', color: '#dc3545', icon: 'solar:undo-left-round-bold-duotone',
+            onClick: () => { setFormaFilters(new Set(['dobropis'])); setStavUhrady('neuhrazene'); setStavFilters(new Set(neuhrSet)); },
+          },
+          {
+            key: 'zaloh-neuhr', forma: 'zalohova' as FakturaForma, show: zalohNeuhr.length > 0, count: zalohNeuhr.length,
+            label: 'Neuhrazené zálohové', color: '#fd7e14', icon: 'solar:wallet-money-bold-duotone',
+            onClick: () => { setFormaFilters(new Set(['zalohova'])); setStavUhrady('neuhrazene'); setStavFilters(new Set(neuhrSet)); },
+          },
+          {
+            key: 'zaloh-nespar', forma: 'zalohova' as FakturaForma, show: zalohNespar.length > 0, count: zalohNespar.length,
+            label: 'Zálohové bez finální faktury', color: '#6f42c1', icon: 'solar:link-broken-minimalistic-bold-duotone',
+            onClick: () => { setFormaFilters(new Set(['zalohova'])); setStavUhrady('uhrazene'); setStavFilters(new Set(uhrSet)); },
+          },
+          {
+            key: 'pozastavene', forma: 'standard' as FakturaForma, show: pozastavene.length > 0, count: pozastavene.length,
+            label: 'Pozastavené faktury', color: '#e08e0b', icon: 'solar:pause-circle-bold-duotone',
+            onClick: () => { setFormaFilters(new Set()); setStavUhrady('all'); setStavFilters(new Set(['pozastavena'])); },
+          },
+        ].filter((c) => c.show && (formaTab === 'all' || c.forma === formaTab));
+
+        if (cards.length === 0) return null;
+        return (
+          <div className="d-flex flex-wrap gap-2 mb-3">
+            {cards.map((c) => (
+              <button key={c.key} type="button" onClick={c.onClick}
+                className="btn text-start p-0 border-0 bg-transparent"
+                style={{ minWidth: 220, flex: '0 1 auto' }}
+                title="Klikni pro zobrazení v tabulce">
+                <div className="d-flex align-items-center gap-2 border rounded px-3 py-2 h-100 bg-white"
+                  style={{ borderLeft: `4px solid ${c.color}` }}>
+                  <span className="rounded-circle d-inline-flex align-items-center justify-content-center flex-shrink-0"
+                    style={{ width: 36, height: 36, background: `${c.color}1a`, color: c.color }}>
+                    <iconify-icon icon={c.icon} style={{ fontSize: 19 }} />
+                  </span>
+                  <div>
+                    <div className="fw-bold lh-1 czk-num" style={{ fontSize: 20, color: c.color }}>{c.count}</div>
+                    <div className="fs-12 text-muted mt-1">{c.label}</div>
+                  </div>
+                </div>
+              </button>
+            ))}
+          </div>
+        );
+      })()}
 
       {/* Záložky Přijaté / Vydané – SOURCE: Bootstrap .nav.nav-tabs.
           Phase 8.10 (zápis 22. 6. 2026) — když je fixedTyp zadané ze sidebar (Přijaté/Vydané),
@@ -738,269 +811,123 @@ export default function FakturyView({ state, update, fixedTyp }: Props) {
       </ul>
       )}
 
-      {/* Filter bar */}
+      {/* Filter bar (zjednodušený — zápis 13. 7. 2026, dle reference) */}
       <div className="card mb-4">
-        <div className="card-body py-2 d-flex flex-column gap-2">
-
-          {/* Řádek 0 — Uložené filtry (presety) */}
-          <div className="d-flex align-items-center gap-2 flex-wrap pb-2 border-bottom">
-            <span className="text-muted fs-12 d-flex align-items-center gap-1" style={{ minWidth: 80 }}>
-              <iconify-icon icon="solar:bookmark-bold-duotone" style={{ fontSize: 13 }} />
-              Moje filtry:
-            </span>
-            {savedPresets.length === 0 ? (
-              <span className="text-muted fs-12 fst-italic">Žádné uložené filtry</span>
-            ) : (
-              savedPresets.map((p) => {
-                const active = activePresetId === p.id;
-                return (
-                  <div key={p.id}
-                    className={`badge border d-inline-flex align-items-center gap-1 ${active ? 'bg-primary text-white border-primary' : 'bg-light text-dark border-secondary'}`}
-                    style={{ fontSize: 11, padding: '4px 6px 4px 8px', cursor: 'pointer' }}>
-                    <button
-                      className="btn btn-link p-0 text-decoration-none d-flex align-items-center gap-1"
-                      style={{ fontSize: 11, color: active ? 'white' : '#212529' }}
-                      onClick={() => applyPreset(p)}
-                      title="Načíst tento filtr"
-                    >
-                      <iconify-icon icon={p.icon ?? 'solar:bookmark-bold-duotone'} style={{ fontSize: 12 }} />
-                      {p.name}
-                    </button>
-                    <button
-                      className="btn btn-link p-0"
-                      style={{ fontSize: 11, color: active ? 'white' : '#9097a7' }}
-                      onClick={(e) => { e.stopPropagation(); if (window.confirm(`Smazat preset „${p.name}"?`)) deletePreset(p.id); }}
-                      title="Smazat preset"
-                    >
-                      <iconify-icon icon="solar:close-circle-bold" style={{ fontSize: 13 }} />
-                    </button>
-                  </div>
-                );
-              })
-            )}
-            <button
-              className="btn btn-outline-primary btn-sm py-0 px-2 ms-auto"
-              style={{ fontSize: 11 }}
-              onClick={saveCurrentAsPreset}
-              disabled={!hasAnyFilter}
-              title={hasAnyFilter ? 'Uložit aktuální kombinaci filtrů jako preset' : 'Nejdřív nastav nějaké filtry'}
-            >
-              <iconify-icon icon="solar:add-circle-bold-duotone" className="me-1" />
-              Uložit aktuální
-            </button>
-          </div>
-
-          {/* Řádek 1 — search, kategorie, částka, presety, reset */}
-          <div className="d-flex align-items-center gap-2 flex-wrap">
-            <div className="position-relative">
-              <iconify-icon icon="solar:magnifer-bold-duotone"
-                style={{ position: 'absolute', left: 8, top: '50%', transform: 'translateY(-50%)', fontSize: 14, color: '#9097a7' }} />
+        <div className="card-body py-3">
+          {/* Řádek 1 — vyhledávání + řazení + stav úhrady */}
+          <div className="row g-3">
+            <div className="col-12 col-md">
+              <label className="form-label fs-13 fw-semibold mb-1">Hledat</label>
               <input
                 type="text"
                 className="form-control form-control-sm"
-                placeholder="Hledat dodavatele…"
+                placeholder="Hledat…"
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
-                style={{ paddingLeft: 28, width: 180 }}
               />
             </div>
-
-            <select className="form-select form-select-sm" style={{ width: 'auto' }}
-              value={kategorieFilter} onChange={(e) => setKategorieFilter(e.target.value)}>
-              <option value="all">Všechny kategorie</option>
-              {(Object.keys(KATEGORIE_LABELS) as Array<keyof typeof KATEGORIE_LABELS>).map((k) => (
-                <option key={k} value={k}>{KATEGORIE_LABELS[k]}</option>
-              ))}
-            </select>
-
-            <div className="d-flex align-items-center gap-1">
-              <span className="text-muted fs-12">Částka:</span>
-              <input
-                type="number"
-                className="form-control form-control-sm czk-num"
-                placeholder="od"
-                value={castkaOd}
-                onChange={(e) => setCastkaOd(e.target.value)}
-                style={{ width: 90 }}
-              />
-              <span className="text-muted">–</span>
-              <input
-                type="number"
-                className="form-control form-control-sm czk-num"
-                placeholder="do"
-                value={castkaDo}
-                onChange={(e) => setCastkaDo(e.target.value)}
-                style={{ width: 90 }}
-              />
-              <span className="text-muted fs-12">Kč</span>
+            <div className="col-6 col-md">
+              <label className="form-label fs-13 fw-semibold mb-1">Vyhledat podle</label>
+              <select
+                className="form-select form-select-sm"
+                value={searchBy}
+                onChange={(e) => setSearchBy(e.target.value as typeof searchBy)}
+              >
+                <option value="cislo">Čísla faktury</option>
+                <option value="dodavatel">Dodavatele</option>
+                <option value="vs">Variabilního symbolu</option>
+              </select>
             </div>
+            <div className="col-6 col-md">
+              <label className="form-label fs-13 fw-semibold mb-1">Seřadit podle</label>
+              <select
+                className="form-select form-select-sm"
+                value={sortBy ?? ''}
+                onChange={(e) => setSortBy((e.target.value || null) as SortCol)}
+              >
+                <option value="">Vyberte možnost</option>
+                <option value="cislo">Čísla faktury</option>
+                <option value="dodavatel">Dodavatele</option>
+                <option value="castka">Částky</option>
+                <option value="splatnost">Splatnosti</option>
+                <option value="stav">Stavu</option>
+              </select>
+            </div>
+            <div className="col-6 col-md">
+              <label className="form-label fs-13 fw-semibold mb-1">Seřadit</label>
+              <select
+                className="form-select form-select-sm"
+                value={sortDir}
+                onChange={(e) => setSortDir(e.target.value as 'asc' | 'desc')}
+              >
+                <option value="desc">Od nejnovějších</option>
+                <option value="asc">Od nejstarších</option>
+              </select>
+            </div>
+            <div className="col-6 col-md">
+              <label className="form-label fs-13 fw-semibold mb-1">Stav úhrady</label>
+              <select
+                className="form-select form-select-sm"
+                value={stavUhrady}
+                onChange={(e) => {
+                  const v = e.target.value;
+                  setStavUhrady(v);
+                  const opt = STAV_UHRADY_OPTIONS.find((o) => o.value === v);
+                  setStavFilters(new Set(opt?.set ?? []));
+                }}
+              >
+                {STAV_UHRADY_OPTIONS.map((o) => (
+                  <option key={o.value} value={o.value}>{o.label}</option>
+                ))}
+              </select>
+            </div>
+          </div>
 
-            {/* Phase 8.11 (zápis 22. 6. 2026) — Filter splatnosti od/do */}
-            <div className="d-flex align-items-center gap-1">
-              <span className="text-muted fs-12">Splatnost:</span>
+          {/* Řádek 2 — období + typ data + náklad */}
+          <div className="row g-3 mt-1">
+            <div className="col-6 col-md-3">
+              <label className="form-label fs-13 fw-semibold mb-1">Od</label>
               <input
                 type="date"
                 className="form-control form-control-sm"
                 value={datumOd}
                 onChange={(e) => setDatumOd(e.target.value)}
-                style={{ width: 140 }}
-                title="Splatnost od"
               />
-              <span className="text-muted">–</span>
+            </div>
+            <div className="col-6 col-md-3">
+              <label className="form-label fs-13 fw-semibold mb-1">Do</label>
               <input
                 type="date"
                 className="form-control form-control-sm"
                 value={datumDo}
                 onChange={(e) => setDatumDo(e.target.value)}
-                style={{ width: 140 }}
-                title="Splatnost do"
               />
-              {(datumOd || datumDo) && (
-                <button className="btn btn-link btn-sm text-muted p-0 ms-1" style={{ fontSize: 11 }}
-                  onClick={() => { setDatumOd(''); setDatumDo(''); }}
-                  title="Zrušit filtr splatnosti">
-                  <iconify-icon icon="solar:close-circle-bold-duotone" />
-                </button>
-              )}
             </div>
-
-            <div className="d-flex gap-1 ms-1 flex-wrap">
-              {poSplatCnt > 0 && (
-                <button className={`badge border-0 ${presetFilters.has('po-splatnosti') ? 'bg-danger text-white' : 'bg-danger-subtle text-danger'}`}
-                  style={{ cursor: 'pointer' }} onClick={() => setPresetFilters((p) => toggleSet(p, 'po-splatnosti'))}>
-                  <iconify-icon icon="solar:danger-triangle-bold-duotone" className="me-1" />
-                  Po splatnosti ({poSplatCnt})
-                </button>
-              )}
-              <button className={`badge border-0 ${presetFilters.has('tydni') ? 'bg-info text-white' : 'bg-info-subtle text-info'}`}
-                style={{ cursor: 'pointer' }} onClick={() => setPresetFilters((p) => toggleSet(p, 'tydni'))}>
-                <iconify-icon icon="solar:calendar-bold-duotone" className="me-1" />
-                Tento týden
-              </button>
-              {lockedCnt > 0 && (
-                <button className={`badge border-0 ${presetFilters.has('uzamcene')
-                  ? 'text-white' : ''}`}
-                  style={{
-                    cursor: 'pointer',
-                    background: presetFilters.has('uzamcene') ? '#6f42c1' : '#f3eaff',
-                    color: presetFilters.has('uzamcene') ? 'white' : '#6f42c1',
-                  }}
-                  onClick={() => setPresetFilters((p) => toggleSet(p, 'uzamcene'))}>
-                  <iconify-icon icon="solar:lock-keyhole-bold-duotone" className="me-1" />
-                  Uzamčené ({lockedCnt})
-                </button>
-              )}
+            <div className="col-6 col-md-3">
+              <label className="form-label fs-13 fw-semibold mb-1">Podle</label>
+              <select
+                className="form-select form-select-sm"
+                value={datumPodle}
+                onChange={(e) => setDatumPodle(e.target.value as typeof datumPodle)}
+              >
+                <option value="vystaveni">Datum vystavení</option>
+                <option value="splatnost">Datum splatnosti</option>
+              </select>
             </div>
-
-            {(kategorieFilter !== 'all' || stavFilters.size > 0 || matchingFilters.size > 0 || formaFilters.size > 0 || presetFilters.size > 0 || castkaOd !== '' || castkaDo !== '' || search !== '') && (
-              <button className="btn btn-link btn-sm ms-auto text-muted"
-                onClick={() => {
-                  setKategorieFilter('all');
-                  setStavFilters(new Set());
-                  setMatchingFilters(new Set());
-                  setFormaFilters(new Set());
-                  setPresetFilters(new Set());
-                  setCastkaOd('');
-                  setCastkaDo('');
-                  setDatumOd('');
-                  setDatumDo('');
-                  setSearch('');
-                  setActivePresetId(null);
-                }}>
-                Zrušit filtry ×
-              </button>
-            )}
+            <div className="col-6 col-md-3">
+              <label className="form-label fs-13 fw-semibold mb-1">Obsahuje náklad</label>
+              <select
+                className="form-select form-select-sm"
+                value={kategorieFilter}
+                onChange={(e) => setKategorieFilter(e.target.value)}
+              >
+                <option value="all">Vyberte možnost</option>
+                {(Object.keys(KATEGORIE_LABELS) as FakturaKategorie[]).map((k) => (
+                  <option key={k} value={k}>{KATEGORIE_LABELS[k]}</option>
+                ))}
+              </select>
+            </div>
           </div>
-
-          {/* Řádek 2 — Stav (multiselect chips). Phase 8.4 — různé chipy pro přijaté vs vydané */}
-          <div className="d-flex align-items-center gap-2 flex-wrap">
-            <span className="text-muted fs-12" style={{ minWidth: 56 }}>Stav:</span>
-            {(typDokladu === 'vydana' ? STAV_CHIPS_VYDANE : STAV_CHIPS).map((c) => {
-              const active = stavFilters.has(c.value);
-              return (
-                <button
-                  key={c.value}
-                  className={`badge border-0 ${active ? 'bg-dark text-white' : 'bg-secondary-subtle text-secondary'}`}
-                  style={{ cursor: 'pointer', fontSize: 11 }}
-                  onClick={() => setStavFilters((p) => toggleSet(p, c.value))}
-                >
-                  {active && <iconify-icon icon="solar:check-circle-bold" className="me-1" style={{ fontSize: 11 }} />}
-                  {c.label}
-                </button>
-              );
-            })}
-            {stavFilters.size > 0 && (
-              <button className="btn btn-link btn-sm text-muted p-0 ms-1" style={{ fontSize: 11 }}
-                onClick={() => setStavFilters(new Set())}>
-                vyčistit
-              </button>
-            )}
-          </div>
-
-          {/* Řádek 3 — Párování (multiselect chips) */}
-          <div className="d-flex align-items-center gap-2 flex-wrap">
-            <span className="text-muted fs-12" style={{ minWidth: 56 }}>Párování:</span>
-            {MATCHING_CHIPS.map((c) => {
-              const active = matchingFilters.has(c.value);
-              const isHot = c.value === 'duplikat' || c.value === 'nesedi-dl';
-              return (
-                <button
-                  key={c.value}
-                  className={`badge border-0 ${active
-                    ? (c.value === 'duplikat' ? 'bg-danger text-white' : c.value === 'nesedi-dl' ? 'bg-warning text-dark' : 'bg-dark text-white')
-                    : (isHot ? (c.value === 'duplikat' ? 'bg-danger-subtle text-danger' : 'bg-warning-subtle text-warning') : 'bg-secondary-subtle text-secondary')}`}
-                  style={{ cursor: 'pointer', fontSize: 11 }}
-                  onClick={() => setMatchingFilters((p) => toggleSet(p, c.value))}
-                >
-                  {active && <iconify-icon icon="solar:check-circle-bold" className="me-1" style={{ fontSize: 11 }} />}
-                  {c.label}
-                  {c.value === 'duplikat' && duplikatCnt > 0 && ` (${duplikatCnt})`}
-                  {c.value === 'nesedi-dl' && nesediDLCnt > 0 && ` (${nesediDLCnt})`}
-                </button>
-              );
-            })}
-            {matchingFilters.size > 0 && (
-              <button className="btn btn-link btn-sm text-muted p-0 ms-1" style={{ fontSize: 11 }}
-                onClick={() => setMatchingFilters(new Set())}>
-                vyčistit
-              </button>
-            )}
-          </div>
-
-          {/* Řádek 4 — Účetní forma (zálohová / dobropis / offset) */}
-          <div className="d-flex align-items-center gap-2 flex-wrap">
-            <span className="text-muted fs-12" style={{ minWidth: 56 }}>Forma:</span>
-            {FORMA_CHIPS.map((c) => {
-              const active = formaFilters.has(c.value);
-              const activeBg = c.value === 'dobropis' ? 'bg-danger text-white'
-                : c.value === 'zalohova' ? 'bg-info text-white'
-                : 'bg-dark text-white';
-              const inactiveBg = c.value === 'dobropis' ? 'bg-danger-subtle text-danger'
-                : c.value === 'zalohova' ? 'bg-info-subtle text-info'
-                : 'bg-secondary-subtle text-secondary';
-              return (
-                <button
-                  key={c.value}
-                  className={`badge border-0 ${active ? activeBg : inactiveBg}`}
-                  style={{ cursor: 'pointer', fontSize: 11 }}
-                  onClick={() => setFormaFilters((p) => toggleSet(p, c.value))}
-                >
-                  <iconify-icon icon={c.icon} className="me-1" style={{ fontSize: 11 }} />
-                  {c.label}
-                </button>
-              );
-            })}
-            {formaFilters.size > 0 && (
-              <button className="btn btn-link btn-sm text-muted p-0 ms-1" style={{ fontSize: 11 }}
-                onClick={() => setFormaFilters(new Set())}>
-                vyčistit
-              </button>
-            )}
-            <span className="text-muted fs-11 ms-2 fst-italic" style={{ fontSize: 10 }}>
-              Speciální účetní případy — architecture ready
-            </span>
-          </div>
-
         </div>
       </div>
 
@@ -1160,200 +1087,348 @@ export default function FakturyView({ state, update, fixedTyp }: Props) {
       )}
 
       {/* Phase 8 (zápis 19. 6. 2026) — Podstránka: Nová faktura (full-page, ne modal) */}
-      {showNovaFaktura && (
+      {showNovaFaktura && (() => {
+        const dphSazby = [0, 12, 21];
+        const dphBreakdown = dphSazby.map((sazba) => {
+          const pol = vystPolozky.filter((x) => x.dphSazba === sazba);
+          const zaklad = pol.reduce((s, x) => s + x.pocet * x.cenaJedn, 0);
+          const dph = zaklad * sazba / 100;
+          return { sazba, zaklad, dph, vcetne: zaklad + dph };
+        });
+        const celkemBezDph = vystPolozky.reduce((s, x) => s + x.pocet * x.cenaJedn, 0);
+        const celkemDph    = dphBreakdown.reduce((s, b) => s + b.dph, 0);
+        const celkemVcetne = celkemBezDph + celkemDph;
+        const formaLabel = ({ standard: 'Faktura', dobropis: 'Dobropis', zalohova: 'Zálohová faktura', offset: 'Doklad' } as Record<FakturaForma, string>)[novaFa.forma];
+        return (
         <>
           <div className="page-title-box">
-            <div className="d-flex align-items-center justify-content-between flex-wrap gap-2">
-              <div className="d-flex align-items-center gap-2">
-                <button
-                  className="btn btn-light btn-sm d-flex align-items-center gap-1"
-                  onClick={() => setShowNovaFaktura(false)}
-                  title="Zpět na seznam faktur"
-                >
-                  <iconify-icon icon="solar:alt-arrow-left-bold-duotone" style={{ fontSize: 16 }} />
-                  Zpět na seznam
+            <div className="d-flex align-items-center gap-2">
+              <button className="btn btn-light btn-sm d-flex align-items-center gap-1" onClick={() => setShowNovaFaktura(false)} title="Zpět na seznam faktur">
+                <iconify-icon icon="solar:alt-arrow-left-bold-duotone" style={{ fontSize: 16 }} />
+                Zpět na seznam
+              </button>
+              <span className="text-muted">/</span>
+              <span className="fw-semibold">Vytváření dokladu</span>
+            </div>
+          </div>
+
+          {/* Hlavička + Načíst ISDOC */}
+          <div className="card mb-3">
+            <div className="card-body py-3 d-flex align-items-center justify-content-between flex-wrap gap-2">
+              <h5 className="mb-0">Vytváření dokladu — {formaLabel}</h5>
+              <button className="btn btn-secondary btn-sm d-flex align-items-center gap-1" title="Načíst doklad z ISDOC (XML) — mock">
+                <iconify-icon icon="solar:import-bold-duotone" />
+                Načíst ISDOC
+              </button>
+            </div>
+          </div>
+
+          {/* 3 sloupce: Dodavatel / Platební údaje / Datumy */}
+          <div className="card mb-3">
+            <div className="card-body">
+              <div className="row g-4">
+                {/* Dodavatel */}
+                <div className="col-lg-4">
+                  <h6 className="fw-bold mb-3">Dodavatel</h6>
+                  <label className="form-label fs-13 fw-semibold">Název <span className="text-danger">*</span></label>
+                  <div className="d-flex gap-1">
+                    <input type="text" className="form-control form-control-sm" placeholder="Název dodavatele…" value={novaFa.dodavatel} onChange={(e) => setNovaFa((f) => ({ ...f, dodavatel: e.target.value }))} />
+                    <button className="btn btn-secondary btn-sm flex-shrink-0" title="Přidat nového dodavatele"><iconify-icon icon="solar:add-circle-bold-duotone" /></button>
+                  </div>
+                  <label className="form-label fs-13 fw-semibold mt-2">Kontaktní e-mail</label>
+                  <input type="email" className="form-control form-control-sm" value={novaFa.kontaktEmail} onChange={(e) => setNovaFa((f) => ({ ...f, kontaktEmail: e.target.value }))} />
+                  <button type="button" className="btn btn-light btn-sm w-100 mt-2" onClick={() => setNovaFaKontaktInfo((v) => !v)}>
+                    {novaFaKontaktInfo ? 'Skrýt kontaktní informace' : 'Zobrazit kontaktní informace'}
+                  </button>
+                  {novaFaKontaktInfo && (
+                    <div className="mt-2 d-flex flex-column gap-2">
+                      <div>
+                        <label className="form-label fs-12 mb-1">Kontaktní mobil</label>
+                        <input type="text" className="form-control form-control-sm" value={novaFa.kontaktMobil} onChange={(e) => setNovaFa((f) => ({ ...f, kontaktMobil: e.target.value }))} />
+                      </div>
+                      <div className="row g-2">
+                        <div className="col-6"><label className="form-label fs-12 mb-1">IČO</label><input type="text" className="form-control form-control-sm czk-num" value={novaFa.ico} onChange={(e) => setNovaFa((f) => ({ ...f, ico: e.target.value }))} /></div>
+                        <div className="col-6"><label className="form-label fs-12 mb-1">DIČ</label><input type="text" className="form-control form-control-sm czk-num" value={novaFa.dic} onChange={(e) => setNovaFa((f) => ({ ...f, dic: e.target.value }))} /></div>
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                {/* Platební údaje */}
+                <div className="col-lg-4">
+                  <h6 className="fw-bold mb-3">Platební údaje</h6>
+                  <label className="form-label fs-13 fw-semibold">Způsob úhrady</label>
+                  <select className="form-select form-select-sm" value={novaFa.zpusobUhrady} onChange={(e) => setNovaFa((f) => ({ ...f, zpusobUhrady: e.target.value as typeof f.zpusobUhrady }))}>
+                    <option value="">Vyberte možnost</option>
+                    <option value="prevod">Převodem</option>
+                    <option value="hotovost">Hotově</option>
+                    <option value="karta">Kartou</option>
+                  </select>
+                  <label className="form-label fs-13 fw-semibold mt-2">Variabilní symbol</label>
+                  <input type="text" className="form-control form-control-sm czk-num" value={novaFa.vs} onChange={(e) => setNovaFa((f) => ({ ...f, vs: e.target.value }))} />
+                  <div className="text-muted fs-12 mt-3" style={{ lineHeight: 1.7 }}>
+                    Název banky: —<br />Číslo účtu: / <br />IBAN: —<br />SWIFT: —
+                  </div>
+                  <div className="form-check form-switch mt-2">
+                    <input className="form-check-input" type="checkbox" id="nf-auto-uhradit" checked={novaFa.autoUhradit} onChange={(e) => setNovaFa((f) => ({ ...f, autoUhradit: e.target.checked }))} />
+                    <label className="form-check-label fs-13" htmlFor="nf-auto-uhradit">Automaticky uhradit doklad</label>
+                  </div>
+                </div>
+
+                {/* Datumy a informace */}
+                <div className="col-lg-4">
+                  <h6 className="fw-bold mb-3">Datumy a informace</h6>
+                  <label className="form-label fs-13 fw-semibold">Číslo dokladu</label>
+                  <input type="text" className="form-control form-control-sm czk-num" placeholder="FAK-2026-…" value={novaFa.cislo} onChange={(e) => setNovaFa((f) => ({ ...f, cislo: e.target.value }))} />
+                  <label className="form-label fs-13 fw-semibold mt-2">Datum vystavení</label>
+                  <input type="date" className="form-control form-control-sm" value={novaFa.datum} onChange={(e) => setNovaFa((f) => ({ ...f, datum: e.target.value }))} />
+                  <label className="form-label fs-13 fw-semibold mt-2">Datum splatnosti <span className="text-danger">*</span></label>
+                  <input type="date" className="form-control form-control-sm" value={novaFa.splatnost} onChange={(e) => setNovaFa((f) => ({ ...f, splatnost: e.target.value }))} />
+                  <label className="form-label fs-13 fw-semibold mt-2">DUZP</label>
+                  <input type="date" className="form-control form-control-sm" value={novaFa.duzp} onChange={(e) => setNovaFa((f) => ({ ...f, duzp: e.target.value }))} />
+                </div>
+              </div>
+
+              {/* Zobrazit více detailů */}
+              <div className="text-center mt-3">
+                <button type="button" className="btn btn-light btn-sm px-4" onClick={() => setNovaFaViceDetailu((v) => !v)}>
+                  {novaFaViceDetailu ? 'Zobrazit méně detailů' : 'Zobrazit více detailů'}
                 </button>
-                <span className="text-muted">/</span>
-                <span className="fw-semibold">Nová faktura</span>
+              </div>
+
+              {novaFaViceDetailu && (
+                <div className="row g-4 mt-1 pt-3 border-top">
+                  <div className="col-lg-4">
+                    <h6 className="fw-bold mb-2">Provozovna</h6>
+                    <label className="form-label fs-13 fw-semibold">Provozovna</label>
+                    <select className="form-select form-select-sm" value={novaFa.provozovna} onChange={(e) => setNovaFa((f) => ({ ...f, provozovna: e.target.value }))}>
+                      {PROVOZOVNY.filter((p) => p.status === 'active').map((p) => (<option key={p.id} value={p.id}>{p.name}</option>))}
+                    </select>
+                    <div className="text-muted fs-12 mt-2" style={{ lineHeight: 1.7 }}>Plátce DPH: ANO<br />Sídlo: Údolní 532/76, 602 00 Brno</div>
+                  </div>
+                  <div className="col-lg-4">
+                    <label className="form-label fs-13 fw-semibold">Osoba</label>
+                    <input type="text" className="form-control form-control-sm" value={novaFa.osoba} onChange={(e) => setNovaFa((f) => ({ ...f, osoba: e.target.value }))} />
+                    <label className="form-label fs-13 fw-semibold mt-2">Kontaktní e-mail</label>
+                    <input type="email" className="form-control form-control-sm" value={novaFa.kontaktEmail} onChange={(e) => setNovaFa((f) => ({ ...f, kontaktEmail: e.target.value }))} />
+                    <label className="form-label fs-13 fw-semibold mt-2">Kontaktní mobil</label>
+                    <input type="text" className="form-control form-control-sm" value={novaFa.kontaktMobil} onChange={(e) => setNovaFa((f) => ({ ...f, kontaktMobil: e.target.value }))} />
+                  </div>
+                  <div className="col-lg-4">
+                    <label className="form-label fs-13 fw-semibold">Zaokrouhlování</label>
+                    <select className="form-select form-select-sm" value={novaFa.zaokrouhleni} onChange={(e) => setNovaFa((f) => ({ ...f, zaokrouhleni: e.target.value as typeof f.zaokrouhleni }))}>
+                      <option value="desetinne">Desetinná čísla</option>
+                      <option value="nahoru">Nahoru na celé</option>
+                      <option value="zadne">Bez zaokrouhlení</option>
+                    </select>
+                    <label className="form-label fs-13 fw-semibold mt-2">Měna</label>
+                    <select className="form-select form-select-sm" value={novaFa.mena} onChange={(e) => setNovaFa((f) => ({ ...f, mena: e.target.value }))}>
+                      <option value="CZK">Kč</option>
+                      <option value="EUR">€</option>
+                    </select>
+                    <label className="form-label fs-13 fw-semibold mt-2">Konstantní symbol</label>
+                    <input type="text" className="form-control form-control-sm czk-num" value={novaFa.ksymbol} onChange={(e) => setNovaFa((f) => ({ ...f, ksymbol: e.target.value }))} />
+                    <label className="form-label fs-13 fw-semibold mt-2">Specifický symbol</label>
+                    <input type="text" className="form-control form-control-sm czk-num" value={novaFa.ssymbol} onChange={(e) => setNovaFa((f) => ({ ...f, ssymbol: e.target.value }))} />
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Položky */}
+          <div className="card mb-3">
+            <div className="card-body">
+              <h6 className="fw-bold mb-3">Položky</h6>
+              <div className="table-responsive">
+                <table className="table table-sm align-middle mb-0" style={{ fontSize: 12 }}>
+                  <thead className="table-light">
+                    <tr>
+                      <th style={{ width: 70 }}>Kód</th>
+                      <th>Název</th>
+                      <th className="text-end" style={{ width: 80 }}>Množství</th>
+                      <th className="text-end" style={{ width: 120 }}>Cena</th>
+                      <th style={{ width: 90 }}>Typ ceny</th>
+                      <th className="text-end" style={{ width: 90 }}>DPH</th>
+                      <th className="text-end">Výška DPH</th>
+                      <th className="text-end">Cena celkem</th>
+                      <th style={{ width: 70 }}>Funkce</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {vystPolozky.map((p) => {
+                      const zaklad = p.pocet * p.cenaJedn;
+                      const dph = zaklad * p.dphSazba / 100;
+                      return (
+                        <tr key={p.id}>
+                          <td><input type="text" className="form-control form-control-sm" style={{ fontSize: 12 }} /></td>
+                          <td><input type="text" className="form-control form-control-sm" style={{ fontSize: 12 }} placeholder="Název položky" value={p.nazev} onChange={(e) => updatePolozka(p.id, { nazev: e.target.value })} /></td>
+                          <td><input type="number" className="form-control form-control-sm text-end" style={{ fontSize: 12 }} value={p.pocet} onChange={(e) => updatePolozka(p.id, { pocet: parseFloat(e.target.value || '0') })} /></td>
+                          <td><div className="input-group input-group-sm"><input type="number" className="form-control text-end" style={{ fontSize: 12 }} value={p.cenaJedn} onChange={(e) => updatePolozka(p.id, { cenaJedn: parseFloat(e.target.value || '0') })} /><span className="input-group-text" style={{ fontSize: 11 }}>Kč</span></div></td>
+                          <td><select className="form-select form-select-sm" style={{ fontSize: 12 }}><option>s DPH</option><option>bez DPH</option></select></td>
+                          <td><div className="input-group input-group-sm"><input type="number" className="form-control text-end" style={{ fontSize: 12 }} value={p.dphSazba} onChange={(e) => updatePolozka(p.id, { dphSazba: parseFloat(e.target.value || '0') })} /><span className="input-group-text" style={{ fontSize: 11 }}>%</span></div></td>
+                          <td className="text-end czk-num">{fCzk(Math.round(dph))}</td>
+                          <td className="text-end czk-num fw-semibold">{fCzk(Math.round(zaklad + dph))}</td>
+                          <td className="text-nowrap">
+                            <button className="btn btn-sm btn-outline-warning py-0 px-1" onClick={addPolozka} title="Přidat řádek"><iconify-icon icon="solar:add-circle-bold-duotone" /></button>
+                            <button className="btn btn-sm btn-outline-danger py-0 px-1 ms-1" onClick={() => removePolozka(p.id)} title="Odebrat řádek"><iconify-icon icon="solar:minus-circle-bold-duotone" /></button>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
               </div>
             </div>
           </div>
 
-          <div className="card">
+          {/* Rekapitulace DPH */}
+          <div className="card mb-3">
             <div className="card-body">
-
-                  <div className="row g-3">
-                    {/* Phase 8.4 — tento formulář slouží POUZE pro přijaté faktury (záznam přišlé faktury).
-                        Pro vydanou se otevírá samostatný "Vystavit fakturu" formulář s položkami a náhledem.
-                        Pole typDokladu už není v UI — nastaveno na 'prijata' při otevření tlačítkem. */}
-                    <div className="col-12">
-                      <div className="alert alert-light border py-2 mb-0 fs-13">
-                        <iconify-icon icon="solar:download-square-bold-duotone" className="me-1" style={{ color: '#6c757d' }} />
-                        <strong>Záznam přijaté faktury</strong>
-                        <span className="text-muted ms-2">— pro vystavení vydané faktury použijte tlačítko „Vystavit fakturu"</span>
-                      </div>
-                    </div>
-
-                    {/* Dodavatel + číslo */}
-                    <div className="col-8">
-                      <label className="form-label fw-semibold fs-13">
-                        {novaFa.typDokladu === 'prijata' ? 'Dodavatel' : 'Odběratel'}
-                        <span className="text-danger ms-1">*</span>
-                      </label>
-                      <input
-                        type="text"
-                        className="form-control form-control-sm"
-                        placeholder={novaFa.typDokladu === 'prijata' ? 'Název dodavatele...' : 'Název odběratele...'}
-                        value={novaFa.dodavatel}
-                        onChange={(e) => setNovaFa((f) => ({ ...f, dodavatel: e.target.value }))}
-                      />
-                    </div>
-                    <div className="col-4">
-                      <label className="form-label fw-semibold fs-13">Číslo faktury</label>
-                      <input
-                        type="text"
-                        className="form-control form-control-sm"
-                        placeholder="FAK-2026-…"
-                        value={novaFa.cislo}
-                        onChange={(e) => setNovaFa((f) => ({ ...f, cislo: e.target.value }))}
-                      />
-                    </div>
-
-                    {/* Kategorie + provozovna */}
-                    <div className="col-6">
-                      <label className="form-label fw-semibold fs-13">Kategorie <span className="text-danger">*</span></label>
-                      <select
-                        className="form-select form-select-sm"
-                        value={novaFa.kategorie}
-                        onChange={(e) => setNovaFa((f) => ({ ...f, kategorie: e.target.value as FakturaKategorie }))}
-                      >
-                        {(Object.keys(KATEGORIE_LABELS) as FakturaKategorie[]).map((k) => (
-                          <option key={k} value={k}>{KATEGORIE_LABELS[k]}</option>
-                        ))}
-                      </select>
-                    </div>
-                    <div className="col-6">
-                      <label className="form-label fw-semibold fs-13">Provozovna <span className="text-danger">*</span></label>
-                      <select
-                        className="form-select form-select-sm"
-                        value={novaFa.provozovna}
-                        onChange={(e) => setNovaFa((f) => ({ ...f, provozovna: e.target.value }))}
-                      >
-                        {PROVOZOVNY.filter((p) => p.status === 'active').map((p) => (
-                          <option key={p.id} value={p.id}>{p.name}</option>
-                        ))}
-                      </select>
-                    </div>
-
-                    {/* Částka + datum + splatnost */}
-                    <div className="col-4">
-                      <label className="form-label fw-semibold fs-13">Částka (Kč) <span className="text-danger">*</span></label>
-                      <input
-                        type="number"
-                        className="form-control form-control-sm"
-                        placeholder="0"
-                        value={novaFa.castka}
-                        onChange={(e) => setNovaFa((f) => ({ ...f, castka: e.target.value }))}
-                      />
-                    </div>
-                    <div className="col-4">
-                      <label className="form-label fw-semibold fs-13">Datum vystavení</label>
-                      <input
-                        type="date"
-                        className="form-control form-control-sm"
-                        value={novaFa.datum}
-                        onChange={(e) => setNovaFa((f) => ({ ...f, datum: e.target.value }))}
-                      />
-                    </div>
-                    <div className="col-4">
-                      <label className="form-label fw-semibold fs-13">Splatnost <span className="text-danger">*</span></label>
-                      <input
-                        type="date"
-                        className="form-control form-control-sm"
-                        value={novaFa.splatnost}
-                        onChange={(e) => setNovaFa((f) => ({ ...f, splatnost: e.target.value }))}
-                      />
-                    </div>
-
-                    {/* Přiřadit ke schválení */}
-                    <div className="col-12">
-                      <label className="form-label fw-semibold fs-13">Přiřadit ke schválení</label>
-                      <select
-                        className="form-select form-select-sm"
-                        value={novaFa.prirazenaOsoba}
-                        onChange={(e) => setNovaFa((f) => ({ ...f, prirazenaOsoba: e.target.value }))}
-                      >
-                        <option value="">— Zatím nepřiřazovat —</option>
-                        {SCHVALOVACI_OSOBY.map((o) => (
-                          <option key={o.id} value={o.id}>
-                            {o.jmeno} ({o.role === 'fakturant' ? 'Fakturant' : o.role === 'schvalovatel' ? 'Schvalovatel' : 'Majitel'})
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-
-                    {/* Poznámka */}
-                    <div className="col-12">
-                      <label className="form-label fw-semibold fs-13">Poznámka</label>
-                      <textarea
-                        className="form-control form-control-sm"
-                        rows={2}
-                        placeholder="Volitelná poznámka..."
-                        value={novaFa.poznamka}
-                        onChange={(e) => setNovaFa((f) => ({ ...f, poznamka: e.target.value }))}
-                      />
-                    </div>
-
-                    {/* Phase 8.3 — Příloha (doklad): mock-upload, state novaFaDocument */}
-                    <div className="col-12">
-                      <label className="form-label fw-semibold fs-13">Příloha (doklad)</label>
-                      {novaFaDocument ? (
-                        <div className="border rounded d-flex align-items-center justify-content-between p-2 px-3"
-                             style={{ background: '#e8f5e9', borderColor: '#198754' }}>
-                          <div className="d-flex align-items-center gap-2">
-                            <iconify-icon icon="solar:document-text-bold-duotone" style={{ fontSize: 22, color: '#198754' }} />
-                            <div>
-                              <div className="fw-semibold fs-13">{novaFaDocument}</div>
-                              <div className="text-muted fs-11">Dokument připraven k uložení</div>
-                            </div>
-                          </div>
-                          <button className="btn btn-sm btn-link text-danger p-0" onClick={() => setNovaFaDocument(null)} title="Odebrat dokument">
-                            <iconify-icon icon="solar:trash-bin-trash-bold-duotone" style={{ fontSize: 18 }} />
-                          </button>
-                        </div>
-                      ) : (
-                        <div
-                          className="border rounded d-flex align-items-center justify-content-center"
-                          style={{ height: 80, background: '#f8f9fa', cursor: 'pointer' }}
-                          onClick={() => setNovaFaDocument(`faktura-${novaFa.cislo || 'mock'}.pdf`)}
-                        >
-                          <div className="text-center text-muted fs-13">
-                            <iconify-icon icon="solar:upload-bold-duotone" style={{ fontSize: 22 }} className="d-block mx-auto mb-1" />
-                            <strong className="text-primary">Přidat dokument</strong>
-                            <span className="ms-2">— přetáhněte PDF nebo klikněte pro výběr</span>
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                  </div>
-
-                <div className="d-flex justify-content-end gap-2 mt-3 pt-3 border-top">
-                  <button className="btn btn-light btn-sm" onClick={() => setShowNovaFaktura(false)}>
-                    Zrušit
-                  </button>
-                  <button
-                    className="btn btn-primary btn-sm"
-                    onClick={handleSaveFaktura}
-                  >
-                    <iconify-icon icon="solar:diskette-bold-duotone" className="me-1" style={{ fontSize: 16 }} />
-                    Uložit fakturu
-                  </button>
+              <h6 className="fw-bold mb-3">Rekapitulace DPH</h6>
+              <div className="row g-4">
+                <div className="col-lg-6">
+                  <table className="table table-sm mb-0" style={{ fontSize: 12 }}>
+                    <thead className="table-light"><tr><th>Sazba</th><th className="text-end">bez DPH</th><th className="text-end">DPH</th><th className="text-end">včetně DPH</th></tr></thead>
+                    <tbody>
+                      {dphBreakdown.map((b) => (
+                        <tr key={b.sazba}><td>{b.sazba} %</td><td className="text-end czk-num">{fCzk(Math.round(b.zaklad))}</td><td className="text-end czk-num">{fCzk(Math.round(b.dph))}</td><td className="text-end czk-num">{fCzk(Math.round(b.vcetne))}</td></tr>
+                      ))}
+                    </tbody>
+                  </table>
                 </div>
-
+                <div className="col-lg-6">
+                  <div className="d-flex justify-content-between border-bottom py-2"><span className="text-muted">Celkem bez DPH:</span><span className="czk-num">{fCzk(Math.round(celkemBezDph))}</span></div>
+                  <div className="d-flex justify-content-between border-bottom py-2"><span className="text-muted">DPH:</span><span className="czk-num">{fCzk(Math.round(celkemDph))}</span></div>
+                  <div className="d-flex justify-content-between border-bottom py-2"><span className="text-muted">Zaokrouhlení:</span><span className="czk-num">0 Kč</span></div>
+                  <div className="d-flex justify-content-between py-2"><span className="fw-bold" style={{ fontSize: 15 }}>Celkem k úhradě:</span><span className="fw-bold czk-num" style={{ fontSize: 15 }}>{fCzk(Math.round(celkemVcetne))}</span></div>
+                  <div className="row g-2 mt-2 align-items-end">
+                    <div className="col-8"><label className="form-label fs-12 mb-1">Korektura celkové částky</label><input type="number" className="form-control form-control-sm" placeholder="0" /></div>
+                    <div className="col-4"><label className="form-label fs-12 mb-1">Měna</label><input className="form-control form-control-sm bg-light text-muted" value={novaFa.mena} readOnly /></div>
+                  </div>
+                </div>
+              </div>
+              <div className="mt-3">
+                <label className="form-label fs-13 fw-semibold">Spodní text na faktuře</label>
+                <input type="text" className="form-control form-control-sm" placeholder="Volitelný text zobrazený na faktuře…" value={novaFa.spodniText} onChange={(e) => setNovaFa((f) => ({ ...f, spodniText: e.target.value }))} />
+              </div>
             </div>
           </div>
+
+          {/* Nahrání dokumentů + QR + Interní poznámka */}
+          <div className="card mb-3">
+            <div className="card-body">
+              <div className="row g-4">
+                <div className="col-lg-6">
+                  <h6 className="fw-bold mb-3">Nahrání dokumentů</h6>
+                  {novaFaDocument ? (
+                    <div className="border rounded d-flex align-items-center justify-content-between p-2 px-3" style={{ background: '#e8f5e9', borderColor: '#198754' }}>
+                      <div className="d-flex align-items-center gap-2">
+                        <iconify-icon icon="solar:document-text-bold-duotone" style={{ fontSize: 22, color: '#198754' }} />
+                        <div><div className="fw-semibold fs-13">{novaFaDocument}</div><div className="text-muted fs-11">Dokument připraven k uložení</div></div>
+                      </div>
+                      <button className="btn btn-sm btn-link text-danger p-0" onClick={() => setNovaFaDocument(null)} title="Odebrat"><iconify-icon icon="solar:trash-bin-trash-bold-duotone" style={{ fontSize: 18 }} /></button>
+                    </div>
+                  ) : (
+                    <div className="border border-2 border-dashed rounded p-4 text-center" style={{ borderColor: '#dee2e6', cursor: 'pointer' }} onClick={() => setNovaFaDocument(`doklad-${novaFa.cislo || 'mock'}.pdf`)}>
+                      <iconify-icon icon="solar:cloud-upload-bold-duotone" style={{ fontSize: 40, color: '#c4c9d0' }} />
+                      <div className="fw-semibold mt-2">Klepnutím nahrajte soubor</div>
+                      <div className="text-muted fs-12 mt-1">Je možné nahrát jen <strong>jeden</strong> soubor.</div>
+                    </div>
+                  )}
+                  <div className="text-muted fs-12 mt-3">Nebo použijte mobilní telefon a vyfoťte doklad přes něj.</div>
+                  <div className="d-inline-flex mt-2 p-2 border rounded bg-white">
+                    <iconify-icon icon="solar:qr-code-bold-duotone" style={{ fontSize: 96, color: '#212529' }} />
+                  </div>
+                </div>
+                <div className="col-lg-6">
+                  <label className="form-label fs-13 fw-semibold">Interní poznámka</label>
+                  <textarea className="form-control form-control-sm" rows={3} placeholder="Interní poznámka (nezobrazí se na faktuře)…" value={novaFa.poznamka} onChange={(e) => setNovaFa((f) => ({ ...f, poznamka: e.target.value }))} />
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Automatické schválení faktury */}
+          <div className="card mb-3">
+            <div className="card-body">
+              <h6 className="fw-bold mb-3">Automatické schválení faktury</h6>
+              <label className="form-label fs-13 fw-semibold">Účet na platbu</label>
+              <select className="form-select form-select-sm" value={novaFa.ucetPlatby} onChange={(e) => setNovaFa((f) => ({ ...f, ucetPlatby: e.target.value }))}>
+                <option value="">— Vyberte účet —</option>
+                {BANKOVNI_UCTY.map((u) => (<option key={u.iban} value={u.iban}>{u.nazev} ({u.iban}) — {u.mena ?? 'CZK'}</option>))}
+              </select>
+              <div className="row g-2 mt-2">
+                <div className="col-md-6"><label className="form-label fs-13 fw-semibold">Suma</label><input type="number" className="form-control form-control-sm" placeholder="0" /></div>
+                <div className="col-md-6"><label className="form-label fs-13 fw-semibold">Měna</label><input className="form-control form-control-sm bg-light text-muted" value="CZK" readOnly /></div>
+              </div>
+            </div>
+          </div>
+
+          {/* Schvalovatelé faktury — jen u přijaté faktury; kdokoli z vybraných může fakturu
+              schválit → poté jde k úhradě. Lze přiřadit více osob. */}
+          <div className="card mb-3">
+            <div className="card-body">
+              <h6 className="fw-bold mb-1">Schvalovatelé faktury</h6>
+              <p className="text-muted fs-13 mb-3">
+                Vyberte osoby, které mohou fakturu schválit k úhradě. Stačí schválení kohokoli z nich.
+              </p>
+              <div className="d-flex flex-wrap gap-2">
+                {SCHVALOVACI_OSOBY.filter((o) => o.role !== 'fakturant').map((o) => {
+                  const vybrany = novaFaSchvalovatele.includes(o.id);
+                  return (
+                    <button
+                      key={o.id}
+                      type="button"
+                      className={`btn btn-sm d-inline-flex align-items-center gap-2 ${vybrany ? 'btn-primary' : 'btn-outline-secondary'}`}
+                      onClick={() => setNovaFaSchvalovatele((prev) =>
+                        prev.includes(o.id) ? prev.filter((x) => x !== o.id) : [...prev, o.id]
+                      )}
+                    >
+                      <span
+                        className="rounded-circle d-inline-flex align-items-center justify-content-center fw-bold"
+                        style={{ width: 22, height: 22, fontSize: 10, background: vybrany ? 'rgba(255,255,255,0.25)' : 'var(--prov-color, #c9911a)', color: '#fff', flexShrink: 0 }}
+                      >
+                        {o.avatar}
+                      </span>
+                      <span className="d-flex flex-column align-items-start lh-1">
+                        <span className="fw-semibold">{o.jmeno}</span>
+                        <span className={`fs-11 ${vybrany ? 'text-white-50' : 'text-muted'}`}>
+                          {o.role === 'majitel' ? 'Majitel' : 'Schvalovatel'}
+                          {o.provozovna ? ` · ${PROVOZOVNY.find((p) => p.id === o.provozovna)?.shortName ?? o.provozovna}` : ''}
+                        </span>
+                      </span>
+                      {vybrany && <iconify-icon icon="solar:check-circle-bold" style={{ fontSize: 14 }} />}
+                    </button>
+                  );
+                })}
+              </div>
+              {novaFaSchvalovatele.length > 0 && (
+                <div className="mt-3 text-success fs-13 fw-semibold">
+                  <iconify-icon icon="solar:users-group-rounded-bold-duotone" className="me-1" />
+                  Přiřazeno {novaFaSchvalovatele.length}{' '}
+                  {novaFaSchvalovatele.length === 1 ? 'schvalovatel' : novaFaSchvalovatele.length < 5 ? 'schvalovatelé' : 'schvalovatelů'}
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* 3 CTA */}
+          <div className="d-flex gap-2 flex-wrap mb-4">
+            <button className="btn btn-light flex-grow-1 fw-semibold" style={{ color: '#c9911a', minWidth: 200 }} onClick={handleSaveFaktura}>
+              Přidat dokument a přejít na seznam
+            </button>
+            <button className="btn btn-warning text-white flex-grow-1 fw-semibold" style={{ minWidth: 200 }} onClick={handleSaveFaktura}>
+              Přidat dokument a pokračovat
+            </button>
+            <button className="btn text-white flex-grow-1 fw-semibold" style={{ background: '#6f42c1', minWidth: 200 }} onClick={handleSaveFaktura}>
+              Přidat dokument a schválit
+            </button>
+          </div>
         </>
-      )}
+        );
+      })()}
+
 
       {/* Phase 8.4 (zápis 19. 6. 2026) — Podstránka: Vystavit fakturu (full invoice creator, 2-col layout
           form vlevo + live náhled vpravo, položky s automatickým výpočtem DPH, jako ve Fakturoidu) */}
@@ -1408,6 +1483,13 @@ export default function FakturyView({ state, update, fixedTyp }: Props) {
                   Uložit jako rozpracovaný koncept
                 </button>
               </div>
+            </div>
+          </div>
+
+          {/* Hlavička dokladu (u vydané se ISDOC nenačítá — vystavujeme vlastní doklad) */}
+          <div className="card mb-3">
+            <div className="card-body py-3">
+              <h5 className="mb-0">Vytváření dokladu — {isProformaVystavit ? 'Zálohová faktura' : 'Faktura'}</h5>
             </div>
           </div>
 
@@ -1813,6 +1895,36 @@ export default function FakturyView({ state, update, fixedTyp }: Props) {
                       <label className="form-label fs-12 fw-semibold">Variabilní symbol (auto)</label>
                       <input type="text" className="form-control form-control-sm czk-num" value={novaVyd.cislo.replace(/\D/g, '')}
                         disabled title="Odvozeno z čísla faktury" />
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Rekapitulace DPH (sjednoceno s přijatou fakturou) */}
+              <div className="card mb-3">
+                <div className="card-body">
+                  <h6 className="fw-bold mb-3">Rekapitulace DPH</h6>
+                  <div className="row g-4">
+                    <div className="col-lg-6">
+                      <table className="table table-sm mb-0" style={{ fontSize: 12 }}>
+                        <thead className="table-light"><tr><th>Sazba</th><th className="text-end">bez DPH</th><th className="text-end">DPH</th><th className="text-end">včetně DPH</th></tr></thead>
+                        <tbody>
+                          {[0, 12, 21].map((sazba) => {
+                            const pol = vystPolozky.filter((x) => x.dphSazba === sazba);
+                            const zaklad = pol.reduce((s, x) => s + x.pocet * x.cenaJedn, 0);
+                            const d = zaklad * sazba / 100;
+                            return (
+                              <tr key={sazba}><td>{sazba} %</td><td className="text-end czk-num">{fCzk(zaklad)}</td><td className="text-end czk-num">{fCzk(d)}</td><td className="text-end czk-num">{fCzk(zaklad + d)}</td></tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+                    <div className="col-lg-6">
+                      <div className="d-flex justify-content-between border-bottom py-2"><span className="text-muted">Celkem bez DPH:</span><span className="czk-num">{fCzk(celkemBezDph)}</span></div>
+                      <div className="d-flex justify-content-between border-bottom py-2"><span className="text-muted">DPH:</span><span className="czk-num">{fCzk(celkemDph)}</span></div>
+                      <div className="d-flex justify-content-between border-bottom py-2"><span className="text-muted">Zaokrouhlení:</span><span className="czk-num">0 Kč</span></div>
+                      <div className="d-flex justify-content-between py-2"><span className="fw-bold" style={{ fontSize: 15 }}>Celkem k úhradě:</span><span className="fw-bold czk-num" style={{ fontSize: 15 }}>{fCzk(celkemSDph)}</span></div>
                     </div>
                   </div>
                 </div>

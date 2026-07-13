@@ -159,12 +159,10 @@ function NavLink({
   onSelect: (s: SidebarSection) => void;
 }) {
   // Phase 8.10 (zápis 22. 6. 2026) — Profesionální nested nav s parent + children:
-  // - Parent JE KLIKATELNÝ — routuje na svou sekci (např. Faktury = kombinovaný přehled obou typů)
+  // - Parent je NEKLIKATELNÝ — jen skupinová hlavička (zápis 13. 7. 2026); routují jen children
   // - Children jsou vždy viditelné pod parentem (žádný expand/collapse)
   // - Children mají decentní indent + tečku-rail pro vizuální hierarchii
-  const childIds = item.children?.map((c) => c.id) ?? [];
   const isParentActive = active === item.id;
-  const isAnyChildActive = childIds.includes(active);
   const hasChildren = (item.children?.length ?? 0) > 0;
 
   if (!hasChildren) {
@@ -187,15 +185,11 @@ function NavLink({
     );
   }
 
-  // Parent s vnořenými children — klikatelný (otevře svou sekci), zvýrazněný i když je aktivní child
+  // Parent s vnořenými children — NEKLIKATELNÁ skupinová hlavička; routují jen children
   return (
     <>
       <li className="nav-item">
-        <a
-          className={`nav-link${isParentActive || isAnyChildActive ? ' active' : ''}`}
-          onClick={() => onSelect(item.id)}
-          style={{ cursor: 'pointer' }}
-        >
+        <div className="nav-link sidebar-parent-label" style={{ cursor: 'default' }}>
           <span className="nav-icon">
             <iconify-icon icon={item.icon} />
           </span>
@@ -203,7 +197,7 @@ function NavLink({
           {item.badge ? (
             <span className="badge bg-danger rounded-pill ms-auto">{item.badge}</span>
           ) : null}
-        </a>
+        </div>
       </li>
       {item.children && item.children.map((child, idx) => {
         const isActive = active === child.id;

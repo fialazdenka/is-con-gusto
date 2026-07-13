@@ -1484,3 +1484,15 @@ tfoot .trzby-sticky-r {
   background: #e7efff !important;
   box-shadow: 0 3px 8px rgba(0, 0, 0, 0.10);
 }
+
+/* ============================================================
+   Sidebar — nekliknutelná skupinová hlavička (Faktury parent)
+   Jen label; klikatelné jsou pouze children (Přijaté/Vydané).
+   ============================================================ */
+.main-nav .nav-link.sidebar-parent-label,
+.main-nav .nav-link.sidebar-parent-label:hover,
+.main-nav .nav-link.sidebar-parent-label:focus {
+  cursor: default !important;
+  background: transparent !important;
+  opacity: 0.68;
+}

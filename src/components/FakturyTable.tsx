@@ -266,7 +266,9 @@ export default function FakturyTable({
             {/* Phase 8 (zápis 10. 6. 2026) — zjednodušené sloupce: Dodavatel (+ číslo/VS) / Provoz / Splatnost / Částka / Stav.
                 Odstraněny: hromadné zaškrtávání, Typ dokladu, Kategorie, Odeslat do, Přiřazeno (přesunuto do detailu). */}
             <tr>
-              <SortableTh col="dodavatel" label="Dodavatel" sortBy={sortBy} sortDir={sortDir} onSort={onSortChange} />
+              <SortableTh col="dodavatel" label="Dodavatel"       sortBy={sortBy} sortDir={sortDir} onSort={onSortChange} />
+              <SortableTh col="cislo"     label="Číslo faktury"    sortBy={sortBy} sortDir={sortDir} onSort={onSortChange} />
+              <th>Datum vystavení</th>
               {provozovna === 'all' && <th>Provoz</th>}
               <SortableTh col="splatnost" label="Splatnost" sortBy={sortBy} sortDir={sortDir} onSort={onSortChange} />
               <SortableTh col="castka"    label="Částka"    sortBy={sortBy} sortDir={sortDir} onSort={onSortChange} className="text-end" />
@@ -338,9 +340,13 @@ export default function FakturyTable({
                       )}
                     </div>
                     <div className="text-muted fs-11 czk-num">
-                      {f.cislo} · VS {getVS(f)}
+                      VS {getVS(f)}
                     </div>
                   </td>
+                  {/* Číslo faktury (samostatný sloupec) */}
+                  <td className="czk-num fw-semibold">{f.cislo}</td>
+                  {/* Datum vystavení */}
+                  <td>{fDate(f.datum)}</td>
                   {provozovna === 'all' && (
                     <td>
                       <div className="d-flex align-items-center gap-2">
