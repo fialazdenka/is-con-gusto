@@ -15,6 +15,7 @@ import {
 } from '../paymentPlatformsData';
 import { BANKA_UCTY } from '../bankaData';
 import { fCzk, fDate, PROVOZOVNY } from '../data';
+import KpiBox from './KpiBox';
 
 interface Props {
   platforma: PlatformaId;
@@ -636,63 +637,6 @@ function MonthlyDetailModal({ statement, onClose }: { statement: MonthlyStatemen
   );
 }
 
-function PlatformHeader({ platforma, onOpenImport }: { platforma: PlatformaId; onOpenImport?: () => void }) {
-  const cfg = PLATFORMS[platforma];
-  const ucet = BANKA_UCTY.find((u) => u.id === cfg.ucetCilovy);
-  return (
-    <div className="card mb-3" style={{ borderTop: `3px solid ${cfg.color}` }}>
-      <div className="card-body py-3 d-flex align-items-center gap-3 flex-wrap">
-        <span className="d-flex align-items-center justify-content-center rounded-circle"
-          style={{ width: 56, height: 56, background: cfg.bg, color: cfg.color, flexShrink: 0 }}>
-          <iconify-icon icon={cfg.icon} style={{ fontSize: 32 }} />
-        </span>
-        <div className="flex-grow-1 min-width-0">
-          <div className="d-flex align-items-center gap-2 flex-wrap mb-1">
-            <h4 className="mb-0">{cfg.nazev}</h4>
-            <span className="badge bg-secondary-subtle text-secondary" style={{ fontSize: 10 }}>{cfg.ciselnyKod}</span>
-            {cfg.apiDostupne ? (
-              <span className="badge bg-success-subtle text-success" style={{ fontSize: 10 }}>
-                <iconify-icon icon="solar:bolt-bold-duotone" className="me-1" style={{ fontSize: 10 }} />
-                API automaticky
-              </span>
-            ) : (
-              <span className="badge bg-warning-subtle text-warning" style={{ fontSize: 10 }}>
-                <iconify-icon icon="solar:upload-bold-duotone" className="me-1" style={{ fontSize: 10 }} />
-                Manuální import
-              </span>
-            )}
-          </div>
-          <div className="text-muted fs-12">{cfg.popis}</div>
-          <div className="d-flex align-items-center gap-3 mt-2 flex-wrap">
-            <div className="fs-12">
-              <span className="text-muted">Účet pro příjmy:</span> <strong>{ucet?.nazev}</strong>
-            </div>
-            <div className="fs-12">
-              <span className="text-muted">Provize:</span> <strong className="czk-num">≈ {cfg.poplatekPctOdhad.toFixed(1)} %</strong>
-            </div>
-            <div className="fs-12">
-              <span className="text-muted">Zpoždění:</span> <strong>D+{cfg.parovaniZpozdeniDni}</strong>
-            </div>
-            <div className="fs-12">
-              <span className="text-muted">Provozovny:</span> <strong>{cfg.provozovny.length}</strong>
-            </div>
-          </div>
-          <div className="text-muted fs-11 mt-1">
-            Metody: {cfg.podporovaneMetody.join(' · ')}
-          </div>
-        </div>
-        {!cfg.apiDostupne && (
-          <button className="btn btn-warning btn-sm d-flex align-items-center gap-2"
-            onClick={() => onOpenImport?.()}
-            title="Manuální import dat — bez API (CSV/XLSX z portálu poskytovatele)">
-            <iconify-icon icon="solar:upload-bold-duotone" />
-            Importovat data (CSV/XLSX)
-          </button>
-        )}
-      </div>
-    </div>
-  );
-}
 
 // ──────────────────────────────────────────────────────────────
 // KPI strip — používá skutečný poplatek tam kde známe
@@ -712,41 +656,52 @@ function KpiStrip({ platforma, denni }: { platforma: PlatformaId; denni: DenniPa
   const rozdily     = denni.filter((d) => d.stav === 'rozdil' || d.stav === 'neprislo').length;
   const nepriraz    = denni.filter((d) => !d.provozovnaId).length;
 
-  type Tile = { label: string; value: string; sub?: string; icon: string; color: string };
-  const tiles: Tile[] = [
-    { label: 'Příjmy v červnu (hrubá)', value: fCzk(Math.round(prijmyTentoMesic)),
-      sub: `čistá ${fCzk(Math.round(prijmyTentoMesic - poplatkyTentoMesic))}`,
-      icon: 'solar:dollar-minimalistic-bold-duotone', color: cfg.color },
-    { label: 'Provize červen', value: `−${fCzk(Math.round(poplatkyTentoMesic))}`,
-      sub: `≈ ${cfg.poplatekPctOdhad} % (skutečné po spárování)`,
-      icon: 'solar:tag-price-bold-duotone', color: '#dc3545' },
-    { label: 'Marže (po provizi)', value: `${marzePct.toFixed(1)} %`,
-      sub: 'čistý příjem / hrubá tržba',
-      icon: 'solar:graph-up-bold-duotone', color: '#198754' },
-    { label: 'K vyřešení', value: String(rozdily + nesparovane + nepriraz),
-      sub: `${nesparovane} čeká · ${rozdily} rozdíl · ${nepriraz} bez provoz`,
-      icon: 'solar:danger-triangle-bold-duotone', color: rozdily + nesparovane + nepriraz > 0 ? '#dc3545' : '#9097a7' },
-  ];
+  const cisty       = prijmyTentoMesic - poplatkyTentoMesic;
+  const provizePct  = prijmyTentoMesic > 0 ? (poplatkyTentoMesic / prijmyTentoMesic) * 100 : 0;
+  const kVyreseni   = rozdily + nesparovane + nepriraz;
 
   return (
     <div className="row g-2 mb-3">
-      {tiles.map((t) => (
-        <div key={t.label} className="col-6 col-md-3">
-          <div className="card h-100" style={{ borderTop: `3px solid ${t.color}` }}>
-            <div className="card-body py-3 d-flex align-items-center gap-3">
-              <span className="d-flex align-items-center justify-content-center rounded-circle"
-                style={{ width: 40, height: 40, background: `${t.color}1a`, color: t.color, flexShrink: 0 }}>
-                <iconify-icon icon={t.icon} style={{ fontSize: 22 }} />
-              </span>
-              <div className="min-width-0">
-                <div className="text-muted fs-12 text-uppercase fw-semibold" style={{ letterSpacing: '0.3px' }}>{t.label}</div>
-                <div className="fw-bold czk-num text-truncate" style={{ fontSize: 16, lineHeight: 1.2 }}>{t.value}</div>
-                {t.sub && <div className="text-muted fs-11">{t.sub}</div>}
-              </div>
-            </div>
-          </div>
-        </div>
-      ))}
+      <div className="col-6 col-md-3">
+        <KpiBox
+          label="Příjmy v červnu"
+          value={fCzk(Math.round(prijmyTentoMesic))}
+          icon="solar:dollar-minimalistic-bold-duotone"
+          iconColor={cfg.color}
+          sub="hrubá tržba (POS)"
+          footer={{ label: 'Čistá po provizi', value: fCzk(Math.round(cisty)) }}
+        />
+      </div>
+      <div className="col-6 col-md-3">
+        <KpiBox
+          label="Provize červen"
+          value={`−${fCzk(Math.round(poplatkyTentoMesic))}`}
+          icon="solar:tag-price-bold-duotone"
+          iconColor="#dc3545"
+          sub={`≈ ${cfg.poplatekPctOdhad} % odhad`}
+          footer={{ label: 'Z hrubé tržby', value: `${provizePct.toFixed(1)} %` }}
+        />
+      </div>
+      <div className="col-6 col-md-3">
+        <KpiBox
+          label="Marže (po provizi)"
+          value={`${marzePct.toFixed(1)} %`}
+          icon="solar:graph-up-bold-duotone"
+          iconColor="#198754"
+          sub="čistý příjem / hrubá tržba"
+        />
+      </div>
+      <div className="col-6 col-md-3">
+        <KpiBox
+          label="K vyřešení"
+          value={String(kVyreseni)}
+          icon="solar:danger-triangle-bold-duotone"
+          iconColor={kVyreseni > 0 ? '#dc3545' : '#9097a7'}
+          sub={`${nesparovane} čeká · ${rozdily} rozdíl · ${nepriraz} bez provoz`}
+          alert={kVyreseni > 0}
+          badge={kVyreseni > 0 ? { text: '', tone: 'danger', icon: 'solar:danger-triangle-bold-duotone' } : undefined}
+        />
+      </div>
     </div>
   );
 }
@@ -851,7 +806,7 @@ function VenueBreakdown({ platforma, denni, activeProv, onSetProv }: {
 // ──────────────────────────────────────────────────────────────
 // Tabulka denního párování
 // ──────────────────────────────────────────────────────────────
-function DailyTable({ platforma, data, search, setSearch, stavFilter, setStavFilter, provFilter, onAssignProvozovna }: {
+function DailyTable({ platforma, data, search, setSearch, stavFilter, setStavFilter, provFilter, datumOd, setDatumOd, datumDo, setDatumDo, reconciled, onOpenImport, onAssignProvozovna }: {
   platforma: PlatformaId;
   data: DenniParovani[];
   search: string;
@@ -859,9 +814,14 @@ function DailyTable({ platforma, data, search, setSearch, stavFilter, setStavFil
   stavFilter: DenniParovani['stav'] | 'all';
   setStavFilter: (s: DenniParovani['stav'] | 'all') => void;
   provFilter: string;
+  datumOd: string;
+  setDatumOd: (s: string) => void;
+  datumDo: string;
+  setDatumDo: (s: string) => void;
+  reconciled: boolean;
+  onOpenImport?: () => void;
   onAssignProvozovna: (recordId: string, provId: string) => void;
 }) {
-  const cfg = PLATFORMS[platforma];
   return (
     <div className="card mb-3">
       <div className="card-header">
@@ -870,15 +830,13 @@ function DailyTable({ platforma, data, search, setSearch, stavFilter, setStavFil
             Denní párování (POS vs. příchozí D+1)
             <small className="text-muted fw-normal ms-2 fs-13">{data.length} záznamů</small>
           </h5>
-        </div>
-        {/* Důležitá UX nápověda na výpočet poplatku */}
-        <div className="alert alert-info py-2 mb-0 mt-2 fs-12 d-flex align-items-start gap-2">
-          <iconify-icon icon="solar:info-circle-bold-duotone" style={{ fontSize: 16, marginTop: 2 }} />
-          <span>
-            <strong>Příchozí platba je vždy už ponížená o provizi.</strong> Skutečnou provizi proto dopočítáváme zpětně:
-            <span className="czk-num"> Provize skutečná = Tržba POS − Příchozí</span>.
-            <span className="d-block mt-1">Sloupec <strong>Δ odhadu</strong> ukazuje rozdíl mezi naším predikčním odhadem ({cfg.poplatekPctOdhad} %) a skutečností — slouží jako kontrola s měsíční fakturou.</span>
-          </span>
+          {onOpenImport && (
+            <button className="btn btn-primary btn-sm ms-auto d-flex align-items-center gap-2" onClick={onOpenImport}
+              title="Nahrát přehled / výpis od poskytovatele a zkontrolovat s bankou">
+              <iconify-icon icon="solar:upload-bold-duotone" />
+              Nahrát přehled
+            </button>
+          )}
         </div>
         <div className="d-flex align-items-center gap-2 flex-wrap mt-2">
           <div className="position-relative" style={{ width: 220 }}>
@@ -895,6 +853,21 @@ function DailyTable({ platforma, data, search, setSearch, stavFilter, setStavFil
               <option key={k} value={k}>{v.label}</option>
             ))}
           </select>
+          {/* Filtr období od–do */}
+          <div className="d-flex align-items-center gap-1">
+            <span className="text-muted fs-12">Od</span>
+            <input type="date" className="form-control form-control-sm" style={{ width: 'auto' }}
+              value={datumOd} onChange={(e) => setDatumOd(e.target.value)} />
+            <span className="text-muted fs-12">Do</span>
+            <input type="date" className="form-control form-control-sm" style={{ width: 'auto' }}
+              value={datumDo} onChange={(e) => setDatumDo(e.target.value)} />
+            {(datumOd || datumDo) && (
+              <button className="btn btn-link btn-sm p-0 text-muted" title="Vyčistit období"
+                onClick={() => { setDatumOd(''); setDatumDo(''); }}>
+                <iconify-icon icon="solar:close-circle-bold-duotone" style={{ fontSize: 16 }} />
+              </button>
+            )}
+          </div>
           {provFilter && (
             <span className="badge bg-info-subtle text-info" style={{ fontSize: 11 }}>
               <iconify-icon icon="solar:buildings-3-bold-duotone" className="me-1" style={{ fontSize: 11 }} />
@@ -915,12 +888,13 @@ function DailyTable({ platforma, data, search, setSearch, stavFilter, setStavFil
               <th className="text-end">Provize odhad</th>
               <th className="text-end">Δ odhadu</th>
               <th>Stav</th>
+              <th>Banka</th>
               <th>Poznámka</th>
             </tr>
           </thead>
           <tbody>
             {data.length === 0 && (
-              <tr><td colSpan={9} className="text-center py-4 text-muted">Žádné záznamy nesplňují filtr</td></tr>
+              <tr><td colSpan={10} className="text-center py-4 text-muted">Žádné záznamy nesplňují filtr</td></tr>
             )}
             {data.map((d) => {
               const sm = PAR_STAV_META[d.stav];
@@ -972,6 +946,29 @@ function DailyTable({ platforma, data, search, setSearch, stavFilter, setStavFil
                       <iconify-icon icon={sm.icon} className="me-1" style={{ fontSize: 10 }} />
                       {sm.label}
                     </span>
+                  </td>
+                  <td>
+                    {!reconciled ? (
+                      <span className="badge bg-light text-muted border" style={{ fontSize: 10 }} title="Nahrajte přehled pro ověření s bankou">
+                        <iconify-icon icon="solar:minus-circle-bold-duotone" className="me-1" style={{ fontSize: 10 }} />
+                        Nezkontrolováno
+                      </span>
+                    ) : d.stav === 'neprislo' ? (
+                      <span className="badge bg-danger-subtle text-danger" style={{ fontSize: 10 }} title="Platba nedorazila do banky">
+                        <iconify-icon icon="solar:close-circle-bold-duotone" className="me-1" style={{ fontSize: 10 }} />
+                        Nedorazilo
+                      </span>
+                    ) : d.stav === 'rozdil' ? (
+                      <span className="badge bg-warning-subtle text-warning" style={{ fontSize: 10 }} title="Dorazilo, ale částka nesedí">
+                        <iconify-icon icon="solar:danger-triangle-bold-duotone" className="me-1" style={{ fontSize: 10 }} />
+                        Nesedí
+                      </span>
+                    ) : (
+                      <span className="badge bg-success-subtle text-success" style={{ fontSize: 10 }} title="Ověřeno — platba dorazila do banky">
+                        <iconify-icon icon="solar:check-circle-bold-duotone" className="me-1" style={{ fontSize: 10 }} />
+                        V bance
+                      </span>
+                    )}
                   </td>
                   <td className="text-muted fs-11">{d.poznamka ?? ''}</td>
                 </tr>
@@ -1056,13 +1053,25 @@ export default function PaymentPlatformView({ platforma }: Props) {
   const [search, setSearch]         = useState('');
   const [stavFilter, setStavFilter] = useState<DenniParovani['stav'] | 'all'>('all');
   const [provFilter, setProvFilter] = useState<string>('');
+  const [datumOd, setDatumOd] = useState('');
+  const [datumDo, setDatumDo] = useState('');
+  // Po nahrání přehledu — doplní skutečnou provizi + ověří platby s bankou
+  const [reconciled, setReconciled] = useState(false);
   // Lokální session přiřazení provozoven (uživatel ručně dopáruje)
   const [localProvAssign, setLocalProvAssign] = useState<Record<string, string>>({});
 
   // Aplikuj lokální přiřazení
   const merged: DenniParovani[] = useMemo(() => {
-    return denni.map((d) => localProvAssign[d.id] ? { ...d, provozovnaId: localProvAssign[d.id] } : d);
-  }, [denni, localProvAssign]);
+    return denni.map((d) => {
+      let r: DenniParovani = localProvAssign[d.id] ? { ...d, provozovnaId: localProvAssign[d.id] } : d;
+      // Po nahrání přehledu se u čekajících (D+1) doplní skutečný příchozí + provize a potvrdí banka
+      if (reconciled && r.stav === 'ceka-na-D1') {
+        const prislo = r.trzbaPos - r.poplatekOdhad;
+        r = { ...r, prislo, rozdil: prislo - r.trzbaPos, stav: 'sparovane' };
+      }
+      return r;
+    });
+  }, [denni, localProvAssign, reconciled]);
 
   const filtered = useMemo(() => {
     return merged.filter((d) => {
@@ -1076,9 +1085,11 @@ export default function PaymentPlatformView({ platforma }: Props) {
         const q = search.toLowerCase();
         if (!d.datum.includes(q) && !(d.poznamka ?? '').toLowerCase().includes(q)) return false;
       }
+      if (datumOd && d.datum < datumOd) return false;
+      if (datumDo && d.datum > datumDo) return false;
       return true;
     }).sort((a, b) => b.datum.localeCompare(a.datum));
-  }, [merged, stavFilter, provFilter, search]);
+  }, [merged, stavFilter, provFilter, search, datumOd, datumDo]);
 
   // Phase 7 — toast pro import/export akce + modal s detailem měsíčního výpisu
   const [toast, setToast] = useState<string | null>(null);
@@ -1094,12 +1105,26 @@ export default function PaymentPlatformView({ platforma }: Props) {
 
   return (
     <>
-      <PlatformHeader platforma={platforma} onOpenImport={() => setImportModalOpen(true)} />
-
       {/* Phase 7 — info banner pro GoPay (nesoulad 139k Kč v řešení) */}
       {platforma === 'gopay' && <GoPayAlertBanner />}
 
       <KpiStrip platforma={platforma} denni={merged} />
+
+      {/* Výpis párovatelný s bankou — přímo pod KPI + od-do filtr + CTA „Nahrát přehled" */}
+      <DailyTable
+        platforma={platforma}
+        data={filtered}
+        search={search} setSearch={setSearch}
+        stavFilter={stavFilter} setStavFilter={setStavFilter}
+        provFilter={provFilter}
+        datumOd={datumOd} setDatumOd={setDatumOd}
+        datumDo={datumDo} setDatumDo={setDatumDo}
+        reconciled={reconciled}
+        onOpenImport={() => setImportModalOpen(true)}
+        onAssignProvozovna={(recordId, provId) => {
+          setLocalProvAssign((prev) => ({ ...prev, [recordId]: provId }));
+        }}
+      />
 
       {/* Phase 7 — měsíční výpisy pro terminál (per zápis 12. 6. 2026 — měsíční > denní) */}
       {platforma === 'terminal' && (
@@ -1119,16 +1144,6 @@ export default function PaymentPlatformView({ platforma }: Props) {
         denni={merged}
         activeProv={provFilter}
         onSetProv={setProvFilter}
-      />
-      <DailyTable
-        platforma={platforma}
-        data={filtered}
-        search={search} setSearch={setSearch}
-        stavFilter={stavFilter} setStavFilter={setStavFilter}
-        provFilter={provFilter}
-        onAssignProvozovna={(recordId, provId) => {
-          setLocalProvAssign((prev) => ({ ...prev, [recordId]: provId }));
-        }}
       />
       <MonthlyInvoicesTable platforma={platforma} />
 
@@ -1151,7 +1166,7 @@ export default function PaymentPlatformView({ platforma }: Props) {
                 <div className="modal-header">
                   <h5 className="modal-title d-flex align-items-center gap-2">
                     <iconify-icon icon="solar:upload-bold-duotone" style={{ color: '#fd7e14' }} />
-                    Manuální import dat — {PLATFORMS[platforma].nazev}
+                    Nahrát přehled — {PLATFORMS[platforma].nazev}
                   </h5>
                   <button className="btn-close" onClick={() => { setImportModalOpen(false); setImportFile(null); }} />
                 </div>
@@ -1160,8 +1175,8 @@ export default function PaymentPlatformView({ platforma }: Props) {
                     <>
                       <div className="alert alert-info py-2 fs-12">
                         <iconify-icon icon="solar:info-circle-bold-duotone" className="me-1" />
-                        <strong>{PLATFORMS[platforma].nazev}</strong> nemá API — data je nutné stáhnout ručně z portálu poskytovatele
-                        a nahrát zde jako CSV nebo XLSX.
+                        Nahrajte přehled / výpis od <strong>{PLATFORMS[platforma].nazev}</strong> (CSV nebo XLSX). Po nahrání se
+                        zobrazí náhled a porovná se s bankou — pro kontrolu párování a provizí.
                       </div>
                       <div className="border border-2 border-dashed rounded p-5 text-center" style={{ borderColor: '#dee2e6', cursor: 'pointer' }}
                         onClick={() => setImportFile('sodexo-vypis-04-2026.csv')}>
@@ -1234,7 +1249,8 @@ export default function PaymentPlatformView({ platforma }: Props) {
                       </div>
                       <div className="alert alert-success py-2 mb-0 mt-3 fs-12">
                         <iconify-icon icon="solar:check-circle-bold-duotone" className="me-1" />
-                        <strong>17 z 18 řádků</strong> rozpoznáno automaticky · <strong>1 řádek</strong> vyžaduje přiřazení provozovny (uděláte v hlavní tabulce po importu).
+                        <strong>17 z 18 řádků</strong> rozpoznáno automaticky · <strong>1 řádek</strong> vyžaduje přiřazení provozovny.
+                        <span className="d-block mt-1">Po potvrzení se do výpisu <strong>doplní skutečná provize</strong> a každá platba se <strong>ověří s bankou</strong> (že částka dorazila).</span>
                       </div>
                     </>
                   )}
@@ -1245,12 +1261,16 @@ export default function PaymentPlatformView({ platforma }: Props) {
                   </button>
                   <button className="btn btn-primary btn-sm" disabled={!importFile}
                     onClick={() => {
+                      const cekajici = denni.filter((d) => d.stav === 'ceka-na-D1').length;
+                      const neprislo = denni.filter((d) => d.stav === 'neprislo').length;
+                      const overeno = denni.length - neprislo;
+                      setReconciled(true);
                       setImportModalOpen(false);
                       setImportFile(null);
-                      setToast(`Mock: 18 řádků importováno z ${importFile}. 1 řádek čeká na přiřazení provozovny.`);
+                      setToast(`Přehled nahrán — skutečná provize doplněna u ${cekajici} plateb · ověřeno s bankou: ${overeno}/${denni.length} dorazilo${neprislo ? ` · ${neprislo} nedorazilo` : ''}.`);
                     }}>
                     <iconify-icon icon="solar:check-circle-bold-duotone" className="me-1" />
-                    Importovat 18 řádků
+                    Nahrát a ověřit s bankou
                   </button>
                 </div>
               </div>
