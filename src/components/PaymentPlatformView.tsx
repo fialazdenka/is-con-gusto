@@ -806,7 +806,7 @@ function VenueBreakdown({ platforma, denni, activeProv, onSetProv }: {
 // ──────────────────────────────────────────────────────────────
 // Tabulka denního párování
 // ──────────────────────────────────────────────────────────────
-function DailyTable({ platforma, data, search, setSearch, stavFilter, setStavFilter, provFilter, datumOd, setDatumOd, datumDo, setDatumDo, reconciled, onOpenImport, onAssignProvozovna }: {
+function DailyTable({ platforma, data, search, setSearch, stavFilter, setStavFilter, provFilter, datumOd, setDatumOd, datumDo, setDatumDo, onOpenImport, onAssignProvozovna }: {
   platforma: PlatformaId;
   data: DenniParovani[];
   search: string;
@@ -818,7 +818,6 @@ function DailyTable({ platforma, data, search, setSearch, stavFilter, setStavFil
   setDatumOd: (s: string) => void;
   datumDo: string;
   setDatumDo: (s: string) => void;
-  reconciled: boolean;
   onOpenImport?: () => void;
   onAssignProvozovna: (recordId: string, provId: string) => void;
 }) {
@@ -883,25 +882,20 @@ function DailyTable({ platforma, data, search, setSearch, stavFilter, setStavFil
               <th>Datum</th>
               <th>Provozovna</th>
               <th className="text-end">Tržba POS</th>
-              <th className="text-end">Příchozí (D+1)</th>
-              <th className="text-end">Provize skut.</th>
-              <th className="text-end">Provize odhad</th>
-              <th className="text-end">Δ odhadu</th>
-              <th>Stav</th>
-              <th>Banka</th>
+              <th className="text-end">Úhrada (banka)</th>
+              <th className="text-end">Provize</th>
+              <th>Ověření s bankou</th>
               <th>Poznámka</th>
             </tr>
           </thead>
           <tbody>
             {data.length === 0 && (
-              <tr><td colSpan={10} className="text-center py-4 text-muted">Žádné záznamy nesplňují filtr</td></tr>
+              <tr><td colSpan={7} className="text-center py-4 text-muted">Žádné záznamy nesplňují filtr</td></tr>
             )}
             {data.map((d) => {
-              const sm = PAR_STAV_META[d.stav];
               const isRozdil = d.stav === 'rozdil' || d.stav === 'neprislo';
               const isUnassigned = !d.provozovnaId;
               const skut = skutecnyPoplatek(d);
-              const odchylka = odchylkaOdhadu(d);
               return (
                 <tr key={d.id} style={
                   isRozdil ? { background: '#fdf3f4' }
@@ -931,29 +925,30 @@ function DailyTable({ platforma, data, search, setSearch, stavFilter, setStavFil
                     )}
                   </td>
                   <td className="text-end czk-num">{fCzk(d.trzbaPos)}</td>
-                  <td className="text-end czk-num">
-                    {d.prislo === null ? <span className="text-muted">—</span> : fCzk(d.prislo)}
+                  {/* Úhrada z banky — částka + detaily z úhrady (datum připsání D+1 + ref. bank. transakce) */}
+                  <td className="text-end">
+                    {d.prislo === null ? (
+                      <span className="text-muted">— čeká —</span>
+                    ) : (
+                      <>
+                        <div className="czk-num fw-semibold">{fCzk(d.prislo)}</div>
+                        <div className="text-muted" style={{ fontSize: 10 }}>
+                          {(() => {
+                            const [yy, mm, dd] = d.datum.split('-').map(Number);
+                            const s = new Date(yy, mm - 1, dd + 1);
+                            const ss = `${s.getFullYear()}-${String(s.getMonth() + 1).padStart(2, '0')}-${String(s.getDate()).padStart(2, '0')}`;
+                            return `úhrada ${fDate(ss)}`;
+                          })()}
+                          {d.parovanaSBankaTrans && <> · <span className="czk-num">{d.parovanaSBankaTrans}</span></>}
+                        </div>
+                      </>
+                    )}
                   </td>
                   <td className="text-end czk-num text-danger">
                     {skut === null ? <span className="text-muted">—</span> : `−${fCzk(Math.round(skut))}`}
                   </td>
-                  <td className="text-end czk-num text-muted">−{fCzk(d.poplatekOdhad)}</td>
-                  <td className={`text-end czk-num fw-semibold ${odchylka === null ? 'text-muted' : Math.abs(odchylka) < 5 ? 'text-success' : 'text-warning'}`}>
-                    {odchylka === null ? '—' : (odchylka > 0 ? '+' : '') + fCzk(Math.round(odchylka))}
-                  </td>
                   <td>
-                    <span className={`badge ${sm.cls}`} style={{ fontSize: 10 }}>
-                      <iconify-icon icon={sm.icon} className="me-1" style={{ fontSize: 10 }} />
-                      {sm.label}
-                    </span>
-                  </td>
-                  <td>
-                    {!reconciled ? (
-                      <span className="badge bg-light text-muted border" style={{ fontSize: 10 }} title="Nahrajte přehled pro ověření s bankou">
-                        <iconify-icon icon="solar:minus-circle-bold-duotone" className="me-1" style={{ fontSize: 10 }} />
-                        Nezkontrolováno
-                      </span>
-                    ) : d.stav === 'neprislo' ? (
+                    {d.stav === 'neprislo' ? (
                       <span className="badge bg-danger-subtle text-danger" style={{ fontSize: 10 }} title="Platba nedorazila do banky">
                         <iconify-icon icon="solar:close-circle-bold-duotone" className="me-1" style={{ fontSize: 10 }} />
                         Nedorazilo
@@ -962,6 +957,11 @@ function DailyTable({ platforma, data, search, setSearch, stavFilter, setStavFil
                       <span className="badge bg-warning-subtle text-warning" style={{ fontSize: 10 }} title="Dorazilo, ale částka nesedí">
                         <iconify-icon icon="solar:danger-triangle-bold-duotone" className="me-1" style={{ fontSize: 10 }} />
                         Nesedí
+                      </span>
+                    ) : d.stav === 'ceka-na-D1' ? (
+                      <span className="badge bg-light text-muted border" style={{ fontSize: 10 }} title="Čeká na úhradu (D+1) — nahraj přehled pro doplnění a ověření">
+                        <iconify-icon icon="solar:hourglass-bold-duotone" className="me-1" style={{ fontSize: 10 }} />
+                        Čeká na úhradu
                       </span>
                     ) : (
                       <span className="badge bg-success-subtle text-success" style={{ fontSize: 10 }} title="Ověřeno — platba dorazila do banky">
@@ -1119,7 +1119,6 @@ export default function PaymentPlatformView({ platforma }: Props) {
         provFilter={provFilter}
         datumOd={datumOd} setDatumOd={setDatumOd}
         datumDo={datumDo} setDatumDo={setDatumDo}
-        reconciled={reconciled}
         onOpenImport={() => setImportModalOpen(true)}
         onAssignProvozovna={(recordId, provId) => {
           setLocalProvAssign((prev) => ({ ...prev, [recordId]: provId }));

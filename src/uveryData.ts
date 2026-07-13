@@ -94,23 +94,40 @@ function generateUverSplatky(
   zacatekDate: string,
   vsPrefix: string,
   today = '2026-06-09',
+  pribor = false,   // PRIBOR = „obrácený" kalendář: jistina rovnoměrně, úrok jen u uhrazených (z úhrady)
 ): UverSplatkaItem[] {
   const anuita = Math.round(calcAnuita(jistinaCelkem, sazbaPct, pocetSplatek));
   const r = (sazbaPct / 100) / 12;
+  const jistinaLin = Math.round(jistinaCelkem / pocetSplatek);   // rovnoměrná jistina (PRIBOR)
   let zbytek = jistinaCelkem;
   const items: UverSplatkaItem[] = [];
   const [y, m, d] = zacatekDate.split('-').map(Number);
   for (let i = 0; i < pocetSplatek; i++) {
     const date = new Date(y, m - 1 + i, d);
     const ds = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
-    const urok = Math.round(zbytek * r);
-    const jistina = Math.min(anuita - urok, zbytek);
-    zbytek = Math.max(0, zbytek - jistina);
-    const vs = `${vsPrefix}${String(i + 1).padStart(3, '0')}`;
     let stav: UverSplatkaItem['stav'];
     if (ds < today)      stav = 'zaplacena';
     else if (ds === today) stav = 'odeslana';
     else                 stav = 'planovana';
+    const zbytekPred = zbytek;
+    let jistina: number;
+    let urok: number;
+    if (pribor) {
+      // Jistina rovnoměrně; úrok se doplní až z úhrady → jen u už zaplacených (jinak prázdný)
+      jistina = Math.min(jistinaLin, zbytek);
+      if (stav === 'zaplacena') {
+        const effR = ((sazbaPct + ((i % 5) - 2) * 0.15) / 100) / 12;   // mírná variabilita PRIBOR v čase
+        urok = Math.round(zbytekPred * effR);
+      } else {
+        urok = 0;   // dopředu neznámý
+      }
+    } else {
+      // Fix = anuita (jistina roste, úrok klesá)
+      urok = Math.round(zbytekPred * r);
+      jistina = Math.min(anuita - urok, zbytek);
+    }
+    zbytek = Math.max(0, zbytek - jistina);
+    const vs = `${vsPrefix}${String(i + 1).padStart(3, '0')}`;
     items.push({
       id: `us-${vs}`,
       cisloSplatky: i + 1,
@@ -133,7 +150,7 @@ function generateUverSplatky(
 export const UVERY: Uver[] = [
   // Hypotéka — variabilní PRIBOR + marže
   (() => {
-    const splatky = generateUverSplatky(8_500_000, 5.8, 240, '2024-01-15', '20240101');
+    const splatky = generateUverSplatky(8_500_000, 5.8, 240, '2024-01-15', '20240101', '2026-06-09', true);
     const dosud = splatky.filter((s) => s.stav === 'zaplacena').length;
     const zbytek = splatky[dosud - 1]?.zustatekJistinyPo ?? 8_500_000;
     return {
@@ -197,7 +214,7 @@ export const UVERY: Uver[] = [
 
   // Investiční úvěr — PRIBOR — má jednu splátku s manuální kontrolou (částečná úhrada)
   (() => {
-    const splatky = generateUverSplatky(1_500_000, 6.8, 60, '2025-09-15', '20250915');
+    const splatky = generateUverSplatky(1_500_000, 6.8, 60, '2025-09-15', '20250915', '2026-06-09', true);
     const dosud = splatky.filter((s) => s.stav === 'zaplacena').length;
     // Splátka #7 — částečně uhrazena
     if (splatky[6]) {
@@ -274,4 +291,19 @@ export function getMesicniSplatkaVse(): number {
 }
 export function maNestandardniSplatku(u: Uver): boolean {
   return u.splatky.some((s) => s.manualReview || s.stav === 'po-splatnosti' || s.stav === 'castecne-uhrazena');
+}
+
+/** Dopočítané roční % úroku dané splátky (jen když je úrok znám z úhrady); jinak null. */
+export function urokPct(s: UverSplatkaItem): number | null {
+  if (!s.urok || s.urok <= 0) return null;
+  const zbytekPred = s.zustatekJistinyPo + s.jistina;   // zůstatek jistiny před splátkou
+  if (zbytekPred <= 0) return null;
+  return (s.urok / zbytekPred) * 12 * 100;
+}
+
+/** Průměrná úroková sazba úvěru z uhrazených splátek (jen ty se známým úrokem). */
+export function prumernaSazba(u: Uver): number | null {
+  const rates = u.splatky.map(urokPct).filter((r): r is number => r !== null);
+  if (rates.length === 0) return null;
+  return rates.reduce((s, r) => s + r, 0) / rates.length;
 }
