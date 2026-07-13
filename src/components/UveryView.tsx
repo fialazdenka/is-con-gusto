@@ -25,6 +25,7 @@ import {
 } from '../uveryData';
 import { BANKA_UCTY } from '../bankaData';
 import { fCzk, fDate, PROVOZOVNY } from '../data';
+import KpiBox from './KpiBox';
 
 interface Props {
   state: AppState;
@@ -35,45 +36,63 @@ interface Props {
 // KPI strip
 // ──────────────────────────────────────────────────────────────
 function KpiStrip({ data, onClickNestandardni }: { data: Uver[]; onClickNestandardni: () => void }) {
-  const aktivni       = data.filter((u) => u.stav === 'aktivni').length;
-  const celkovyDluh   = data.filter((u) => u.stav === 'aktivni').reduce((s, u) => s + u.jistinaZbytek, 0);
-  const mesicniZatez  = data.filter((u) => u.stav === 'aktivni').reduce((s, u) => s + u.splatkaMesicni, 0);
+  const aktivniList   = data.filter((u) => u.stav === 'aktivni');
+  const aktivni       = aktivniList.length;
+  const priborCnt     = aktivniList.filter((u) => u.sazbaTyp === 'pribor').length;
+  const fixCnt        = aktivniList.filter((u) => u.sazbaTyp === 'fix').length;
+  const celkovyDluh   = aktivniList.reduce((s, u) => s + u.jistinaZbytek, 0);
+  const puvodniObjem  = aktivniList.reduce((s, u) => s + u.jistinaPocatecni, 0);
+  const splacenoPct   = puvodniObjem > 0 ? (1 - celkovyDluh / puvodniObjem) * 100 : 0;
+  const mesicniZatez  = aktivniList.reduce((s, u) => s + u.splatkaMesicni, 0);
+  const pristi        = aktivniList.map((u) => u.pristiSplatnost).sort()[0];
   const nestandardni  = data.filter(maNestandardniSplatku).length;
-
-  type Tile = { label: string; value: string; icon: string; color: string; onClick?: () => void; alert?: boolean };
-  const tiles: Tile[] = [
-    { label: 'Aktivní úvěry',     value: String(aktivni),              icon: 'solar:hand-money-bold-duotone',          color: '#198754' },
-    { label: 'Zbývající dluh',    value: fCzk(Math.round(celkovyDluh)), icon: 'solar:dollar-minimalistic-bold-duotone', color: '#0d6efd' },
-    { label: 'Měsíční splátky',   value: fCzk(Math.round(mesicniZatez)), icon: 'solar:calendar-bold-duotone',           color: '#fd7e14' },
-    { label: 'Ke kontrole',       value: String(nestandardni),         icon: 'solar:danger-triangle-bold-duotone',     color: '#dc3545',
-      onClick: nestandardni > 0 ? onClickNestandardni : undefined,
-      alert: nestandardni > 0 },
-  ];
 
   return (
     <div className="row g-2 mb-3">
-      {tiles.map((t) => (
-        <div key={t.label} className="col-6 col-md-3">
-          <div className={`card h-100 ${t.onClick ? 'wq-card' : ''}`}
-               style={{
-                 borderTop: `3px solid ${t.color}`,
-                 cursor: t.onClick ? 'pointer' : 'default',
-                 background: t.alert ? '#fdf3f4' : undefined,
-               }}
-               onClick={t.onClick}>
-            <div className="card-body py-3 d-flex align-items-center gap-3">
-              <span className="d-flex align-items-center justify-content-center rounded-circle"
-                style={{ width: 40, height: 40, background: `${t.color}1a`, color: t.color, flexShrink: 0 }}>
-                <iconify-icon icon={t.icon} style={{ fontSize: 22 }} />
-              </span>
-              <div className="min-width-0">
-                <div className="text-muted fs-12 text-uppercase fw-semibold" style={{ letterSpacing: '0.3px' }}>{t.label}</div>
-                <div className="fw-bold czk-num text-truncate" style={{ fontSize: 18, lineHeight: 1.2 }}>{t.value}</div>
-              </div>
-            </div>
-          </div>
-        </div>
-      ))}
+      <div className="col-6 col-md-3">
+        <KpiBox
+          label="Aktivní úvěry"
+          value={String(aktivni)}
+          icon="solar:hand-money-bold-duotone"
+          iconColor="#198754"
+          sub={aktivni > 0 ? `${priborCnt} PRIBOR · ${fixCnt} fix` : 'žádné aktivní'}
+          footer={{ label: 'Původní objem', value: fCzk(Math.round(puvodniObjem)) }}
+        />
+      </div>
+      <div className="col-6 col-md-3">
+        <KpiBox
+          label="Zbývající dluh"
+          value={fCzk(Math.round(celkovyDluh))}
+          icon="solar:dollar-minimalistic-bold-duotone"
+          iconColor="#0d6efd"
+          sub={`z ${fCzk(Math.round(puvodniObjem))} půjčeno`}
+          footer={{ label: 'Splaceno', value: `${splacenoPct.toFixed(0)} %`, color: '#16a34a' }}
+        />
+      </div>
+      <div className="col-6 col-md-3">
+        <KpiBox
+          label="Měsíční splátky"
+          value={fCzk(Math.round(mesicniZatez))}
+          icon="solar:calendar-bold-duotone"
+          iconColor="#fd7e14"
+          sub={pristi ? `příští splatnost ${fDate(pristi)}` : '—'}
+          footer={{ label: 'Ročně', value: fCzk(Math.round(mesicniZatez * 12)) }}
+        />
+      </div>
+      <div className="col-6 col-md-3">
+        <KpiBox
+          label="Ke kontrole"
+          value={String(nestandardni)}
+          icon="solar:danger-triangle-bold-duotone"
+          iconColor={nestandardni > 0 ? '#dc3545' : '#9097a7'}
+          badge={nestandardni > 0
+            ? { text: 'Vyžaduje pozornost', tone: 'danger', icon: 'solar:danger-triangle-bold-duotone' }
+            : { text: 'V pořádku', tone: 'success', icon: 'solar:check-circle-bold-duotone' }}
+          sub="nestandardní splátky"
+          alert={nestandardni > 0}
+          onClick={nestandardni > 0 ? onClickNestandardni : undefined}
+        />
+      </div>
     </div>
   );
 }
@@ -253,18 +272,7 @@ function UverSidePanel({ uver, ucty, onClose, onPredcasneSplatit, onEdit, onUpda
   onUpdateSplatka: (uverId: string, splatkaId: string, patch: Partial<UverSplatkaItem>) => void;
   onAddSplatka: (uverId: string, splatka: UverSplatkaItem) => void;
 }) {
-  // Phase 7 (zápis 18. 6. 2026) — inline edit splátek + možnost přidat mimořádnou splátku
-  const [editingSplatkaId, setEditingSplatkaId] = useState<string | null>(null);
-  const [editDraft, setEditDraft] = useState<{ datum: string; jistina: number; urok: number }>({ datum: '', jistina: 0, urok: 0 });
-  const [addSplatkaOpen, setAddSplatkaOpen] = useState(false);
-  const [newSplatka, setNewSplatka] = useState<{ datum: string; jistina: number; urok: number; poznamka: string }>({ datum: '2026-06-19', jistina: 0, urok: 0, poznamka: '' });
-
-  // Reset edit on uver change
-  useEffect(() => {
-    setEditingSplatkaId(null);
-    setAddSplatkaOpen(false);
-  }, [uver?.id]);
-
+  // Splátkový kalendář + jeho editace se přesunuly do modalu „Detail úvěru".
   if (!uver) {
     return (
       <div className="card h-100" style={{ minHeight: 320 }}>
@@ -296,7 +304,7 @@ function UverSidePanel({ uver, ucty, onClose, onPredcasneSplatit, onEdit, onUpda
       overflowY: 'auto',
     }}>
       <div className="card">
-        {/* HEADER */}
+        {/* HEADER — sticky přes globální .card-header (zůstává nahoře při scrollu panelu) */}
         <div className="card-header d-flex align-items-start gap-2">
           <div className="flex-grow-1 min-width-0">
             <div className="d-flex align-items-center gap-2 flex-wrap mb-1">
@@ -396,8 +404,8 @@ function UverSidePanel({ uver, ucty, onClose, onPredcasneSplatit, onEdit, onUpda
           <div className="d-flex flex-column gap-2">
             <button className="btn btn-primary btn-sm w-100 d-flex align-items-center justify-content-center gap-2"
               onClick={() => onEdit(uver.id)}>
-              <iconify-icon icon="solar:pen-bold-duotone" />
-              Upravit úvěr
+              <iconify-icon icon="solar:document-text-bold-duotone" />
+              Detail úvěru
             </button>
             {uver.stav === 'aktivni' && (
               <button className="btn btn-outline-info btn-sm w-100 d-flex align-items-center justify-content-center gap-2"
@@ -472,201 +480,6 @@ function UverSidePanel({ uver, ucty, onClose, onPredcasneSplatit, onEdit, onUpda
           </div>
         </div>
 
-        {/* SPLÁTKOVÝ KALENDÁŘ S ROZPADEM */}
-        <div className="p-3 border-bottom">
-          <div className="d-flex align-items-center gap-2 mb-2">
-            <iconify-icon icon="solar:calendar-bold-duotone" style={{ fontSize: 14, color: '#fd7e14' }} />
-            <div className="fw-semibold fs-12 text-uppercase" style={{ letterSpacing: '0.3px', color: '#495057' }}>
-              Splátkový kalendář ({uver.splatky.length}) — rozpad jistina + úrok
-            </div>
-            <button className="btn btn-link btn-sm p-0 ms-auto"
-              title="Přidat mimořádnou splátku (např. roční dorovnání nebo úprava plánu)"
-              onClick={() => {
-                setAddSplatkaOpen(true);
-                setNewSplatka({ datum: '2026-06-19', jistina: 0, urok: 0, poznamka: '' });
-              }}>
-              <iconify-icon icon="solar:add-circle-bold-duotone" style={{ fontSize: 16, color: '#0d6efd' }} />
-            </button>
-          </div>
-          {uver.sazbaTyp === 'pribor' && (
-            <div className="alert alert-info py-2 mb-2 fs-12">
-              <iconify-icon icon="solar:info-circle-bold-duotone" className="me-1" />
-              Sazba je vázána na PRIBOR — rozpad jistina/úrok pro budoucí splátky je predikce. Reálné hodnoty se finalizují po spárování splátky v daném měsíci.
-            </div>
-          )}
-
-          {/* Form pro mimořádnou splátku */}
-          {addSplatkaOpen && (
-            <div className="border rounded p-2 mb-2" style={{ background: '#e8f0ff' }}>
-              <div className="fw-semibold fs-12 mb-2 text-primary">
-                <iconify-icon icon="solar:add-circle-bold-duotone" className="me-1" />
-                Mimořádná splátka
-              </div>
-              <div className="row g-2">
-                <div className="col-6">
-                  <label className="form-label fs-11 fw-semibold mb-1">Datum</label>
-                  <input type="date" className="form-control form-control-sm"
-                    value={newSplatka.datum} onChange={(e) => setNewSplatka((d) => ({ ...d, datum: e.target.value }))} />
-                </div>
-                <div className="col-6">
-                  <label className="form-label fs-11 fw-semibold mb-1">Poznámka</label>
-                  <input type="text" className="form-control form-control-sm"
-                    placeholder="např. Roční dorovnání"
-                    value={newSplatka.poznamka} onChange={(e) => setNewSplatka((d) => ({ ...d, poznamka: e.target.value }))} />
-                </div>
-                <div className="col-6">
-                  <label className="form-label fs-11 fw-semibold mb-1">Jistina (Kč)</label>
-                  <input type="number" className="form-control form-control-sm czk-num"
-                    value={newSplatka.jistina || ''} onChange={(e) => setNewSplatka((d) => ({ ...d, jistina: parseFloat(e.target.value || '0') }))} />
-                </div>
-                <div className="col-6">
-                  <label className="form-label fs-11 fw-semibold mb-1">Úrok (Kč)</label>
-                  <input type="number" className="form-control form-control-sm czk-num"
-                    value={newSplatka.urok || ''} onChange={(e) => setNewSplatka((d) => ({ ...d, urok: parseFloat(e.target.value || '0') }))} />
-                </div>
-              </div>
-              <div className="d-flex gap-1 mt-2">
-                <button className="btn btn-primary btn-sm flex-grow-1"
-                  disabled={!newSplatka.datum || (newSplatka.jistina + newSplatka.urok) <= 0}
-                  onClick={() => {
-                    const lastZbytek = uver.splatky[uver.splatky.length - 1]?.zustatekJistinyPo ?? uver.jistinaZbytek;
-                    const item: UverSplatkaItem = {
-                      id: `us-extra-${Date.now()}`,
-                      cisloSplatky: uver.splatky.length + 1,
-                      datum: newSplatka.datum,
-                      jistina: newSplatka.jistina,
-                      urok: newSplatka.urok,
-                      celkem: newSplatka.jistina + newSplatka.urok,
-                      zustatekJistinyPo: Math.max(0, lastZbytek - newSplatka.jistina),
-                      vs: `EXTRA-${Date.now().toString().slice(-6)}`,
-                      stav: 'planovana',
-                      poznamka: newSplatka.poznamka || 'Mimořádná splátka',
-                    };
-                    onAddSplatka(uver.id, item);
-                    setAddSplatkaOpen(false);
-                  }}>
-                  Přidat
-                </button>
-                <button className="btn btn-light btn-sm" onClick={() => setAddSplatkaOpen(false)}>Zrušit</button>
-              </div>
-            </div>
-          )}
-
-          <div className="table-responsive" style={{ maxHeight: 360, overflowY: 'auto' }}>
-            <table className="table table-sm mb-0" style={{ fontSize: 11 }}>
-              <thead className="table-light" style={{ position: 'sticky', top: 0, zIndex: 1 }}>
-                <tr>
-                  <th>#</th>
-                  <th>Datum</th>
-                  <th className="text-end">Jistina</th>
-                  <th className="text-end">Úrok</th>
-                  <th className="text-end">Celkem</th>
-                  <th className="text-end">Zbývá</th>
-                  <th>Stav</th>
-                </tr>
-              </thead>
-              <tbody>
-                {uver.splatky.map((s) => {
-                  const sm = UVER_SPLATKA_STAV_META[s.stav];
-                  const needsReview = s.manualReview;
-                  const isPribor = uver.sazbaTyp === 'pribor';
-                  const isPredicted = isPribor && (s.stav === 'planovana');
-                  const isEditing = editingSplatkaId === s.id;
-                  const isPaid = s.stav === 'zaplacena';
-                  return (
-                    <Fragment key={s.id}>
-                      <tr
-                        style={{
-                          ...(needsReview ? { background: '#fdf3f4' } : {}),
-                          cursor: isPaid ? 'default' : 'pointer',
-                        }}
-                        onClick={() => {
-                          if (isPaid || isEditing) return;
-                          setEditingSplatkaId(s.id);
-                          setEditDraft({ datum: s.datum, jistina: s.jistina, urok: s.urok });
-                        }}
-                        title={isPaid ? 'Splátka už byla zaplacena, nelze upravit' : 'Klikni pro úpravu (datum / jistina / úrok)'}>
-                        <td>{s.cisloSplatky}</td>
-                        <td className="czk-num">{fDate(s.datum)}</td>
-                        <td className={`text-end czk-num ${isPredicted ? 'text-muted fst-italic' : ''}`}>{fCzk(Math.round(s.jistina))}</td>
-                        <td className={`text-end czk-num ${isPredicted ? 'text-muted fst-italic' : ''}`}>{fCzk(Math.round(s.urok))}</td>
-                        <td className="text-end czk-num fw-semibold">{fCzk(Math.round(s.celkem))}</td>
-                        <td className="text-end czk-num text-muted">{fCzk(Math.round(s.zustatekJistinyPo))}</td>
-                        <td>
-                          <span className={`badge ${sm.cls}`} style={{ fontSize: 9 }}>
-                            {sm.label}
-                          </span>
-                          {needsReview && (
-                            <span className="badge bg-danger ms-1" style={{ fontSize: 8 }} title="Vyžaduje manuální kontrolu">!</span>
-                          )}
-                        </td>
-                      </tr>
-                      {isEditing && (
-                        <tr style={{ background: '#f0f7ff' }}>
-                          <td colSpan={7} className="p-2">
-                            <div className="text-uppercase fs-11 fw-semibold mb-2" style={{ letterSpacing: '0.3px', color: '#0d6efd' }}>
-                              Upravit splátku #{s.cisloSplatky}
-                            </div>
-                            <div className="row g-2 mb-2">
-                              <div className="col-md-4">
-                                <label className="form-label fs-11 fw-semibold mb-1">Datum</label>
-                                <input type="date" className="form-control form-control-sm"
-                                  value={editDraft.datum} onChange={(e) => setEditDraft((d) => ({ ...d, datum: e.target.value }))} />
-                              </div>
-                              <div className="col-md-4">
-                                <label className="form-label fs-11 fw-semibold mb-1">Jistina (Kč)</label>
-                                <input type="number" className="form-control form-control-sm czk-num"
-                                  value={editDraft.jistina} onChange={(e) => setEditDraft((d) => ({ ...d, jistina: parseFloat(e.target.value || '0') }))} />
-                              </div>
-                              <div className="col-md-4">
-                                <label className="form-label fs-11 fw-semibold mb-1">Úrok (Kč)</label>
-                                <input type="number" className="form-control form-control-sm czk-num"
-                                  value={editDraft.urok} onChange={(e) => setEditDraft((d) => ({ ...d, urok: parseFloat(e.target.value || '0') }))} />
-                              </div>
-                            </div>
-                            <div className="text-muted fs-11 mb-2">
-                              Celkem: <strong className="czk-num">{fCzk(Math.round(editDraft.jistina + editDraft.urok))}</strong>
-                            </div>
-                            <div className="d-flex gap-1">
-                              <button className="btn btn-primary btn-sm"
-                                onClick={() => {
-                                  onUpdateSplatka(uver.id, s.id, {
-                                    datum: editDraft.datum,
-                                    jistina: editDraft.jistina,
-                                    urok: editDraft.urok,
-                                    celkem: editDraft.jistina + editDraft.urok,
-                                  });
-                                  setEditingSplatkaId(null);
-                                }}>
-                                <iconify-icon icon="solar:check-circle-bold-duotone" className="me-1" />
-                                Uložit
-                              </button>
-                              <button className="btn btn-light btn-sm" onClick={() => setEditingSplatkaId(null)}>Zrušit</button>
-                            </div>
-                          </td>
-                        </tr>
-                      )}
-                      {needsReview && s.poznamka && (
-                        <tr style={{ background: '#fdf3f4' }}>
-                          <td />
-                          <td colSpan={6} className="fs-11 text-danger" style={{ paddingTop: 0, fontStyle: 'italic' }}>
-                            ⤷ {s.poznamka}{s.zaplaceno !== undefined && <> · Přišlo {fCzk(s.zaplaceno)} z {fCzk(Math.round(s.celkem))}</>}
-                          </td>
-                        </tr>
-                      )}
-                    </Fragment>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-          <div className="text-muted fs-11 mt-2">
-            <iconify-icon icon="solar:info-circle-bold-duotone" className="me-1" />
-            Klikni na řádek (kromě zaplacených) pro úpravu výše splátky — typicky poslední splátka nebo úprava plánu.
-            Tlačítkem <iconify-icon icon="solar:add-circle-bold-duotone" /> nahoře přidáš mimořádnou splátku.
-          </div>
-        </div>
-
         {/* DOKUMENTY */}
         <div className="p-3">
           <div className="d-flex align-items-center gap-2 mb-2">
@@ -702,6 +515,37 @@ function UverSidePanel({ uver, ucty, onClose, onPredcasneSplatit, onEdit, onUpda
 // ──────────────────────────────────────────────────────────────
 // Form modal — nový / edit úvěr (zjednodušený — bez generování kalendáře v edit)
 // ──────────────────────────────────────────────────────────────
+// Vygeneruje splátkový kalendář z parametrů úvěru (anuita / ruční výše splátky, VS variabilní/fixní)
+function buildUverSplatky(f: Uver, today: string): UverSplatkaItem[] {
+  const sazba = f.sazbaTyp === 'pribor' ? (f.priborPct ?? 0) + f.sazbaPct : f.sazbaPct;
+  const r = (sazba / 100) / 12;
+  const computedAnuita = r === 0 ? f.jistinaPocatecni / f.pocetSplatekCelkem
+    : f.jistinaPocatecni * (r * Math.pow(1 + r, f.pocetSplatekCelkem)) / (Math.pow(1 + r, f.pocetSplatekCelkem) - 1);
+  const anuita = f.splatkaMesicni > 0 ? f.splatkaMesicni : Math.round(computedAnuita);
+  const vsBase = (f.vs?.trim() || f.cisloSmlouvy.replace(/\D/g, '').slice(0, 6) || 'UV');
+  let zbytek = f.jistinaPocatecni;
+  const items: UverSplatkaItem[] = [];
+  const [y, m, d] = f.zacatek.split('-').map(Number);
+  for (let i = 0; i < f.pocetSplatekCelkem; i++) {
+    const date = new Date(y, m - 1 + i, d);
+    const ds = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+    const urok = Math.round(zbytek * r);
+    const jistina = Math.min(Math.round(anuita - urok), zbytek);
+    zbytek = Math.max(0, zbytek - jistina);
+    const vs = f.vsVariabilni ? `${vsBase}${String(i + 1).padStart(3, '0')}` : vsBase;
+    items.push({
+      id: `us-${vsBase}-${i + 1}`,
+      cisloSplatky: i + 1,
+      datum: ds,
+      jistina, urok, celkem: jistina + urok,
+      zustatekJistinyPo: zbytek,
+      vs,
+      stav: ds < today ? 'zaplacena' : ds === today ? 'odeslana' : 'planovana',
+    });
+  }
+  return items;
+}
+
 function UverFormModal({ initial, ucty, onSave, onClose }: {
   initial: Uver | null;
   ucty: typeof BANKA_UCTY;
@@ -715,6 +559,8 @@ function UverFormModal({ initial, ucty, onSave, onClose }: {
     nazev: '',
     banka: '',
     cisloSmlouvy: '',
+    vs: '',
+    vsVariabilni: true,
     typ: 'provozni',
     ucetId: ucty[0]?.id ?? '',
     protiUcet: '',
@@ -736,6 +582,23 @@ function UverFormModal({ initial, ucty, onSave, onClose }: {
   const [form, setForm] = useState<Uver>(defaults);
   // Mock upload pendingDocs (smlouvy, výpisy z banky atd.)
   const [pendingDocs, setPendingDocs] = useState<NonNullable<Uver['dokumenty']>>([]);
+  // Edit režim — inline úprava jednotlivých splátek + přegenerování kalendáře
+  const [editSplatkaIdx, setEditSplatkaIdx] = useState<number | null>(null);
+  const [splatkaDraft, setSplatkaDraft] = useState<{ datum: string; jistina: number; urok: number; stav: UverSplatkaItem['stav'] }>({ datum: '', jistina: 0, urok: 0, stav: 'planovana' });
+  const applySplatkaEdit = (idx: number) => {
+    setForm((prev) => ({
+      ...prev,
+      splatky: prev.splatky.map((s, i) => i === idx
+        ? { ...s, datum: splatkaDraft.datum, jistina: splatkaDraft.jistina, urok: splatkaDraft.urok, celkem: splatkaDraft.jistina + splatkaDraft.urok, stav: splatkaDraft.stav }
+        : s),
+    }));
+    setEditSplatkaIdx(null);
+  };
+  const regenSplatky = () => {
+    if (!window.confirm('Přegenerovat splátkový kalendář z parametrů úvěru? Přepíše ruční úpravy splátek.')) return;
+    setForm((prev) => ({ ...prev, splatky: buildUverSplatky(prev, today), jistinaZbytek: prev.jistinaPocatecni }));
+    setEditSplatkaIdx(null);
+  };
 
   const handleChange = <K extends keyof Uver>(key: K, value: Uver[K]) => {
     setForm((prev) => ({ ...prev, [key]: value }));
@@ -749,37 +612,13 @@ function UverFormModal({ initial, ucty, onSave, onClose }: {
 
   const handleSubmit = () => {
     let toSave = form;
-    // Pokud nový — vygenerujeme splátky
+    // Nový úvěr → vygeneruj kalendář z parametrů. V editaci se kalendář nepřepisuje
+    // automaticky (chrání ruční úpravy splátek dole) — k dispozici je tlačítko „Přegenerovat".
     if (!isEdit) {
-      // Re-import pro generaci nelze (function v data file) — použijeme inline naivně
-      // Pro mock stačí prázdné splátky (uživatel si je vygeneruje?). Pro produkční app by se na backendu.
-      // Zde generujeme zjednodušeně:
-      const r = (form.sazbaPct / 100) / 12;
-      const anuita = r === 0 ? form.jistinaPocatecni / form.pocetSplatekCelkem
-        : form.jistinaPocatecni * (r * Math.pow(1 + r, form.pocetSplatekCelkem)) / (Math.pow(1 + r, form.pocetSplatekCelkem) - 1);
-      let zbytek = form.jistinaPocatecni;
-      const items: UverSplatkaItem[] = [];
-      const [y, m, d] = form.zacatek.split('-').map(Number);
-      for (let i = 0; i < form.pocetSplatekCelkem; i++) {
-        const date = new Date(y, m - 1 + i, d);
-        const ds = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
-        const urok = Math.round(zbytek * r);
-        const jistina = Math.min(Math.round(anuita - urok), zbytek);
-        zbytek = Math.max(0, zbytek - jistina);
-        const vs = `${form.cisloSmlouvy.replace(/\D/g, '').slice(0, 6) || 'UV'}${String(i + 1).padStart(3, '0')}`;
-        items.push({
-          id: `us-${vs}`,
-          cisloSplatky: i + 1,
-          datum: ds,
-          jistina, urok, celkem: jistina + urok,
-          zustatekJistinyPo: zbytek,
-          vs,
-          stav: ds < today ? 'zaplacena' : ds === today ? 'odeslana' : 'planovana',
-        });
-      }
+      const items = buildUverSplatky(form, today);
       toSave = {
         ...form,
-        splatkaMesicni: Math.round(anuita),
+        splatkaMesicni: form.splatkaMesicni > 0 ? form.splatkaMesicni : (items[0]?.celkem ?? 0),
         jistinaZbytek: form.jistinaPocatecni,
         splatky: items,
       };
@@ -854,6 +693,20 @@ function UverFormModal({ initial, ucty, onSave, onClose }: {
                     value={form.cisloSmlouvy} onChange={(e) => handleChange('cisloSmlouvy', e.target.value)} />
                 </div>
                 <div className="col-md-6">
+                  <label className="form-label fs-12 fw-semibold">Variabilní symbol (VS)</label>
+                  <input type="text" className="form-control form-control-sm czk-num"
+                    placeholder="např. 20240101"
+                    value={form.vs ?? ''} onChange={(e) => handleChange('vs', e.target.value)} />
+                  <div className="form-check mt-1">
+                    <input className="form-check-input" type="checkbox" id="uver-vs-variabilni"
+                      checked={form.vsVariabilni ?? true}
+                      onChange={(e) => handleChange('vsVariabilni', e.target.checked)} />
+                    <label className="form-check-label fs-11" htmlFor="uver-vs-variabilni">
+                      VS je variabilní (mění se u každé splátky)
+                    </label>
+                  </div>
+                </div>
+                <div className="col-md-6">
                   <label className="form-label fs-12 fw-semibold">Účet (z kterého splácíme) *</label>
                   <select className="form-select form-select-sm" value={form.ucetId}
                     onChange={(e) => handleChange('ucetId', e.target.value)}>
@@ -926,6 +779,23 @@ function UverFormModal({ initial, ucty, onSave, onClose }: {
                     value={form.pocetSplatekCelkem || ''}
                     onChange={(e) => handleChange('pocetSplatekCelkem', parseInt(e.target.value || '0', 10))} />
                 </div>
+                <div className="col-md-4">
+                  <label className="form-label fs-12 fw-semibold">Výše splátky (Kč)</label>
+                  <input type="number" className="form-control form-control-sm czk-num"
+                    placeholder="auto (anuita)" value={form.splatkaMesicni || ''}
+                    onChange={(e) => handleChange('splatkaMesicni', parseInt(e.target.value || '0', 10))} />
+                  {form.jistinaPocatecni > 0 && form.pocetSplatekCelkem > 0 && (() => {
+                    const sazba = form.sazbaTyp === 'pribor' ? (form.priborPct ?? 0) + form.sazbaPct : form.sazbaPct;
+                    const r = (sazba / 100) / 12;
+                    const anuita = r === 0 ? form.jistinaPocatecni / form.pocetSplatekCelkem
+                      : form.jistinaPocatecni * (r * Math.pow(1 + r, form.pocetSplatekCelkem)) / (Math.pow(1 + r, form.pocetSplatekCelkem) - 1);
+                    return (
+                      <div className="text-muted fs-11 mt-1">
+                        Auto anuita ≈ <strong className="czk-num">{fCzk(Math.round(anuita))}</strong> — nech prázdné pro automatický výpočet
+                      </div>
+                    );
+                  })()}
+                </div>
 
                 {/* Trvání */}
                 <div className="col-12 mt-2">
@@ -955,13 +825,119 @@ function UverFormModal({ initial, ucty, onSave, onClose }: {
                     value={form.poznamka ?? ''} onChange={(e) => handleChange('poznamka', e.target.value)} />
                 </div>
 
+                {/* EDIT režim — editovatelný splátkový kalendář */}
+                {isEdit && (
+                  <>
+                    <div className="col-12 mt-2">
+                      <div className="text-muted fs-11 fw-semibold text-uppercase d-flex align-items-center gap-2"
+                        style={{ letterSpacing: '0.3px', borderBottom: '1px solid #e9ecef', paddingBottom: 4 }}>
+                        <iconify-icon icon="solar:calendar-bold-duotone" />
+                        <span>Splátkový kalendář ({form.splatky.length})</span>
+                        <button type="button" className="btn btn-outline-secondary btn-sm ms-auto py-0 px-2" style={{ fontSize: 11 }}
+                          onClick={regenSplatky} title="Vygenerovat znovu z výše úvěru / sazby / počtu splátek / výše splátky">
+                          <iconify-icon icon="solar:refresh-bold-duotone" className="me-1" />
+                          Přegenerovat
+                        </button>
+                      </div>
+                    </div>
+                    <div className="col-12">
+                      <div className="border rounded" style={{ maxHeight: 320, overflowY: 'auto', background: '#fafbfc' }}>
+                        <table className="table table-sm table-hover mb-0" style={{ fontSize: 12 }}>
+                          <thead className="table-light" style={{ position: 'sticky', top: 0, zIndex: 1 }}>
+                            <tr>
+                              <th style={{ width: 40 }}>#</th>
+                              <th>Datum</th>
+                              <th>Stav</th>
+                              <th className="text-end">Jistina</th>
+                              <th className="text-end">Úrok</th>
+                              <th className="text-end">Celkem</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {form.splatky.length === 0 && (
+                              <tr><td colSpan={6} className="text-center text-muted py-3">Zatím žádné splátky — klikni „Přegenerovat"</td></tr>
+                            )}
+                            {form.splatky.map((s, idx) => {
+                              const sm = UVER_SPLATKA_STAV_META[s.stav];
+                              const isEditing = editSplatkaIdx === idx;
+                              return (
+                                <Fragment key={s.id}>
+                                  <tr style={{ cursor: 'pointer' }}
+                                    onClick={() => { if (isEditing) return; setEditSplatkaIdx(idx); setSplatkaDraft({ datum: s.datum, jistina: s.jistina, urok: s.urok, stav: s.stav }); }}
+                                    title="Klikni pro úpravu splátky">
+                                    <td>{s.cisloSplatky}</td>
+                                    <td className="czk-num">{fDate(s.datum)}</td>
+                                    <td><span className={`badge ${sm.cls}`} style={{ fontSize: 9 }}>{sm.label}</span></td>
+                                    <td className="text-end czk-num">{fCzk(Math.round(s.jistina))}</td>
+                                    <td className="text-end czk-num">{fCzk(Math.round(s.urok))}</td>
+                                    <td className="text-end czk-num fw-semibold">{fCzk(Math.round(s.celkem))}</td>
+                                  </tr>
+                                  {isEditing && (
+                                    <tr style={{ background: '#f0f7ff' }}>
+                                      <td colSpan={6} className="p-2">
+                                        <div className="text-uppercase fs-11 fw-semibold mb-2" style={{ letterSpacing: '0.3px', color: '#0d6efd' }}>
+                                          Upravit splátku #{s.cisloSplatky}
+                                        </div>
+                                        <div className="row g-2 mb-2">
+                                          <div className="col-md-3">
+                                            <label className="form-label fs-11 fw-semibold mb-1">Datum</label>
+                                            <input type="date" className="form-control form-control-sm" value={splatkaDraft.datum}
+                                              onChange={(e) => setSplatkaDraft((d) => ({ ...d, datum: e.target.value }))} />
+                                          </div>
+                                          <div className="col-md-3">
+                                            <label className="form-label fs-11 fw-semibold mb-1">Jistina (Kč)</label>
+                                            <input type="number" className="form-control form-control-sm czk-num" value={splatkaDraft.jistina}
+                                              onChange={(e) => setSplatkaDraft((d) => ({ ...d, jistina: parseFloat(e.target.value || '0') }))} />
+                                          </div>
+                                          <div className="col-md-3">
+                                            <label className="form-label fs-11 fw-semibold mb-1">Úrok (Kč)</label>
+                                            <input type="number" className="form-control form-control-sm czk-num" value={splatkaDraft.urok}
+                                              onChange={(e) => setSplatkaDraft((d) => ({ ...d, urok: parseFloat(e.target.value || '0') }))} />
+                                          </div>
+                                          <div className="col-md-3">
+                                            <label className="form-label fs-11 fw-semibold mb-1">Stav</label>
+                                            <select className="form-select form-select-sm" value={splatkaDraft.stav}
+                                              onChange={(e) => setSplatkaDraft((d) => ({ ...d, stav: e.target.value as UverSplatkaItem['stav'] }))}>
+                                              <option value="planovana">Plánovaná</option>
+                                              <option value="odeslana">Odeslaná</option>
+                                              <option value="zaplacena">Zaplacená</option>
+                                              <option value="po-splatnosti">Po splatnosti</option>
+                                              <option value="castecne-uhrazena">Částečně</option>
+                                            </select>
+                                          </div>
+                                        </div>
+                                        <div className="text-muted fs-11 mb-2">Celkem: <strong className="czk-num">{fCzk(Math.round(splatkaDraft.jistina + splatkaDraft.urok))}</strong></div>
+                                        <div className="d-flex gap-1">
+                                          <button type="button" className="btn btn-primary btn-sm" onClick={() => applySplatkaEdit(idx)}>
+                                            <iconify-icon icon="solar:check-circle-bold-duotone" className="me-1" />Uložit splátku
+                                          </button>
+                                          <button type="button" className="btn btn-light btn-sm" onClick={() => setEditSplatkaIdx(null)}>Zrušit</button>
+                                        </div>
+                                      </td>
+                                    </tr>
+                                  )}
+                                </Fragment>
+                              );
+                            })}
+                          </tbody>
+                        </table>
+                      </div>
+                      <div className="text-muted fs-11 mt-1">
+                        <iconify-icon icon="solar:info-circle-bold-duotone" className="me-1" />
+                        Klikni na řádek pro úpravu (datum / jistina / úrok / stav zaplaceno). Změny se uloží po „Uložit úvěr".
+                      </div>
+                    </div>
+                  </>
+                )}
+
                 {!isEdit && form.jistinaPocatecni > 0 && form.pocetSplatekCelkem > 0 && form.zacatek && (() => {
-                  // Preview splátek — anuitní výpočet
+                  // Preview splátek — anuitní výpočet (ruční výše splátky přebíjí)
                   const sazba = form.sazbaTyp === 'pribor' ? (form.priborPct ?? 0) + form.sazbaPct : form.sazbaPct;
                   const r = (sazba / 100) / 12;
-                  const anuita = r === 0
+                  const computedAnuita = r === 0
                     ? form.jistinaPocatecni / form.pocetSplatekCelkem
                     : form.jistinaPocatecni * (r * Math.pow(1 + r, form.pocetSplatekCelkem)) / (Math.pow(1 + r, form.pocetSplatekCelkem) - 1);
+                  const anuita = form.splatkaMesicni > 0 ? form.splatkaMesicni : Math.round(computedAnuita);
                   let zbytek = form.jistinaPocatecni;
                   const preview: { c: number; datum: string; jistina: number; urok: number; celkem: number; zbytek: number }[] = [];
                   const [y, m, d] = form.zacatek.split('-').map(Number);
@@ -981,7 +957,7 @@ function UverFormModal({ initial, ucty, onSave, onClose }: {
                           <iconify-icon icon="solar:calendar-bold-duotone" />
                           <span>Náhled splátkového kalendáře</span>
                           <span className="text-muted fw-normal ms-auto" style={{ fontSize: 11 }}>
-                            Anuitní splátka ≈ <strong className="czk-num">{fCzk(Math.round(anuita))}</strong> / měs
+                            Měsíční splátka ≈ <strong className="czk-num">{fCzk(Math.round(anuita))}</strong> / měs
                           </span>
                         </div>
                       </div>

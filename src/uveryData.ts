@@ -38,6 +38,8 @@ export interface Uver {
   nazev: string;                 // „Hypotéka provozovna Brno", „Provozní úvěr 2025"
   banka: string;                 // poskytovatel
   cisloSmlouvy: string;
+  vs?: string;                   // základ variabilního symbolu pro splátky
+  vsVariabilni?: boolean;        // VS se mění u každé splátky (true) / stejný pro všechny (false)
   typ: UverTyp;
   // Z účtu, kam přicházejí splátky/odkud odchází
   ucetId: string;                // BANKA_UCTY id
