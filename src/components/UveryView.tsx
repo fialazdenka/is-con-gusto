@@ -86,8 +86,8 @@ function KpiStrip({ data, onClickNestandardni }: { data: Uver[]; onClickNestanda
           icon="solar:danger-triangle-bold-duotone"
           iconColor={nestandardni > 0 ? '#dc3545' : '#9097a7'}
           badge={nestandardni > 0
-            ? { text: 'Vyžaduje pozornost', tone: 'danger', icon: 'solar:danger-triangle-bold-duotone' }
-            : { text: 'V pořádku', tone: 'success', icon: 'solar:check-circle-bold-duotone' }}
+            ? { text: '', tone: 'danger', icon: 'solar:danger-triangle-bold-duotone' }
+            : { text: '', tone: 'success', icon: 'solar:check-circle-bold-duotone' }}
           sub="nestandardní splátky"
           alert={nestandardni > 0}
           onClick={nestandardni > 0 ? onClickNestandardni : undefined}

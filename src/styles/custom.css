@@ -614,7 +614,7 @@ body {
   line-height: 1.15;
   color: var(--bs-secondary-color);
 }
-.kpi-box-badge { font-size: 10px !important; flex-shrink: 0; }
+.kpi-box-badge { font-size: 18px !important; flex-shrink: 0; }
 .kpi-box-value {
   font-size: 1.35rem;
   font-weight: 700;
@@ -622,6 +622,9 @@ body {
   color: var(--bs-body-color);
   margin-top: 2px;
   white-space: nowrap;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 .kpi-box-sub { font-size: 11px; color: var(--bs-secondary-color); }
 .kpi-box-divider { border-top: 1px solid var(--bs-border-color); margin: 4px 0; }

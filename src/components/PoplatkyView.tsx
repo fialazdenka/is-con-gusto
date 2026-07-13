@@ -15,6 +15,7 @@ import {
 } from '../poplatkyData';
 import { BANKA_UCTY } from '../bankaData';
 import { fCzk, fDate, PROVOZOVNY } from '../data';
+import KpiBox from './KpiBox';
 
 interface Props {
   state: AppState;
@@ -36,42 +37,56 @@ function KpiStrip({ data }: { data: Poplatek[] }) {
   const souhrny = getMesicniSouhrn(data);
   const prumer = souhrny.length > 0 ? souhrny.reduce((s, m) => s + m.celkem, 0) / souhrny.length : 0;
 
+  const sumaTotal = data.reduce((s, p) => s + p.castka, 0);
   const breakdown = getBreakdownPoTypech(data);
   const nejdrazsi = breakdown[0];
-
-  type Tile = { label: string; value: string; sub?: string; icon: string; color: string };
-  const tiles: Tile[] = [
-    { label: 'Tento měsíc (červen)', value: fCzk(Math.round(sumaTento)),
-      sub: trendPct !== 0 ? `${trendIsUp ? '↑' : '↓'} ${Math.abs(trendPct).toFixed(1)} % vs. minulý` : 'beze změny',
-      icon: 'solar:calendar-bold-duotone', color: '#0d6efd' },
-    { label: 'Průměr/měsíc',         value: fCzk(Math.round(prumer)), sub: `${souhrny.length} měsíců`,
-      icon: 'solar:graph-bold-duotone', color: '#198754' },
-    { label: 'Nejdražší typ',        value: nejdrazsi ? POPLATKY_TYP_META[nejdrazsi.typ].label : '—',
-      sub: nejdrazsi ? `${fCzk(Math.round(nejdrazsi.castka))} (${nejdrazsi.pct.toFixed(0)} %)` : '',
-      icon: 'solar:tag-price-bold-duotone', color: '#fd7e14' },
-    { label: 'Záznamů celkem',       value: String(data.length), sub: `napříč ${souhrny.length} měsíci`,
-      icon: 'solar:document-text-bold-duotone', color: '#6f42c1' },
-  ];
+  const autoCount = data.filter((p) => p.auto).length;
 
   return (
     <div className="row g-2 mb-3">
-      {tiles.map((t) => (
-        <div key={t.label} className="col-6 col-md-3">
-          <div className="card h-100" style={{ borderTop: `3px solid ${t.color}` }}>
-            <div className="card-body py-3 d-flex align-items-center gap-3">
-              <span className="d-flex align-items-center justify-content-center rounded-circle"
-                style={{ width: 40, height: 40, background: `${t.color}1a`, color: t.color, flexShrink: 0 }}>
-                <iconify-icon icon={t.icon} style={{ fontSize: 22 }} />
-              </span>
-              <div className="min-width-0">
-                <div className="text-muted fs-12 text-uppercase fw-semibold" style={{ letterSpacing: '0.3px' }}>{t.label}</div>
-                <div className="fw-bold czk-num text-truncate" style={{ fontSize: 16, lineHeight: 1.2 }}>{t.value}</div>
-                {t.sub && <div className="text-muted fs-11">{t.sub}</div>}
-              </div>
-            </div>
-          </div>
-        </div>
-      ))}
+      <div className="col-6 col-md-3">
+        <KpiBox
+          label="Tento měsíc"
+          value={fCzk(Math.round(sumaTento))}
+          icon="solar:calendar-bold-duotone"
+          iconColor="#0d6efd"
+          sub="červen 2026"
+          badge={trendPct !== 0
+            ? { text: `${trendIsUp ? '↑' : '↓'} ${Math.abs(trendPct).toFixed(0)} %`, tone: trendIsUp ? 'danger' : 'success' }
+            : undefined}
+          footer={{ label: 'Minulý měsíc', value: fCzk(Math.round(sumaMinuly)) }}
+        />
+      </div>
+      <div className="col-6 col-md-3">
+        <KpiBox
+          label="Průměr / měsíc"
+          value={fCzk(Math.round(prumer))}
+          icon="solar:graph-bold-duotone"
+          iconColor="#198754"
+          sub={`${souhrny.length} měsíců evidováno`}
+          footer={{ label: 'Celkem za období', value: fCzk(Math.round(sumaTotal)) }}
+        />
+      </div>
+      <div className="col-6 col-md-3">
+        <KpiBox
+          label="Nejdražší typ"
+          value={nejdrazsi ? POPLATKY_TYP_META[nejdrazsi.typ].label : '—'}
+          icon={nejdrazsi ? POPLATKY_TYP_META[nejdrazsi.typ].icon : 'solar:tag-price-bold-duotone'}
+          iconColor={nejdrazsi ? POPLATKY_TYP_META[nejdrazsi.typ].color : '#fd7e14'}
+          sub={nejdrazsi ? `${nejdrazsi.pct.toFixed(0)} % z celku` : ''}
+          footer={nejdrazsi ? { label: 'Za období', value: fCzk(Math.round(nejdrazsi.castka)) } : undefined}
+        />
+      </div>
+      <div className="col-6 col-md-3">
+        <KpiBox
+          label="Záznamů celkem"
+          value={String(data.length)}
+          icon="solar:document-text-bold-duotone"
+          iconColor="#6f42c1"
+          sub={`napříč ${souhrny.length} měsíci`}
+          footer={{ label: 'Auto-detekováno', value: `${autoCount} / ${data.length}` }}
+        />
+      </div>
     </div>
   );
 }
@@ -330,9 +345,16 @@ function PoplatekFormModal({ initial, ucty, onSave, onClose, onDelete }: {
             <div className="modal-body">
               <div className="row g-3">
                 <div className="col-md-6">
-                  <label className="form-label fs-12 fw-semibold">Datum *</label>
-                  <input type="date" className="form-control form-control-sm"
-                    value={form.datum} onChange={(e) => handleChange('datum', e.target.value)} />
+                  <label className="form-label fs-12 fw-semibold">Datum{isEdit ? '' : ' *'}</label>
+                  {isEdit ? (
+                    <div className="form-control form-control-sm bg-light text-muted" style={{ pointerEvents: 'none' }}
+                      title="Datum je převzaté z bankovní transakce — nelze upravit">
+                      {fDate(form.datum)}
+                    </div>
+                  ) : (
+                    <input type="date" className="form-control form-control-sm"
+                      value={form.datum} onChange={(e) => handleChange('datum', e.target.value)} />
+                  )}
                 </div>
                 <div className="col-md-6">
                   <label className="form-label fs-12 fw-semibold">Typ *</label>
@@ -350,19 +372,33 @@ function PoplatekFormModal({ initial, ucty, onSave, onClose, onDelete }: {
                     value={form.popis} onChange={(e) => handleChange('popis', e.target.value)} />
                 </div>
                 <div className="col-md-8">
-                  <label className="form-label fs-12 fw-semibold">Účet *</label>
-                  <select className="form-select form-select-sm" value={form.ucetId}
-                    onChange={(e) => handleChange('ucetId', e.target.value)}>
-                    {ucty.map((u) => (
-                      <option key={u.id} value={u.id}>{u.nazev} ({u.mena}) — {u.banka}</option>
-                    ))}
-                  </select>
+                  <label className="form-label fs-12 fw-semibold">Účet{isEdit ? '' : ' *'}</label>
+                  {isEdit ? (
+                    <div className="form-control form-control-sm bg-light text-muted" style={{ pointerEvents: 'none' }}
+                      title="Účet je převzatý z bankovní transakce — nelze upravit">
+                      {(() => { const u = ucty.find((x) => x.id === form.ucetId); return u ? `${u.nazev} (${u.mena}) — ${u.banka}` : '—'; })()}
+                    </div>
+                  ) : (
+                    <select className="form-select form-select-sm" value={form.ucetId}
+                      onChange={(e) => handleChange('ucetId', e.target.value)}>
+                      {ucty.map((u) => (
+                        <option key={u.id} value={u.id}>{u.nazev} ({u.mena}) — {u.banka}</option>
+                      ))}
+                    </select>
+                  )}
                 </div>
                 <div className="col-md-4">
-                  <label className="form-label fs-12 fw-semibold">Částka (Kč) *</label>
-                  <input type="number" inputMode="decimal" step="0.01" className="form-control form-control-sm czk-num"
-                    placeholder="0" value={form.castka || ''}
-                    onChange={(e) => handleChange('castka', parseFloat(e.target.value || '0'))} />
+                  <label className="form-label fs-12 fw-semibold">Částka (Kč){isEdit ? '' : ' *'}</label>
+                  {isEdit ? (
+                    <div className="form-control form-control-sm bg-light text-muted czk-num text-end" style={{ pointerEvents: 'none' }}
+                      title="Částka je převzatá z bankovní transakce — nelze upravit">
+                      {fCzk(form.castka)}
+                    </div>
+                  ) : (
+                    <input type="number" inputMode="decimal" step="0.01" className="form-control form-control-sm czk-num"
+                      placeholder="0" value={form.castka || ''}
+                      onChange={(e) => handleChange('castka', parseFloat(e.target.value || '0'))} />
+                  )}
                 </div>
                 <div className="col-12">
                   <label className="form-label fs-12 fw-semibold">Provozovna (nepovinné)</label>
@@ -378,20 +414,6 @@ function PoplatekFormModal({ initial, ucty, onSave, onClose, onDelete }: {
                     Pokud poplatek není konkrétně provozovny (vedení účtu firmy atp.), nech globálně.
                   </div>
                 </div>
-                <div className="col-12">
-                  <label className="form-label fs-12 fw-semibold">Poznámka</label>
-                  <input type="text" className="form-control form-control-sm"
-                    placeholder="Volitelný komentář"
-                    value={form.poznamka ?? ''} onChange={(e) => handleChange('poznamka', e.target.value)} />
-                </div>
-                {form.auto && (
-                  <div className="col-12">
-                    <div className="alert alert-info py-2 mb-0 fs-12 d-flex align-items-center gap-2">
-                      <iconify-icon icon="solar:bolt-bold-duotone" style={{ fontSize: 16 }} />
-                      <span>Tento poplatek byl <strong>auto-detekován</strong> z bankovní transakce. Při editaci se převede na manuální.</span>
-                    </div>
-                  </div>
-                )}
               </div>
             </div>
             <div className="modal-footer d-flex justify-content-between">
@@ -411,7 +433,7 @@ function PoplatekFormModal({ initial, ucty, onSave, onClose, onDelete }: {
               <div className="d-flex gap-2">
                 <button type="button" className="btn btn-light btn-sm" onClick={onClose}>Zrušit</button>
                 <button type="button" className="btn btn-primary btn-sm" disabled={!canSave}
-                  onClick={() => onSave({ ...form, auto: false })}>
+                  onClick={() => onSave(isEdit ? form : { ...form, auto: false })}>
                   <iconify-icon icon="solar:check-circle-bold-duotone" className="me-1" />
                   {isEdit ? 'Uložit změny' : 'Vytvořit poplatek'}
                 </button>

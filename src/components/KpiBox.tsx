@@ -38,8 +38,8 @@ export default function KpiBox({ label, value, badge, sub, footer, icon, iconCol
           {label}
         </span>
         {badge && (
-          <span className={`badge kpi-box-badge ${TONE_CLS[badge.tone]}`}>
-            {badge.icon && <iconify-icon icon={badge.icon} className="me-1" />}
+          <span className={`badge kpi-box-badge ${TONE_CLS[badge.tone]} d-inline-flex align-items-center`}>
+            {badge.icon && <iconify-icon icon={badge.icon} className={badge.text ? 'me-1' : ''} />}
             {badge.text}
           </span>
         )}
