@@ -390,10 +390,10 @@ Sidebar → **Finance → Banka** (`selectedSection: 'banka'`). Cílový uživat
 
 ### Datový model (`bankaData.ts`)
 - `BankaUcet` — id, nazev, iban, banka, mena (CZK/EUR), **provozovny: string[]** (může být víc — budoucnost multi-venue), ucetniBalance, dostupniProstredky, lastSync (ISO), syncStav, **stav** (BankaUcetStav), **historieBalance: number[]** (37 hodnot: 30 minulých + dnes + 6 budoucích), predikceKonecTydne, predikceKonecMesice
-- `BankaTransakce` — id, ucetId, typ (prichoz/odchozi), datum, castka (záporná=odchozí), firma, poznamka, vs?, stav, parovanaSId?, **candidates?**: SuggestedMatch[], **outsideReason?**, **outsideNote?**, **noInvoiceReason?**, **notes?**: TransNote[], **auditLog?**: TransAuditEntry[]
+- `BankaTransakce` — id, ucetId, typ (prichoz/odchozi), datum, castka (záporná=odchozí), firma, poznamka, vs?, stav, parovanaSId?, **manualReason?/manualNote?**, **rozdeleni?**: Array<{provozovnaId, castka, ucel?}> (rozpad platby na víc provozů), **delegatedTo?**: TransDelegace, **notes?**: TransNote[], **auditLog?**: TransAuditEntry[] · (legacy/nevyužité v UI: candidates?, isOverdueAtBank?, splatnost?, outsideReason?, noInvoiceReason?)
 - `BankaUcetStav` — `'ok' | 'low-balance' | 'critical-balance' | 'sync-error'`
-- `BankaTransStav` — `'paired' | 'unpaired' | 'waiting-review' | 'multiple-candidates' | 'outside-system' | 'no-invoice' | 'error'` (7 stavů)
-- `SuggestedMatch` — fakturaId, fakturaCislo, dodavatel, castka, **matchScore** (0–100 %), duvody[]
+- `BankaTransStav` — `'paired' | 'unpaired' | 'manual-paired'` (**3 stavy** — redukce zápis 4. 6. 2026)
+- `TransDelegace` — user, role, cas, note? (delegace nespárované transakce na uživatele)
 - `TransAuditEntry` — cas, kdo, akce, icon, color
 - `TransNote` — id, cas, kdo, text
 - Helpers: `getUctyForProvozovna`, `getProvozovnyForUcet`, `sumForMena`, `timeAgo`, `STAV_META` (label + labelLong + bg + color + icon), `TRANS_STAV_META` (rozšířené o `shortLabel`)
@@ -406,53 +406,60 @@ Sidebar → **Finance → Banka** (`selectedSection: 'banka'`). Cílový uživat
 1. **Smart Alerts strip** — 4 typy (critical/sync-error/low-balance/unassigned) s **klikatelnými chipy** s akcemi (Převést/Resync/Přiřadit)
 2. **Work Queue „Vyžaduje pozornost"** — operační workspace, klikatelné karty s počty problémových transakcí (viz níže)
 3. **Top summary banner** (zelený) — Zůstatek celkem CZK + EUR + trend % vs. minulý týden + počet účtů
-4. **AutoSyncBar** — interval, poslední/příští běh, ve frontě na párování, tlačítka „Živě" + „Znovu"
+4. **AutoSyncBar** — status (Aktivní) + interval 15 min + Poslední/Příští sync + CTA **„Aktualizovat banku"** (v3 s28: klik simuluje stažení dat z banky; kolonka API odebrána)
 5. **Karty účtů — 2 sekce**: Konsolidované účty (multi-venue) + Účty provozoven (single-venue + unassigned); grid `col-12 col-sm-6 col-lg-4 col-xl-3`
 6. **Tabulka transakcí** — full-width default, **zúží se na col-xl-8 jen po výběru** transakce
-7. **Side-panel detail transakce** (sticky right column) — single-scroll, viz níže
+7. **Side-panel detail transakce** (sticky right column, fixní hlavička) — záložky Párování/Detail/Komunikace/Historie, viz níže
 8. **Drawer detail účtu** (offcanvas vpravo, ~540px) — klik na celou kartu → otevře drawer
 
 ### Work Queue „Vyžaduje pozornost"
-- 6 klikatelných karet (zobrazí se jen pokud count > 0):
-  - 🟡 Nespárované (unpaired)
-  - 🟣 S více kandidáty (multiple-candidates)
-  - 🟠 Bez VS (chybí variabilní symbol)
-  - ⚪ Bez provozovny (účet bez přiřazení)
-  - 🔵 Čekající na kontrolu (waiting-review)
-  - 🔴 S chybou (error)
+- Klikatelné karty ve 2 skupinách (K vyřešení / K přehledu), zobrazí se jen pokud count > 0:
+  - 🔴 S chybou (error) · 🟠 Bez VS · ⚪ Bez provozovny (K vyřešení)
+  - 🟡 Nespárované celkem (unpaired) · 🔵 Delegované · Čekající na kontrolu (K přehledu)
+  - _(v3 s28 odstraněny karty „v bance neuhrazené" a „transakcí s návrhem")_
 - Brand border-top `--prov-color`, karty 2 sloupce na xl
 - **Klik na kartu** = atomická operace: aktivuje filter na tabulce + **auto-vybere první matching transakci** + scrollne k tabulce/panelu → uživatel se ocitne přímo v akční zóně
 - Druhý klik (nebo „Zrušit filtr ×") deaktivuje
 - State: `activeQueue: WorkQueueKind | null` v BankaView
 - `mergedAllTransakce` propaguje lokální patche do počtů karet (po Potvrzení kandidáta se count okamžitě sníží)
 
-### Side panel transakce — single-scroll s progressive disclosure
-**Žádné záložky** — jeden plynulý sloupec seshora dolů. Místo tabů 3 sekce s vizuálními oddělovači:
+### Side panel transakce — záložky (v3 s28, sjednoceno s Fakturami)
+**Fixní hlavička (mimo scroll)**: typ badge + stav badge + dodavatel + **částka + datum** + close — vždy vidět, ke které transakci panel patří. Pod tím **kontextové alerty**: žlutý feedback po akci (auto-dismiss 2.5s) / bez VS / bez provozovny / chyba zpracování.
 
-**Header (vždy)**: typ badge + stav badge + dodavatel + **částka + datum** + close. Pod tím **kontextové alerty**: žlutý feedback po akci (auto-dismiss 2.5s) / bez VS / bez provozovny / chyba zpracování.
+**Nav-tabs (Párování první — primární akce v Bance):**
+1. **🔗 Párování** (default) — akční zóna kontextová podle stavu:
+   - **paired** → zelený „Napárováno" + Otevřít fakturu (cross-section) + Unpair
+   - **manual-paired** → info (důvod + poznámka + **rozdělení na provozovny**) + „Vrátit do nespárovaných"
+   - **unpaired** (needsAction):
+     - **Interní převod** auto-detekce (schválit)
+     - **Napárovat ručně** (`<datalist>` autocomplete) + volitelný collapse **„Rozdělit na provozovny"** (`ProvozSplitEditor`, showUcel=false)
+     - **Vystavit novou fakturu** (jen příchozí) → mock `FA-2026-XXXX`
+     - **Přidělit uživateli** (delegace) + rychlé CTA (poplatek / splátka úvěru / vytvořit TP)
+     - **„Nelze napárovat? → Mimo systém"** → inline form: důvod (`OUTSIDE_REASONS`) + **`ProvozSplitEditor` (showUcel=true)** + poznámka
+   - _(v3 s28: „Navržení kandidáti" s match score odstraněni — u banky nedává smysl částečná shoda)_
+2. **📄 Detail** — VS, datum, účet+IBAN, provozovny, protiúčet, ruční důvod + **rozdělení na provozovny**
+3. **💬 Komunikace** — poznámky (žluté bubliny) + vstup
+4. **🕐 Historie** — audit timeline (tečka + ikona + text)
 
-1. **Akční zóna** (vždy první, šedé pozadí, kontextová podle stavu):
-   - **paired** → zelený success card „Napárováno" + Unpair button
-   - **outside-system / no-invoice** → info alert + „Vrátit do nespárovaných"
-   - **needsAction** (unpaired/multiple-candidates/waiting-review/error):
-     - **Kandidáti** s match score (≥80 % = zelený 2px border + **„DOPORUČENO"** badge u prvního) + důvody chipy + Potvrdit/× per kandidát
-     - **Napárovat ručně** s `<datalist>` autocomplete (mock 5 fakturních čísel)
-     - **Vystavit novou fakturu** (jen příchozí) → generuje mock `FA-2026-XXXX`
-     - **„Nelze napárovat?"** sloučený workflow: 2 tlačítka (Mimo systém / Bez faktury) → klik rozbalí inline form se selectem důvodů (+ poznámka jen u outside)
-2. **Detail** (řádky: VS, datum, účet+IBAN, provozovny badges, outsideReason+note, noInvoiceReason)
-3. **Aktivita** (sloučený chronologický feed = audit + poznámky):
-   - Audit zápis = malá tečka s ikonou/barvou + jednořádkový text + meta
-   - Poznámka = žlutá bublina s borderLeft 3px + chat ikona + text
-   - Řazení sestupně podle času
-   - Lze sbalit šipkou v hlavičce sekce
-   - Input pro novou poznámku vždy na konci
+### Rozdělení platby na provozovny (`ProvozSplitEditor` + `splitStatus`)
+- Sdílená komponenta pro 2 toky (ruční párování na fakturu / „Mimo systém") — jedna platba může patřit na víc provozů
+- Řádky **provoz + částka + volitelný účel** (`ucel` — např. „mzdy", „hotovost do kasy"; u párování na fakturu skrytý), „+ Přidat provoz", 🗑 odebrat
+- **Prefill** single-venue účtu (provoz + celá částka), živý souhrn „Rozděleno X/Y · Zbývá/Sedí ✓"
+- **Validace**: Potvrdit blokováno dokud součet nesedí přesně na celou částku transakce
+- Výsledek uložen do `transakce.rozdeleni`, zobrazen v kartě „Spárováno ručně" + Detailu + auditu
 
-### Sticky pozice panelu
-`top: calc(var(--bs-topbar-height, 100px) + 16px)`, `maxHeight: calc(100vh - var(--bs-topbar-height, 100px) - 32px)`, `overflowY: auto` — pod topbarem, využije celou výšku viewportu.
+### Sticky / scroll panelu (v3 s28)
+- Panel = **flex sloupec s max výškou** (`maxHeight: calc(100vh - topbar - 32)`, `overflow: hidden`): **hlavička fixní**, scrolluje jen obsah pod ní (vlastní `overflowY: auto` div, `overscrollBehavior: contain`)
+- Wrapper `position: sticky; top: calc(var(--bs-topbar-height, 100px) + 16px)`
+
+### Master-detail sticky tabulky (v3 s28)
+- Skutečný scroll kontejner je **`.page-content`** (`overflow-y: auto`), ne okno
+- Filtr-hlavička tabulky `position: static` (odscrolluje), **hlavička sloupců + vybraný řádek sticky** relativně k `.page-content` → vybraná transakce zůstává vidět i při scrollu stránky
+- CSS: `.banka-trans-table thead th { top: 0 }` + `.banka-row-selected > td { top: 41px }`; `.table-responsive` overflow:visible
 
 ### Důvody pro označení (konstanty v BankaView)
-- `OUTSIDE_REASONS` (5): interní převod, vratka zákazníkovi, osobní výběr majitele, vedeno v jiné evidenci, jiný důvod
-- `NO_INVOICE_REASONS` (7): bankovní poplatek, úrok, pojištění, mzda, daň/odvod, pokuta, jiné
+- `OUTSIDE_REASONS` (6): interní převod, vratka zákazníkovi, osobní výběr majitele, vedeno v jiné evidenci, **bez faktury (poplatek/mzda/daň)**, jiný důvod
+- `NO_INVOICE_REASONS` (7): bankovní poplatek, úrok, pojištění, mzda, daň/odvod, pokuta, jiné _(nevyužité v UI po sloučení „Bez faktury" do „Mimo systém")_
 
 ### Karta účtu — kompaktní layout (BankaCard / UcetCard)
 - **Brand color border-top**: 1 provoz → barva té branche, multi → Con Gusto gold `#c9911a`, žádná → šedá `#9097a7`
@@ -626,6 +633,7 @@ Referenční datum: **2026-04-17** (čtvrtek), týden 13.4.–19.4.2026.
 Piazza otevřena 2006 (potvrzeno majitelem).
 
 ### Session log
+- **v3 s28**: **Banka — UX iterace detailu transakce (zápis 13. 7. 2026)**. Práce jen v `BankaView.tsx` + `bankaData.ts` + `custom.css`. ① **Odebráno CTA „Nová platba"** z hlavičky tabulky transakcí (modal `NovaPlatbaModal` ponechán dormant). ② **AutoSyncBar** — přidáno CTA **„Aktualizovat banku"** vpravo (klik → spinner ~1,8 s → aktualizace „Poslední/Příští" sync + badge „Data aktualizována"; ve wireframu simulace stažení dat z banky), **odebrána kolonka API** (`apiCallsUsed`). ③ **Detail transakce sjednocen do záložek** (jako přijaté faktury) — nav-tabs **Párování / Detail / Komunikace / Historie** (Párování první = primární akce v Bance). Sloučená „Aktivita" rozdělena na **Komunikace** (poznámky + vstup) a **Historie** (audit). Hlavička (typ/stav/firma/částka/datum) + kontextové alerty zůstávají nad záložkami. State `activeTab` v `TransakceSidePanel`. ④ **Odstraněn koncept „V bance neuhrazená"** (`isOverdueAtBank`/`splatnost`) napříč Bankou — panel alert, Work Queue karta „v bance neuhrazené" + typ/filtr, tabulka (červený okraj + zvonek badge), mock data (tx06 Metro AG, tx13 Sodexo). Důvod: **v Bance jsou jen proběhlé transakce**; neuhrazené faktury patří do sekce Faktury. ⑤ **„Bez faktury" sloučeno pod „Mimo systém"** — CTA tlačítko odebráno, přidáno jako důvod v `OUTSIDE_REASONS` (nyní 6 položek). ⑥ **Odstraněni „Navržení kandidáti"** (match score / DOPORUČENO / Potvrdit-odmítnout) — u banky nedává smysl částečná shoda. Odstraněny handlery, Work Queue karta „transakcí s návrhem" + typ/filtr, import `SuggestedMatch`, `candidates` z mock dat (tx31/tx32/tx38 → běžné nespárované). Zůstává jednoznačný workflow: **Napárovat ručně** (VS/číslo faktury). ⑦ **Rozdělení platby na provozovny** — sdílená komponenta **`ProvozSplitEditor`** + helper `splitStatus()` + typ `ProvozSplitRow`. Použito jako **společný krok ve dvou tocích**: „Napárovat ručně" (volitelný collapse „Rozdělit na provozovny") i „Mimo systém". Každý řádek **provoz + částka + volitelný účel** (`ucel`; u ručního párování skryto, u Mimo systém zobrazeno — pokrývá „část mzdy / část hotovost do kasy"). Nové pole `BankaTransakce.rozdeleni?: Array<{provozovnaId, castka, ucel?}>`. **Prefill** single-venue účtu (provoz + celá částka). **Validace**: Potvrdit blokováno dokud součet nesedí přesně na celou částku (souhrn „Rozděleno X/Y · Zbývá/Sedí ✓"). Zobrazení výsledku v kartě „Spárováno ručně" + záložce Detail + auditu. Wheel-fix na `type=number` (blur při scrollu). ⑧ **Sticky/scroll fixy panelu** — panel přestavěn na **flex sloupec s max výškou**: hlavička (identita transakce) je **fixní mimo scroll oblast**, scrolluje jen obsah pod ní. ⑨ **Master-detail sticky tabulky** — filtr-hlavička tabulky `position: static` (odscrolluje), **hlavička sloupců + vybraný řádek sticky relativně k `.page-content`** (skutečný scroll kontejner s `overflow-y: auto`), aby vybraná transakce zůstala vidět i při scrollu stránky (CSS `.banka-trans-table thead th` top:0 + `.banka-row-selected > td` top:41px; `.table-responsive` overflow:visible). Build OK ~928 KB JS bundle.
 - **v3 s1**: Redesign Tržby, historické grafy, multi-venue chart, breadcrumb nav
 - **v3 s2**: UX polish Tržby (badge, predikce, grafy módy, detail řazení)
 - **v3 s3**: Platby dashboard (stavy, audit, multi-účty, právní entity, smart alerts)

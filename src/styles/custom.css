@@ -1374,3 +1374,23 @@ tfoot .trzby-sticky-r {
     /* Bootstrap default zůstává; tady jen pro reference */
   }
 }
+
+/* ============================================================
+   BANKA — tabulka transakcí: master-detail sticky
+   Vlastní scroll oblast tabulky se sticky hlavičkou sloupců
+   a přišpendleným vybraným řádkem (aby bylo vždy vidět, co je
+   otevřené v panelu vpravo).
+   ============================================================ */
+.banka-trans-table thead th {
+  position: sticky;
+  top: 0;
+  z-index: 3;
+  background: #eef1f5;
+}
+.banka-trans-table tr.banka-row-selected > td {
+  position: sticky;
+  top: 41px;                 /* pod sticky hlavičkou sloupců */
+  z-index: 2;
+  background: #e7efff !important;
+  box-shadow: 0 3px 8px rgba(0, 0, 0, 0.10);
+}

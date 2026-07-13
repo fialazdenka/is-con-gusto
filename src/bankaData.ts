@@ -115,6 +115,10 @@ export interface BankaTransakce {
   // Pro 'manual-paired' — důvod a poznámka (vyžadováno per zápis)
   manualReason?: string;                  // jednotný důvod (sloučení outsideReason + noInvoiceReason)
   manualNote?: string;                    // volitelná podrobnost / poznámka uživatele
+  // Rozdělení částky na provozovny — jedna platba může patřit na víc provozů.
+  // Součet musí odpovídat celé částce transakce (validováno v UI před potvrzením).
+  // `ucel` je volitelný (např. „mzdy", „hotovost do kasy") — u párování na fakturu se nevyplňuje.
+  rozdeleni?: Array<{ provozovnaId: string; castka: number; ucel?: string }>;
   // Legacy fields (deprecated — zachované kvůli mock datům, viz manualReason/manualNote)
   outsideReason?: string;
   outsideNote?: string;
@@ -393,7 +397,6 @@ export const BANKA_TRANSAKCE: BankaTransakce[] = [
   { id: 'tx04', ucetId: 'ua-cg-brno',        typ: 'odchozi', datum: '2026-04-17T08:30:00', castka: -45_200, firma: 'Makro Cash & Carry',  poznamka: 'FAK-2026-0041',          stav: 'paired',   vs: '20260041', parovanaSId: 'fp01', protiUcet: '17893421/0100' },
   { id: 'tx05', ucetId: 'ua-piazza',         typ: 'odchozi', datum: '2026-04-17T08:31:00', castka:  -4_800, firma: 'Linde Gas',            poznamka: 'FAK-2026-0039 CO₂',      stav: 'paired',   vs: '20260039', parovanaSId: 'fp02', protiUcet: '54231876/0300' },
   { id: 'tx06', ucetId: 'ua-cg-brno',        typ: 'odchozi', datum: '2026-04-17T08:32:00', castka: -31_400, firma: 'Metro AG',             poznamka: 'FAK-2026-0042',          stav: 'unpaired', vs: '20260042', protiUcet: '88991234/0100',
-    splatnost: '2026-04-10', isOverdueAtBank: true,
     delegatedTo: { user: 'Jana Kovářová', role: 'Účetní', cas: '2026-04-16T09:30:00', note: 'Prověř proč nemá DL' } },
   { id: 'tx07', ucetId: 'ua-piazza',         typ: 'odchozi', datum: '2026-04-16T15:45:00', castka: -68_000, firma: 'Správa budov s.r.o.',  poznamka: 'Nájem duben',            stav: 'paired',   vs: '20260400', protiUcet: '12345678/2700' },
   { id: 'tx08', ucetId: 'ua-monte',          typ: 'odchozi', datum: '2026-04-16T15:46:00', castka: -28_500, firma: 'Plzeňský Prazdroj',    poznamka: 'Dodávka pivo',           stav: 'paired',   vs: '20260118', protiUcet: '76543210/0100' },
@@ -402,8 +405,7 @@ export const BANKA_TRANSAKCE: BankaTransakce[] = [
   // Transakce čekající na párování
   { id: 'tx11', ucetId: 'ua-u-capa',         typ: 'prichoz', datum: '2026-04-17T07:30:00', castka:  18_500, firma: 'GoPay platby',         poznamka: 'Karty U Čápa 16.4.',     stav: 'unpaired', vs: '20260416', isWaitingReview: true, protiUcet: '2701234567/2010' },
   { id: 'tx12', ucetId: 'ua-korek-wb',       typ: 'prichoz', datum: '2026-04-17T07:31:00', castka:  21_300, firma: 'GoPay platby',         poznamka: 'Karty KOREK 16.4.',      stav: 'unpaired', vs: '20260416', isWaitingReview: true, protiUcet: '2701234567/2010' },
-  { id: 'tx13', ucetId: 'ua-u-capa',         typ: 'odchozi', datum: '2026-04-15T14:00:00', castka:  -3_240, firma: 'Sodexo',               poznamka: 'Pull. servis',           stav: 'unpaired', vs: '20260301', protiUcet: '11223344/0100',
-    splatnost: '2026-04-08', isOverdueAtBank: true },
+  { id: 'tx13', ucetId: 'ua-u-capa',         typ: 'odchozi', datum: '2026-04-15T14:00:00', castka:  -3_240, firma: 'Sodexo',               poznamka: 'Pull. servis',           stav: 'unpaired', vs: '20260301', protiUcet: '11223344/0100' },
   // Chyba platby
   { id: 'tx14', ucetId: 'ua-nad-hladinkou',  typ: 'odchozi', datum: '2026-04-16T16:00:00', castka: -15_400, firma: 'Plzeňský Prazdroj',    poznamka: 'Vrácená platba — chyba ÚČ',stav: 'unpaired', vs: '20260423', hasError: true, protiUcet: '76543210/0100' },
   // Dobropis
@@ -430,19 +432,11 @@ export const BANKA_TRANSAKCE: BankaTransakce[] = [
 
   // ── Nové stavy per workflow spec ──
 
-  // Multi-kandidát: 2 podobné faktury Metro AG, systém netuší která
-  // Nespárováno + více kandidátů (auto-detekce zjistila 2 možné faktury Metro AG)
-  { id: 'tx31', ucetId: 'ua-cg-brno', typ: 'odchozi', datum: '2026-04-17T08:33:00', castka: -31_200, firma: 'Metro AG', poznamka: 'Týdenní nákup', stav: 'unpaired', vs: '20260043',
-    candidates: [
-      { fakturaId: 'fp14', fakturaCislo: 'FAK-2026-0035', dodavatel: 'Metro AG', castka: 31_400, matchScore: 78, duvody: ['Dodavatel shoda', 'Měsíc shoda', 'Částka ±200 Kč'] },
-      { fakturaId: 'fp01', fakturaCislo: 'FAK-2026-0041', dodavatel: 'Makro Cash & Carry', castka: 45_201, matchScore: 35, duvody: ['Stejné období'] },
-    ]},
+  // Nespárovaná odchozí platba Metro AG — k ručnímu dopárování
+  { id: 'tx31', ucetId: 'ua-cg-brno', typ: 'odchozi', datum: '2026-04-17T08:33:00', castka: -31_200, firma: 'Metro AG', poznamka: 'Týdenní nákup', stav: 'unpaired', vs: '20260043' },
 
-  // Unpaired s návrhem 95 % match (čeká na human accept)
-  { id: 'tx32', ucetId: 'ua-piazza', typ: 'odchozi', datum: '2026-04-17T08:35:00', castka: -45_900, firma: 'Plzeňský Prazdroj', poznamka: 'Dodávka pivo Q2', stav: 'unpaired', vs: '20260415',
-    candidates: [
-      { fakturaId: 'fp08', fakturaCislo: 'FAK-2026-0044', dodavatel: 'Plzeňský Prazdroj', castka: 45_900, matchScore: 95, duvody: ['VS shoda 100 %', 'Dodavatel shoda', 'Částka přesně'] },
-    ]},
+  // Nespárovaná odchozí platba — k ručnímu dopárování
+  { id: 'tx32', ucetId: 'ua-piazza', typ: 'odchozi', datum: '2026-04-17T08:35:00', castka: -45_900, firma: 'Plzeňský Prazdroj', poznamka: 'Dodávka pivo Q2', stav: 'unpaired', vs: '20260415' },
 
   // Bez VS — vyžaduje ruční zařazení
   { id: 'tx33', ucetId: 'ua-cg-brno', typ: 'odchozi', datum: '2026-04-16T09:00:00', castka: -3_240, firma: 'Hyundai Leasing', poznamka: 'Splátka — dodávka (bez VS)', stav: 'unpaired' },
@@ -462,11 +456,8 @@ export const BANKA_TRANSAKCE: BankaTransakce[] = [
   { id: 'tx37', ucetId: 'ua-cg-marketing', typ: 'prichoz', datum: '2026-04-16T23:58:00', castka: 42, firma: 'Komerční banka', poznamka: 'Úrok za duben', stav: 'manual-paired',
     manualReason: 'Úrok z kreditu', protiUcet: '01010101/0100' },
 
-  // Nespárováno + auto-match s nízkou jistotou (čeká na potvrzení uživatelem)
-  { id: 'tx38', ucetId: 'ua-monte', typ: 'odchozi', datum: '2026-04-15T15:00:00', castka: -6_900, firma: 'Krušovice s.r.o.', poznamka: 'Dodávka pivo', stav: 'unpaired', vs: '20260412', isWaitingReview: true,
-    candidates: [
-      { fakturaId: 'fp28', fakturaCislo: 'FAK-2026-0060', dodavatel: 'Krušovice s.r.o.', castka: 6_900, matchScore: 88, duvody: ['Dodavatel shoda', 'Částka shoda', 'VS část. shoda'] },
-    ]},
+  // Nespárováno — čeká na kontrolu / ruční dopárování
+  { id: 'tx38', ucetId: 'ua-monte', typ: 'odchozi', datum: '2026-04-15T15:00:00', castka: -6_900, firma: 'Krušovice s.r.o.', poznamka: 'Dodávka pivo', stav: 'unpaired', vs: '20260412', isWaitingReview: true },
 
   // Nespárováno — interní převod čekající na auto-schválení (protiÚčet = Hlavní účet IBAN)
   { id: 'tx39', ucetId: 'ua-piazza', typ: 'odchozi', datum: '2026-04-17T07:45:00', castka: -50_000, firma: 'Vlastní účet Hlavní', poznamka: 'Převod likvidity', stav: 'unpaired', protiUcet: '123456789012/0100' },

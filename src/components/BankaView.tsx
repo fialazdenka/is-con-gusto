@@ -23,7 +23,6 @@ import {
   type BankaUcet,
   type BankaTransakce,
   type BankaTransStav,
-  type SuggestedMatch,
   type TransAuditEntry,
   type TransNote,
   type TransDelegace,
@@ -180,13 +179,11 @@ function SmartAlerts({ ucty, onGoToUcet, onAction }: {
 }
 
 // Kategorie problému v Work Queue (Phase 2 — pod-skupiny nespárovaných transakcí)
-type WorkQueueKind = 'unpaired' | 'overdue-at-bank' | 'with-candidates' | 'no-vs' | 'no-branch' | 'waiting-review' | 'error' | 'delegated';
+type WorkQueueKind = 'unpaired' | 'no-vs' | 'no-branch' | 'waiting-review' | 'error' | 'delegated';
 
 // Lidsky čitelné labely pro Work Queue (zobrazení v aktivním filtr banneru)
 const WORK_QUEUE_LABEL: Record<WorkQueueKind, string> = {
   'unpaired':         'Nespárované transakce',
-  'overdue-at-bank':  'V bance neuhrazené',
-  'with-candidates':  'Transakce s návrhem',
   'no-vs':            'Bez VS',
   'no-branch':        'Bez provozovny',
   'waiting-review':   'Čekající na kontrolu',
@@ -205,9 +202,7 @@ function WorkQueue({ transakce, ucty, onSelectQueue, activeQueue }: {
   // Po redukci stavů jsou všechny problémy podmnožiny 'unpaired'
   const unpaired         = transakce.filter((t) => t.stav === 'unpaired');
   const unpairedCount    = unpaired.length;
-  const overdueCount     = unpaired.filter((t) => t.isOverdueAtBank).length;
   const delegatedCount   = unpaired.filter((t) => !!t.delegatedTo).length;
-  const candidatesCount  = unpaired.filter((t) => (t.candidates?.length ?? 0) > 0).length;
   const reviewCount      = unpaired.filter((t) => t.isWaitingReview).length;
   const errorCount       = unpaired.filter((t) => t.hasError).length;
   const noVsCount        = unpaired.filter((t) => !t.vs).length;
@@ -221,9 +216,7 @@ function WorkQueue({ transakce, ucty, onSelectQueue, activeQueue }: {
   //  - „K přehledu"  (info)  — sledovací metriky, nic neblokuje
   type CardDef = { kind: WorkQueueKind; count: number; label: string; icon: string; color: string; bg: string };
   const urgentCards: CardDef[] = [
-    { kind: 'overdue-at-bank', count: overdueCount,    label: 'v bance neuhrazené',       icon: 'solar:bell-bing-bold-duotone',        color: '#dc3545', bg: '#f8d7da' },
     { kind: 'error',           count: errorCount,      label: 'transakcí s chybou',       icon: 'solar:close-circle-bold-duotone',     color: '#dc3545', bg: '#f8d7da' },
-    { kind: 'with-candidates', count: candidatesCount, label: 'transakcí s návrhem',      icon: 'solar:layers-bold-duotone',           color: '#6f42c1', bg: '#f3eaff' },
     { kind: 'no-vs',           count: noVsCount,       label: 'transakcí bez VS',         icon: 'solar:hashtag-square-bold-duotone',   color: '#fd7e14', bg: '#ffedd5' },
     { kind: 'no-branch',       count: noBranchCount,   label: 'transakcí bez provozovny', icon: 'solar:buildings-3-bold-duotone',      color: '#9097a7', bg: '#f1f3f5' },
   ];
@@ -463,14 +456,41 @@ function BalanceOverview({ ucty }: { ucty: BankaUcet[] }) {
 // Phase 2.3b — AutoSyncBar rozšířen o:
 //  - Error stav (autosync vypnutý kvůli chybě + tlačítko Zapnout znovu) — per zápis B9
 //  - Hromadné platby (Odeslat dávku + Vrátit poslední krok) — per zápis B10 (API limit ~300/den)
-function AutoSyncBar({ pendingCount, paymentsQueueCount, apiCallsUsed }: {
+function AutoSyncBar({ pendingCount, paymentsQueueCount }: {
   pendingCount: number;
   paymentsQueueCount: number;
-  apiCallsUsed: number;
 }) {
   // Phase 8.6 (zápis 22. 6. 2026) — AutoSyncBar dočasně zjednodušen na status-only.
   // Hromadné dávky + error UI (manual trigger) + ručně spouštěné akce odebrány do dořešení finální podoby.
   void paymentsQueueCount;
+
+  // Manuální „Aktualizovat banku" — ve wireframu simulace stažení dat z banky:
+  // spinner ~1,8 s → aktualizace časů (Poslední/Příští) + krátký potvrzovací badge.
+  const [syncing, setSyncing]     = useState(false);
+  const [lastSync, setLastSync]   = useState('14:32');
+  const [justDone, setJustDone]   = useState(false);
+
+  // Připočtení minut k času „HH:MM"
+  const addMinutes = (hhmm: string, add: number): string => {
+    const [h, m] = hhmm.split(':').map(Number);
+    const total = (h * 60 + m + add) % (24 * 60);
+    return `${String(Math.floor(total / 60)).padStart(2, '0')}:${String(total % 60).padStart(2, '0')}`;
+  };
+  const nextSync = addMinutes(lastSync, 15);
+
+  const handleRefresh = () => {
+    if (syncing) return;
+    setSyncing(true);
+    setJustDone(false);
+    window.setTimeout(() => {
+      const now = new Date();
+      const nowStr = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+      setLastSync(nowStr);
+      setSyncing(false);
+      setJustDone(true);
+      window.setTimeout(() => setJustDone(false), 2500);
+    }, 1800);
+  };
 
   return (
     <div className="d-flex align-items-center gap-2 flex-wrap row-gap-2 px-3 py-2 mb-3 rounded"
@@ -489,20 +509,27 @@ function AutoSyncBar({ pendingCount, paymentsQueueCount, apiCallsUsed }: {
       <div className="d-flex align-items-center gap-1 text-muted flex-shrink-0" title="Poslední synchronizace">
         <iconify-icon icon="solar:clock-circle-bold-duotone" style={{ fontSize: 13 }} />
         <span className="d-none d-md-inline">Poslední:</span>
-        <span className="fw-semibold text-dark czk-num">14:32</span>
+        <span className="fw-semibold text-dark czk-num">{lastSync}</span>
       </div>
       <div className="d-flex align-items-center gap-1 text-muted flex-shrink-0" title="Příští synchronizace">
         <iconify-icon icon="solar:alarm-bold-duotone" style={{ fontSize: 13 }} />
         <span className="d-none d-md-inline">Příští:</span>
-        <span className="fw-semibold text-dark czk-num">14:47</span>
+        <span className="fw-semibold text-dark czk-num">{nextSync}</span>
       </div>
-      {/* API limit */}
-      <div className="d-flex align-items-center gap-1 text-muted flex-shrink-0" title="Dotazy spotřebované z denního limitu (banka cca 300/den)">
-        <iconify-icon icon="solar:server-square-bold-duotone" style={{ fontSize: 13 }} />
-        <span className="d-none d-md-inline">API:</span>
-        <span className={`fw-semibold czk-num ${apiCallsUsed > 250 ? 'text-warning' : 'text-dark'}`}>{apiCallsUsed}/300</span>
-      </div>
-      {/* Phase 8.6 (zápis 22. 6. 2026) — odebráno per zpětnou vazba: CTA "Odeslat dávku" + celá spodní řada (Živě / Znovu načíst / Simulovat chybu). Komponenta je v mapě + Kódu označená jako "rozpracované" — finální podoba bude dořešena. */}
+      {/* Potvrzení po manuální aktualizaci */}
+      {justDone && (
+        <span className="badge bg-success-subtle text-success d-inline-flex align-items-center gap-1 flex-shrink-0" style={{ fontSize: 10 }}>
+          <iconify-icon icon="solar:check-circle-bold-duotone" />
+          Data aktualizována
+        </span>
+      )}
+      {/* CTA — manuální stažení dat z banky */}
+      <button className="btn btn-primary btn-sm ms-auto d-flex align-items-center gap-1 flex-shrink-0"
+        onClick={handleRefresh} disabled={syncing}
+        title="Ručně stáhnout aktuální data ze všech bankovních účtů">
+        <iconify-icon icon="solar:refresh-bold-duotone" className={syncing ? 'spin' : ''} />
+        {syncing ? 'Aktualizuji…' : 'Aktualizovat banku'}
+      </button>
     </div>
   );
 }
@@ -674,6 +701,7 @@ const OUTSIDE_REASONS: Array<{ value: string; label: string }> = [
   { value: 'vratka-zakaznik',    label: 'Vratka zákazníkovi' },
   { value: 'osobni-vyber',       label: 'Osobní výběr majitele' },
   { value: 'jina-evidence',      label: 'Vedeno v jiné evidenci' },
+  { value: 'bez-faktury',        label: 'Bez faktury (poplatek, mzda, daň…)' },
   { value: 'jine',               label: 'Jiný důvod' },
 ];
 const NO_INVOICE_REASONS: Array<{ value: string; label: string }> = [
@@ -686,10 +714,96 @@ const NO_INVOICE_REASONS: Array<{ value: string; label: string }> = [
   { value: 'jine',               label: 'Jiné' },
 ];
 
-// Sloučená aktivita: poznámky + audit zápisy v chronologickém feedu
-type ActivityEntry =
-  | { type: 'note'; id: string; cas: string; kdo: string; text: string }
-  | { type: 'audit'; id: string; cas: string; kdo: string; akce: string; icon: string; color: string };
+// ── Rozdělení částky na provozovny (sdílené: ruční párování + mimo systém) ──
+type ProvozSplitRow = { provozovnaId: string; castka: string; ucel: string };
+
+// Stav rozdělení — kolik je rozděleno / zbývá + validita řádků
+function splitStatus(splits: ProvozSplitRow[], totalAbs: number) {
+  const allocated = splits.reduce((s, r) => s + (parseFloat(r.castka) || 0), 0);
+  const remaining = Math.round((totalAbs - allocated) * 100) / 100;
+  const fully     = Math.abs(remaining) < 0.005;                                       // sedí celá částka
+  const rowsValid = splits.every((r) => r.provozovnaId && (parseFloat(r.castka) || 0) > 0);
+  return { allocated, remaining, fully, rowsValid };
+}
+
+// Editor rozdělení — řádky provoz + částka (+ volitelný účel) + živý souhrn.
+// Používá se ve dvou tocích: „Napárovat ručně" (na fakturu) i „Mimo systém".
+function ProvozSplitEditor({ splits, setSplits, totalAbs, mena, formatAmount, showUcel }: {
+  splits: ProvozSplitRow[];
+  setSplits: React.Dispatch<React.SetStateAction<ProvozSplitRow[]>>;
+  totalAbs: number;
+  mena: 'CZK' | 'EUR';
+  formatAmount: (n: number) => string;
+  showUcel?: boolean;
+}) {
+  const { allocated, remaining, fully } = splitStatus(splits, totalAbs);
+  const update = (i: number, field: keyof ProvozSplitRow, val: string) =>
+    setSplits((prev) => prev.map((r, idx) => (idx === i ? { ...r, [field]: val } : r)));
+  const add    = () => setSplits((prev) => [...prev, { provozovnaId: '', castka: '', ucel: '' }]);
+  const remove = (i: number) => setSplits((prev) => prev.filter((_, idx) => idx !== i));
+  return (
+    <div>
+      <div className="d-flex flex-column gap-2">
+        {splits.map((row, i) => (
+          <div key={i} className="border rounded p-2" style={{ background: '#fbfcfd' }}>
+            <div className="d-flex gap-1 align-items-center">
+              <select
+                className="form-select form-select-sm"
+                style={{ fontSize: 12, flex: '1 1 auto', minWidth: 0 }}
+                value={row.provozovnaId}
+                onChange={(e) => update(i, 'provozovnaId', e.target.value)}>
+                <option value="">— provoz —</option>
+                {PROVOZOVNY.filter((p) => p.status === 'active').map((p) => (
+                  <option key={p.id} value={p.id}>{p.shortName}</option>
+                ))}
+              </select>
+              <div className="input-group input-group-sm" style={{ width: 128, flexShrink: 0 }}>
+                <input
+                  type="number"
+                  className="form-control form-control-sm czk-num text-end"
+                  style={{ fontSize: 12 }}
+                  placeholder="0"
+                  value={row.castka}
+                  onChange={(e) => update(i, 'castka', e.target.value)}
+                  onWheel={(e) => e.currentTarget.blur()}
+                />
+                <span className="input-group-text" style={{ fontSize: 11 }}>{mena === 'EUR' ? '€' : 'Kč'}</span>
+              </div>
+              {splits.length > 1 && (
+                <button className="btn btn-link btn-sm p-0 text-danger flex-shrink-0" title="Odebrat řádek" onClick={() => remove(i)}>
+                  <iconify-icon icon="solar:trash-bin-trash-bold-duotone" style={{ fontSize: 15 }} />
+                </button>
+              )}
+            </div>
+            {showUcel && (
+              <input
+                type="text"
+                className="form-control form-control-sm mt-1"
+                style={{ fontSize: 12 }}
+                placeholder="Účel (nepovinné) — mzdy, hotovost do kasy…"
+                value={row.ucel}
+                onChange={(e) => update(i, 'ucel', e.target.value)}
+              />
+            )}
+          </div>
+        ))}
+      </div>
+      <button className="btn btn-link btn-sm p-0 mt-1 text-decoration-none d-inline-flex align-items-center gap-1" style={{ fontSize: 12 }} onClick={add}>
+        <iconify-icon icon="solar:add-circle-bold-duotone" />
+        Přidat provoz
+      </button>
+      {/* Souhrn — nelze potvrdit dokud nesedí celá částka */}
+      <div className={`d-flex justify-content-between align-items-center gap-2 mt-1 px-2 py-1 rounded fs-11 ${fully ? 'bg-success-subtle text-success' : 'bg-warning-subtle text-warning'}`}>
+        <span className="czk-num">Rozděleno {formatAmount(allocated)} / {formatAmount(totalAbs)}</span>
+        <span className="fw-semibold czk-num text-nowrap">
+          {fully ? <><iconify-icon icon="solar:check-circle-bold-duotone" className="me-1" />Sedí</>
+            : remaining > 0 ? `Zbývá ${formatAmount(remaining)}`
+            : `Přeplněno ${formatAmount(-remaining)}`}
+        </span>
+      </div>
+    </div>
+  );
+}
 
 // ── Side-panel detail transakce ────────────────────────────────
 function TransakceSidePanel({ transakce, ucty, onClose, onPatch, onAudit, onNote, onOpenFaktura, onCreateTP }: {
@@ -708,13 +822,20 @@ function TransakceSidePanel({ transakce, ucty, onClose, onPatch, onAudit, onNote
   const [oznacitMode, setOznacitMode] = useState<'outside' | 'no-invoice' | 'loan-payment' | null>(null);
   const [oznacitReason, setOznacitReason] = useState('');
   const [oznacitNote, setOznacitNote] = useState('');
-  const [activityCollapsed, setActivityCollapsed] = useState(false);
+  // Rozdělení částky na provozovny (jedna platba může patřit na víc provozů) — sdílené 2 toky
+  const [oznacitSplits, setOznacitSplits] = useState<ProvozSplitRow[]>([{ provozovnaId: '', castka: '', ucel: '' }]);
+  // Ruční párování na fakturu — volitelný rozpad na provozy (collapse, ať panel zbytečně neroste)
+  const [matchSplitOpen, setMatchSplitOpen] = useState(false);
+  const [matchSplits, setMatchSplits] = useState<ProvozSplitRow[]>([{ provozovnaId: '', castka: '', ucel: '' }]);
   // Phase 2.3 — delegace na uživatele
   const [delegateOpen, setDelegateOpen] = useState(false);
   const [delegateUserId, setDelegateUserId] = useState('');
   const [delegateNote, setDelegateNote] = useState('');
   // Mikrofeedback po úspěšné akci (krátký toast in-panel)
   const [feedback, setFeedback] = useState<string | null>(null);
+  // Záložky detailu — sjednoceno napříč systémem (Faktury/Banka).
+  // V Bance je Párování první (primární akce), zbytek (Detail/Komunikace/Historie) je společný.
+  const [activeTab, setActiveTab] = useState<'parovani' | 'detail' | 'komunikace' | 'historie'>('parovani');
 
   // Reset state když se mění transakce
   useEffect(() => {
@@ -723,10 +844,14 @@ function TransakceSidePanel({ transakce, ucty, onClose, onPatch, onAudit, onNote
     setOznacitMode(null);
     setOznacitReason('');
     setOznacitNote('');
+    setOznacitSplits([{ provozovnaId: '', castka: '', ucel: '' }]);
+    setMatchSplitOpen(false);
+    setMatchSplits([{ provozovnaId: '', castka: '', ucel: '' }]);
     setDelegateOpen(false);
     setDelegateUserId('');
     setDelegateNote('');
     setFeedback(null);
+    setActiveTab('parovani');
   }, [transakce?.id]);
 
   // Auto-dismiss mikrofeedbacku po 2.5s
@@ -753,6 +878,13 @@ function TransakceSidePanel({ transakce, ucty, onClose, onPatch, onAudit, onNote
   const isPrichoz = transakce.typ === 'prichoz';
   const formatAmount = (n: number) => ucet?.mena === 'EUR' ? `${n.toFixed(2)} €` : fCzk(n);
 
+  // ── Rozdělení na provozovny — celková částka + stav obou toků + prefill ──
+  const splitTotalAbs   = Math.abs(transakce.castka);
+  const accountBranchId = provs.length === 1 ? provs[0].id : '';                              // single-venue účet → předvyplň provoz
+  const initialSplits   = (): ProvozSplitRow[] => [{ provozovnaId: accountBranchId, castka: String(splitTotalAbs), ucel: '' }];
+  const outsideSplit    = splitStatus(oznacitSplits, splitTotalAbs);
+  const matchSplit      = splitStatus(matchSplits, splitTotalAbs);
+
   // Aktuální čas pro audit/note
   const nowIso = () => new Date().toISOString().slice(0, 16);
   const me = 'Petr Dohnal'; // mock přihlášený uživatel
@@ -760,35 +892,24 @@ function TransakceSidePanel({ transakce, ucty, onClose, onPatch, onAudit, onNote
   const handleConfirmManualMatch = () => {
     const inv = manualMatchInvoice.trim();
     if (!inv) return;
-    onPatch(transakce.id, { stav: 'paired', parovanaSId: inv });
+    const rozdeleni = matchSplitOpen
+      ? matchSplits
+          .filter((r) => r.provozovnaId && (parseFloat(r.castka) || 0) > 0)
+          .map((r) => ({ provozovnaId: r.provozovnaId, castka: parseFloat(r.castka), ...(r.ucel.trim() ? { ucel: r.ucel.trim() } : {}) }))
+      : undefined;
+    const rozdeleniStr = rozdeleni && rozdeleni.length > 1
+      ? ` · rozděleno: ${rozdeleni.map((r) => `${PROVOZOVNY.find((p) => p.id === r.provozovnaId)?.shortName ?? r.provozovnaId} ${formatAmount(r.castka)}`).join(', ')}`
+      : '';
+    onPatch(transakce.id, { stav: 'paired', parovanaSId: inv, ...(rozdeleni ? { rozdeleni } : {}) });
     onAudit(transakce.id, {
       cas: nowIso(), kdo: me,
-      akce: `Manuálně napárováno na fakturu ${inv}`,
+      akce: `Manuálně napárováno na fakturu ${inv}${rozdeleniStr}`,
       icon: 'solar:link-bold-duotone', color: '#198754',
     });
     setManualMatchInvoice('');
+    setMatchSplitOpen(false);
+    setMatchSplits([{ provozovnaId: '', castka: '', ucel: '' }]);
     setFeedback(`Napárováno na ${inv}`);
-  };
-
-  const handleSelectCandidate = (c: SuggestedMatch) => {
-    onPatch(transakce.id, { stav: 'paired', parovanaSId: c.fakturaCislo });
-    onAudit(transakce.id, {
-      cas: nowIso(), kdo: me,
-      akce: `Napárováno na ${c.fakturaCislo} (kandidát ${c.matchScore} %)`,
-      icon: 'solar:check-circle-bold-duotone', color: '#198754',
-    });
-    setFeedback(`Napárováno na ${c.fakturaCislo}`);
-  };
-
-  const handleRejectCandidate = (c: SuggestedMatch) => {
-    onAudit(transakce.id, {
-      cas: nowIso(), kdo: me,
-      akce: `Kandidát ${c.fakturaCislo} odmítnut`,
-      icon: 'solar:close-circle-bold-duotone', color: '#dc3545',
-    });
-    onPatch(transakce.id, {
-      candidates: (transakce.candidates ?? []).filter((x) => x.fakturaId !== c.fakturaId),
-    });
   };
 
   const handleCreateInvoice = () => {
@@ -807,17 +928,24 @@ function TransakceSidePanel({ transakce, ucty, onClose, onPatch, onAudit, onNote
     // Per zápis 4. 6. 2026 — obě varianty → 'manual-paired' (jednotný stav, rozliší přes manualReason)
     if (oznacitMode === 'outside') {
       const label = OUTSIDE_REASONS.find((r) => r.value === oznacitReason)?.label ?? oznacitReason;
+      const rozdeleni = oznacitSplits
+        .filter((r) => r.provozovnaId && (parseFloat(r.castka) || 0) > 0)
+        .map((r) => ({ provozovnaId: r.provozovnaId, castka: parseFloat(r.castka), ...(r.ucel.trim() ? { ucel: r.ucel.trim() } : {}) }));
+      const rozdeleniStr = rozdeleni
+        .map((r) => `${PROVOZOVNY.find((p) => p.id === r.provozovnaId)?.shortName ?? r.provozovnaId} ${formatAmount(r.castka)}`)
+        .join(', ');
       onPatch(transakce.id, {
         stav: 'manual-paired',
         manualReason: label,
         manualNote: oznacitNote,
+        rozdeleni,
       });
       onAudit(transakce.id, {
         cas: nowIso(), kdo: me,
-        akce: `Spárováno ručně: ${label}`,
+        akce: `Spárováno ručně: ${label}${rozdeleni.length > 1 ? ` · rozděleno: ${rozdeleniStr}` : rozdeleniStr ? ` · ${rozdeleniStr}` : ''}`,
         icon: 'solar:hand-stars-bold-duotone', color: '#6c757d',
       });
-      setFeedback('Spárováno ručně');
+      setFeedback(rozdeleni.length > 1 ? 'Spárováno ručně + rozděleno na provozovny' : 'Spárováno ručně');
     } else {
       const label = NO_INVOICE_REASONS.find((r) => r.value === oznacitReason)?.label ?? oznacitReason;
       onPatch(transakce.id, {
@@ -834,6 +962,7 @@ function TransakceSidePanel({ transakce, ucty, onClose, onPatch, onAudit, onNote
     setOznacitMode(null);
     setOznacitReason('');
     setOznacitNote('');
+    setOznacitSplits([{ provozovnaId: '', castka: '', ucel: '' }]);
   };
 
   const handleUnpair = () => {
@@ -909,14 +1038,8 @@ function TransakceSidePanel({ transakce, ucty, onClose, onPatch, onAudit, onNote
   // Audit & notes — merged data (mock + session) sloučené chronologicky
   const auditEntries = transakce.auditLog ?? [];
   const notes        = transakce.notes ?? [];
-  const candidates   = transakce.candidates ?? [];
   const hasNoVs      = !transakce.vs;
   const hasNoBranch  = ucet ? ucet.provozovny.length === 0 : false;
-
-  const activityFeed: ActivityEntry[] = [
-    ...notes.map<ActivityEntry>((n) => ({ type: 'note', id: n.id, cas: n.cas, kdo: n.kdo, text: n.text })),
-    ...auditEntries.map<ActivityEntry>((a, i) => ({ type: 'audit', id: `a-${i}-${a.cas}`, cas: a.cas, kdo: a.kdo, akce: a.akce, icon: a.icon, color: a.color })),
-  ].sort((a, b) => b.cas.localeCompare(a.cas));
 
   // Potřebuje akci? (po Phase 2 redukci stavů — všechno čekající jsou 'unpaired')
   const needsAction = transakce.stav === 'unpaired';
@@ -933,15 +1056,18 @@ function TransakceSidePanel({ transakce, ucty, onClose, onPatch, onAudit, onNote
     <div style={{
       position: 'sticky',
       top: 'calc(var(--bs-topbar-height, 100px) + 16px)',
-      // Fixní výška (ne max) — vždy bude vlastní scrollbar uvnitř panelu,
-      // wheel events nesplývají s page scrollem (overscrollBehavior: contain).
-      height: 'calc(100vh - var(--bs-topbar-height, 100px) - 32px)',
-      overflowY: 'auto',
-      overscrollBehavior: 'contain',
     }}>
-      <div className="card">
-        {/* ── HEADER (vždy viditelný) — typ, stav, dodavatel, částka + datum ── */}
-        <div className="card-header d-flex align-items-start gap-2">
+      {/* Card = flex sloupec s max výškou: hlavička je fixní (vždy vidět, ke které
+          transakci panel patří), scrolluje jen obsah pod ní. */}
+      <div className="card" style={{
+        display: 'flex',
+        flexDirection: 'column',
+        maxHeight: 'calc(100vh - var(--bs-topbar-height, 100px) - 32px)',
+        marginBottom: 0,
+        overflow: 'hidden',
+      }}>
+        {/* ── HEADER (vždy viditelný, nescrolluje) — typ, stav, dodavatel, částka + datum ── */}
+        <div className="card-header d-flex align-items-start gap-2" style={{ flexShrink: 0 }}>
           <div className="flex-grow-1 min-width-0">
             <div className="d-flex align-items-center gap-2 flex-wrap mb-1">
               <span className={`badge ${isPrichoz ? 'bg-success-subtle text-success' : 'bg-warning-subtle text-warning'}`}>
@@ -965,22 +1091,16 @@ function TransakceSidePanel({ transakce, ucty, onClose, onPatch, onAudit, onNote
           <button className="btn-close flex-shrink-0 mt-1" style={{ fontSize: 11 }} onClick={onClose} />
         </div>
 
+        {/* ── SCROLL AREA (scrolluje jen tato část; hlavička nad ní zůstává) ── */}
+        <div style={{ overflowY: 'auto', overscrollBehavior: 'contain', flex: '1 1 auto', minHeight: 0 }}>
+
         {/* ── ALERTY (kontextové) + mikrofeedback ── */}
-        {(feedback || transakce.isOverdueAtBank || hasNoVs || hasNoBranch || transakce.hasError || transakce.isWaitingReview) && (
+        {(feedback || hasNoVs || hasNoBranch || transakce.hasError || transakce.isWaitingReview) && (
           <div className="px-3 pt-3 d-flex flex-column gap-2">
             {feedback && (
               <div className="alert alert-success py-2 mb-0 fs-12 d-flex align-items-center gap-2" style={{ borderLeft: '3px solid #198754' }}>
                 <iconify-icon icon="solar:check-circle-bold-duotone" style={{ fontSize: 16 }} />
                 <span>{feedback}</span>
-              </div>
-            )}
-            {transakce.isOverdueAtBank && (
-              <div className="alert alert-danger py-2 mb-0 fs-12 d-flex align-items-center gap-2">
-                <iconify-icon icon="solar:bell-bing-bold-duotone" style={{ fontSize: 16 }} />
-                <div>
-                  <div className="fw-semibold">V bance neuhrazená</div>
-                  <div>Odeslaná, ale nespárovaná víc než 3 dny po splatnosti{transakce.splatnost && <> ({fDate(transakce.splatnost)})</>}.</div>
-                </div>
               </div>
             )}
             {hasNoVs && (
@@ -1010,12 +1130,35 @@ function TransakceSidePanel({ transakce, ucty, onClose, onPatch, onAudit, onNote
           </div>
         )}
 
-        {/* ═══ SINGLE-SCROLL CONTENT ═══ */}
+        {/* ═══ TAB CONTENT ═══ */}
         <div className="card-body p-0">
 
-          {/* ── AKČNÍ ZÓNA (vždy nahoře, kontextová podle stavu) ── */}
+          {/* ── Tab navigace (sjednoceno s Fakturami) ── */}
+          <div className="border-bottom px-2" style={{ background: '#fafbfc' }}>
+            <ul className="nav nav-tabs border-0" style={{ flexWrap: 'nowrap' }}>
+              {([
+                { id: 'parovani',   label: 'Párování',   icon: 'solar:link-bold-duotone' },
+                { id: 'detail',     label: 'Detail',     icon: 'solar:document-text-bold-duotone' },
+                { id: 'komunikace', label: 'Komunikace', icon: 'solar:chat-round-bold-duotone' },
+                { id: 'historie',   label: 'Historie',   icon: 'solar:clock-circle-bold-duotone' },
+              ] as const).map((t) => (
+                <li key={t.id} className="nav-item">
+                  <button
+                    className={`nav-link border-0 px-2 py-2 fs-12 fw-semibold${activeTab === t.id ? ' active text-primary' : ' text-muted'}`}
+                    style={{ background: 'transparent', borderBottom: activeTab === t.id ? '2px solid var(--bs-primary)' : '2px solid transparent', borderRadius: 0 }}
+                    onClick={() => setActiveTab(t.id)}
+                  >
+                    <iconify-icon icon={t.icon} className="me-1" style={{ fontSize: 13 }} />
+                    {t.label}
+                  </button>
+                </li>
+              ))}
+            </ul>
+          </div>
+
+          {/* ── PÁROVÁNÍ (v Bance první záložka — primární akce) ── */}
+          {activeTab === 'parovani' && (
           <section className="p-3 border-bottom" style={{ background: '#fafbfc' }}>
-            <SectionHeading icon="solar:bolt-bold-duotone" color="#0d6efd" title="Akce" />
 
             {/* PAIRED → success card + proklik na fakturu + Unpair */}
             {transakce.stav === 'paired' && (
@@ -1049,6 +1192,21 @@ function TransakceSidePanel({ transakce, ucty, onClose, onPatch, onAudit, onNote
                   </div>
                   {transakce.manualReason && <div>Důvod: {transakce.manualReason}</div>}
                   {transakce.manualNote && <div className="fst-italic mt-1">„{transakce.manualNote}"</div>}
+                  {transakce.rozdeleni && transakce.rozdeleni.length > 0 && (
+                    <div className="mt-2 pt-2 border-top">
+                      <div className="fw-semibold mb-1">Rozdělení na provozovny:</div>
+                      {transakce.rozdeleni.map((r, i) => (
+                        <div key={i} className="d-flex justify-content-between align-items-center gap-2">
+                          <span className="d-flex align-items-center gap-1 min-width-0">
+                            <span className="rounded-circle flex-shrink-0" style={{ width: 6, height: 6, background: PROVOZOVNY.find((p) => p.id === r.provozovnaId)?.color ?? '#9097a7', display: 'inline-block' }} />
+                            <span className="text-truncate">{PROVOZOVNY.find((p) => p.id === r.provozovnaId)?.shortName ?? r.provozovnaId}</span>
+                            {r.ucel && <span className="text-muted fst-italic text-truncate">· {r.ucel}</span>}
+                          </span>
+                          <span className="czk-num fw-semibold flex-shrink-0">{formatAmount(r.castka)}</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </div>
                 <button className="btn btn-light btn-sm" onClick={handleReturnToUnpaired}>
                   <iconify-icon icon="solar:undo-left-round-bold-duotone" className="me-2" />
@@ -1078,62 +1236,6 @@ function TransakceSidePanel({ transakce, ucty, onClose, onPatch, onAudit, onNote
                   </div>
                 )}
 
-                {/* Kandidáti */}
-                {candidates.length > 0 ? (
-                  <div>
-                    <div className="d-flex align-items-center gap-1 mb-2">
-                      <iconify-icon icon="solar:layers-bold-duotone" style={{ fontSize: 14, color: '#6f42c1' }} />
-                      <div className="fw-semibold fs-12">Navržení kandidáti ({candidates.length})</div>
-                    </div>
-                    <div className="d-flex flex-column gap-2">
-                      {candidates.map((c, idx) => {
-                        const isBest = c.matchScore >= 80 && idx === 0;
-                        return (
-                          <div key={c.fakturaId} className="rounded p-2"
-                               style={{
-                                 background: isBest ? '#eaf7ee' : '#ffffff',
-                                 border: isBest ? '2px solid #198754' : '1px solid #dee2e6',
-                               }}>
-                            <div className="d-flex align-items-start gap-2 mb-2">
-                              <div className="flex-grow-1 min-width-0">
-                                <div className="d-flex align-items-center gap-2 flex-wrap">
-                                  <div className="fw-semibold fs-13 text-truncate">{c.dodavatel}</div>
-                                  {isBest && (
-                                    <span className="badge bg-success" style={{ fontSize: 9 }}>DOPORUČENO</span>
-                                  )}
-                                </div>
-                                <div className="text-muted fs-11 czk-num">{c.fakturaCislo} · {formatAmount(c.castka)}</div>
-                              </div>
-                              <div className="text-end flex-shrink-0">
-                                <div className={`fw-bold fs-14 ${c.matchScore >= 80 ? 'text-success' : c.matchScore >= 50 ? 'text-warning' : 'text-danger'}`}>
-                                  {c.matchScore} %
-                                </div>
-                                <div className="text-muted fs-11">shoda</div>
-                              </div>
-                            </div>
-                            {c.duvody.length > 0 && (
-                              <div className="d-flex flex-wrap gap-1 mb-2">
-                                {c.duvody.map((d, i) => (
-                                  <span key={i} className="badge bg-light text-dark border" style={{ fontSize: 10 }}>{d}</span>
-                                ))}
-                              </div>
-                            )}
-                            <div className="d-flex gap-1">
-                              <button className="btn btn-success btn-sm flex-grow-1" onClick={() => handleSelectCandidate(c)}>
-                                <iconify-icon icon="solar:check-circle-bold-duotone" className="me-1" />
-                                Potvrdit
-                              </button>
-                              <button className="btn btn-outline-secondary btn-sm" onClick={() => handleRejectCandidate(c)} title="Odmítnout">
-                                <iconify-icon icon="solar:close-circle-bold-duotone" />
-                              </button>
-                            </div>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  </div>
-                ) : null /* waiting-review se ukazuje jako alert nahoře přes isWaitingReview flag */}
-
                 {/* Manuální párování (s mock datalist) */}
                 <div>
                   <div className="d-flex align-items-center gap-1 mb-2">
@@ -1157,10 +1259,40 @@ function TransakceSidePanel({ transakce, ucty, onClose, onPatch, onAudit, onNote
                       <option value="FA-2026-0211" />
                       <option value="FA-2026-0287" />
                     </datalist>
-                    <button className="btn btn-primary btn-sm" disabled={!manualMatchInvoice.trim()} onClick={handleConfirmManualMatch}>
+                    <button className="btn btn-primary btn-sm"
+                      disabled={!manualMatchInvoice.trim() || (matchSplitOpen && (!matchSplit.fully || !matchSplit.rowsValid))}
+                      title={matchSplitOpen && !matchSplit.fully ? 'Nejprve rozděl celou částku na provozovny' : undefined}
+                      onClick={handleConfirmManualMatch}>
                       Potvrdit
                     </button>
                   </div>
+                  {/* Volitelný rozpad faktury na víc provozů (collapse) */}
+                  {!matchSplitOpen ? (
+                    <button className="btn btn-link btn-sm p-0 mt-1 text-decoration-none d-inline-flex align-items-center gap-1" style={{ fontSize: 12 }}
+                      onClick={() => { setMatchSplitOpen(true); setMatchSplits(initialSplits()); }}>
+                      <iconify-icon icon="solar:buildings-3-bold-duotone" />
+                      Rozdělit na provozovny
+                    </button>
+                  ) : (
+                    <div className="mt-2 border rounded p-2" style={{ background: '#fafbfc' }}>
+                      <div className="d-flex align-items-center gap-1 mb-1">
+                        <iconify-icon icon="solar:buildings-3-bold-duotone" style={{ fontSize: 13, color: '#0d6efd' }} />
+                        <span className="fw-semibold fs-12">Rozdělení faktury na provozovny</span>
+                        <button className="btn btn-link btn-sm p-0 ms-auto text-muted" style={{ fontSize: 11, textDecoration: 'none' }}
+                          onClick={() => { setMatchSplitOpen(false); setMatchSplits([{ provozovnaId: '', castka: '', ucel: '' }]); }}>
+                          Zrušit rozdělení ×
+                        </button>
+                      </div>
+                      <ProvozSplitEditor
+                        splits={matchSplits}
+                        setSplits={setMatchSplits}
+                        totalAbs={splitTotalAbs}
+                        mena={ucet?.mena ?? 'CZK'}
+                        formatAmount={formatAmount}
+                        showUcel={false}
+                      />
+                    </div>
+                  )}
                 </div>
 
                 {/* Vystavit fakturu (jen pro příchozí) */}
@@ -1309,15 +1441,9 @@ function TransakceSidePanel({ transakce, ucty, onClose, onPatch, onAudit, onNote
                       </button>
                       <button
                         className="btn btn-outline-secondary btn-sm flex-grow-1"
-                        onClick={() => { setOznacitMode('outside'); setOznacitReason(''); setOznacitNote(''); }}>
+                        onClick={() => { setOznacitMode('outside'); setOznacitReason(''); setOznacitNote(''); setOznacitSplits(initialSplits()); }}>
                         <iconify-icon icon="solar:logout-3-bold-duotone" className="me-1" />
                         Mimo systém
-                      </button>
-                      <button
-                        className="btn btn-outline-warning btn-sm flex-grow-1"
-                        onClick={() => { setOznacitMode('no-invoice'); setOznacitReason(''); }}>
-                        <iconify-icon icon="solar:close-circle-bold-duotone" className="me-1" />
-                        Bez faktury
                       </button>
                     </div>
                   </div>
@@ -1387,9 +1513,28 @@ function TransakceSidePanel({ transakce, ucty, onClose, onPatch, onAudit, onNote
                         <option key={r.value} value={r.value}>{r.label}</option>
                       ))}
                     </select>
+
+                    {/* Rozdělení na provozovny — jedna platba může patřit na víc provozů */}
+                    {oznacitMode === 'outside' && (
+                      <div className="mb-2">
+                        <div className="d-flex align-items-center gap-1 mb-1">
+                          <iconify-icon icon="solar:buildings-3-bold-duotone" style={{ fontSize: 13, color: '#0d6efd' }} />
+                          <span className="fw-semibold fs-12">Rozdělení na provozovny</span>
+                        </div>
+                        <ProvozSplitEditor
+                          splits={oznacitSplits}
+                          setSplits={setOznacitSplits}
+                          totalAbs={splitTotalAbs}
+                          mena={ucet?.mena ?? 'CZK'}
+                          formatAmount={formatAmount}
+                          showUcel
+                        />
+                      </div>
+                    )}
+
                     {oznacitMode === 'outside' && (
                       <textarea
-                        className="form-control form-control-sm mb-2"
+                        className="form-control form-control-sm mb-2 mt-2"
                         style={{ fontSize: 12, resize: 'none' }}
                         rows={2}
                         placeholder="Poznámka (nepovinné)"
@@ -1400,11 +1545,12 @@ function TransakceSidePanel({ transakce, ucty, onClose, onPatch, onAudit, onNote
                     <div className="d-flex gap-1">
                       <button
                         className={`btn btn-sm flex-grow-1 ${oznacitMode === 'outside' ? 'btn-secondary' : 'btn-warning'}`}
-                        disabled={!oznacitReason}
+                        disabled={!oznacitReason || (oznacitMode === 'outside' && (!outsideSplit.fully || !outsideSplit.rowsValid))}
+                        title={oznacitMode === 'outside' && !outsideSplit.fully ? 'Nejprve rozděl celou částku na provozovny' : undefined}
                         onClick={handleConfirmOznacit}>
                         Potvrdit
                       </button>
-                      <button className="btn btn-light btn-sm" onClick={() => { setOznacitMode(null); setOznacitReason(''); setOznacitNote(''); }}>
+                      <button className="btn btn-light btn-sm" onClick={() => { setOznacitMode(null); setOznacitReason(''); setOznacitNote(''); setOznacitSplits([{ provozovnaId: '', castka: '', ucel: '' }]); }}>
                         Zrušit
                       </button>
                     </div>
@@ -1413,10 +1559,11 @@ function TransakceSidePanel({ transakce, ucty, onClose, onPatch, onAudit, onNote
               </div>
             )}
           </section>
+          )}
 
           {/* ── DETAIL ── */}
+          {activeTab === 'detail' && (
           <section className="p-3 border-bottom">
-            <SectionHeading icon="solar:document-text-bold-duotone" color="#6c757d" title="Detail" />
             <div className="row g-2">
               <div className="col-6">
                 <div className="text-muted fs-11 fw-semibold mb-1">VS</div>
@@ -1451,6 +1598,25 @@ function TransakceSidePanel({ transakce, ucty, onClose, onPatch, onAudit, onNote
                   {transakce.manualNote && <div className="text-muted fs-11 fst-italic mt-1">„{transakce.manualNote}"</div>}
                 </div>
               )}
+              {transakce.rozdeleni && transakce.rozdeleni.length > 0 && (
+                <div className="col-12">
+                  <div className="text-muted fs-11 fw-semibold mb-1">Rozdělení na provozovny</div>
+                  <div className="d-flex flex-column gap-1">
+                    {transakce.rozdeleni.map((r, i) => (
+                      <div key={i} className="d-flex justify-content-between align-items-center gap-2">
+                        <span className="d-flex align-items-center gap-1 min-width-0">
+                          <span className="badge bg-light text-dark border d-flex align-items-center gap-1 flex-shrink-0" style={{ fontSize: 11 }}>
+                            <span className="rounded-circle" style={{ width: 6, height: 6, background: PROVOZOVNY.find((p) => p.id === r.provozovnaId)?.color ?? '#9097a7', display: 'inline-block' }} />
+                            {PROVOZOVNY.find((p) => p.id === r.provozovnaId)?.shortName ?? r.provozovnaId}
+                          </span>
+                          {r.ucel && <span className="text-muted fs-11 fst-italic text-truncate">{r.ucel}</span>}
+                        </span>
+                        <span className="fs-13 czk-num fw-semibold flex-shrink-0">{formatAmount(r.castka)}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
               {transakce.protiUcet && (
                 <div className="col-12">
                   <div className="text-muted fs-11 fw-semibold mb-1">Protiúčet</div>
@@ -1459,72 +1625,75 @@ function TransakceSidePanel({ transakce, ucty, onClose, onPatch, onAudit, onNote
               )}
             </div>
           </section>
+          )}
 
-          {/* ── AKTIVITA (sloučený timeline: audit + poznámky chronologicky) ── */}
+          {/* ── KOMUNIKACE (společná záložka napříč systémem) ── */}
+          {activeTab === 'komunikace' && (
           <section className="p-3">
-            <SectionHeading
-              icon="solar:history-bold-duotone"
-              color="#6c757d"
-              title={`Aktivita (${activityFeed.length})`}
-              right={
-                <button className="btn btn-link btn-sm text-muted p-0 d-flex align-items-center" style={{ textDecoration: 'none' }} onClick={() => setActivityCollapsed(!activityCollapsed)}>
-                  <iconify-icon icon={activityCollapsed ? 'solar:alt-arrow-down-bold' : 'solar:alt-arrow-up-bold'} />
-                </button>
-              }
-            />
-            {!activityCollapsed && (
-              <>
-                {activityFeed.length === 0 ? (
-                  <div className="text-muted fs-12 text-center py-2">Žádná aktivita</div>
-                ) : (
-                  <div className="d-flex flex-column gap-2 mb-3">
-                    {activityFeed.map((e) =>
-                      e.type === 'note' ? (
-                        <div key={e.id} className="rounded p-2" style={{ background: '#fff8e1', borderLeft: '3px solid #ffc107' }}>
-                          <div className="d-flex align-items-center justify-content-between mb-1">
-                            <div className="d-flex align-items-center gap-1">
-                              <iconify-icon icon="solar:chat-round-line-bold-duotone" style={{ fontSize: 12, color: '#ad8800' }} />
-                              <div className="fw-semibold fs-12">{e.kdo}</div>
-                            </div>
-                            <div className="text-muted" style={{ fontSize: 10 }}>{fDate(e.cas.slice(0, 10))} {e.cas.slice(11, 16)}</div>
-                          </div>
-                          <div className="fs-12" style={{ whiteSpace: 'pre-wrap' }}>{e.text}</div>
-                        </div>
-                      ) : (
-                        <div key={e.id} className="d-flex align-items-start gap-2">
-                          <span
-                            className="rounded-circle d-flex align-items-center justify-content-center flex-shrink-0 mt-1"
-                            style={{ width: 18, height: 18, background: e.color, color: 'white' }}>
-                            <iconify-icon icon={e.icon} style={{ fontSize: 11 }} />
-                          </span>
-                          <div className="flex-grow-1">
-                            <div className="fs-12">{e.akce}</div>
-                            <div className="text-muted" style={{ fontSize: 10 }}>{e.kdo} · {fDate(e.cas.slice(0, 10))} {e.cas.slice(11, 16)}</div>
-                          </div>
-                        </div>
-                      )
-                    )}
+            <SectionHeading icon="solar:chat-round-bold-duotone" color="#6c757d" title={`Komunikace (${notes.length})`} />
+            {notes.length === 0 ? (
+              <div className="text-muted fs-12 text-center py-2">Zatím žádná komunikace</div>
+            ) : (
+              <div className="d-flex flex-column gap-2 mb-3">
+                {[...notes].sort((a, b) => b.cas.localeCompare(a.cas)).map((n) => (
+                  <div key={n.id} className="rounded p-2" style={{ background: '#fff8e1', borderLeft: '3px solid #ffc107' }}>
+                    <div className="d-flex align-items-center justify-content-between mb-1">
+                      <div className="d-flex align-items-center gap-1">
+                        <iconify-icon icon="solar:chat-round-line-bold-duotone" style={{ fontSize: 12, color: '#ad8800' }} />
+                        <div className="fw-semibold fs-12">{n.kdo}</div>
+                      </div>
+                      <div className="text-muted" style={{ fontSize: 10 }}>{fDate(n.cas.slice(0, 10))} {n.cas.slice(11, 16)}</div>
+                    </div>
+                    <div className="fs-12" style={{ whiteSpace: 'pre-wrap' }}>{n.text}</div>
                   </div>
-                )}
-                {/* Vstup pro novou poznámku (vždy na konci aktivity) */}
-                <div className="border-top pt-2 mt-2">
-                  <textarea
-                    className="form-control form-control-sm mb-2"
-                    style={{ fontSize: 12, resize: 'none' }}
-                    rows={2}
-                    placeholder="Přidat poznámku…"
-                    value={noteInput}
-                    onChange={(e) => setNoteInput(e.target.value)}
-                  />
-                  <button className="btn btn-light btn-sm w-100 d-flex align-items-center justify-content-center gap-1" disabled={!noteInput.trim()} onClick={handleAddNote}>
-                    <iconify-icon icon="solar:add-circle-bold-duotone" />
-                    Přidat poznámku
-                  </button>
-                </div>
-              </>
+                ))}
+              </div>
+            )}
+            {/* Vstup pro novou poznámku */}
+            <div className="border-top pt-2 mt-2">
+              <textarea
+                className="form-control form-control-sm mb-2"
+                style={{ fontSize: 12, resize: 'none' }}
+                rows={2}
+                placeholder="Přidat poznámku…"
+                value={noteInput}
+                onChange={(e) => setNoteInput(e.target.value)}
+              />
+              <button className="btn btn-light btn-sm w-100 d-flex align-items-center justify-content-center gap-1" disabled={!noteInput.trim()} onClick={handleAddNote}>
+                <iconify-icon icon="solar:add-circle-bold-duotone" />
+                Přidat poznámku
+              </button>
+            </div>
+          </section>
+          )}
+
+          {/* ── HISTORIE (společná záložka napříč systémem) ── */}
+          {activeTab === 'historie' && (
+          <section className="p-3">
+            <SectionHeading icon="solar:clock-circle-bold-duotone" color="#6c757d" title={`Historie (${auditEntries.length})`} />
+            {auditEntries.length === 0 ? (
+              <div className="text-muted fs-12 text-center py-2">Žádná historie</div>
+            ) : (
+              <div className="d-flex flex-column gap-2">
+                {[...auditEntries].sort((x, y) => y.cas.localeCompare(x.cas)).map((a, i) => (
+                  <div key={`a-${i}-${a.cas}`} className="d-flex align-items-start gap-2">
+                    <span
+                      className="rounded-circle d-flex align-items-center justify-content-center flex-shrink-0 mt-1"
+                      style={{ width: 18, height: 18, background: a.color, color: 'white' }}>
+                      <iconify-icon icon={a.icon} style={{ fontSize: 11 }} />
+                    </span>
+                    <div className="flex-grow-1">
+                      <div className="fs-12">{a.akce}</div>
+                      <div className="text-muted" style={{ fontSize: 10 }}>{a.kdo} · {fDate(a.cas.slice(0, 10))} {a.cas.slice(11, 16)}</div>
+                    </div>
+                  </div>
+                ))}
+              </div>
             )}
           </section>
+          )}
         </div>
+        </div>{/* /scroll area */}
       </div>
     </div>
   );
@@ -1570,17 +1739,14 @@ function TransakceTable({
   ];
   return (
     <div className="card">
-      <div className="card-header">
+      {/* Filtr-hlavička není sticky — odscrolluje, aby se sticky hlavička sloupců
+          + vybraný řádek mohly přišpendlit pod topbar (relativně k .page-content). */}
+      <div className="card-header" style={{ position: 'static' }}>
         <div className="d-flex align-items-center gap-2 flex-wrap mb-2">
           <h5 className="card-title mb-0">
             Seznam transakcí
             <small className="text-muted fw-normal ms-2 fs-13">{transakce.length} {transakce.length === 1 ? 'transakce' : 'transakcí'}</small>
           </h5>
-          <button className="btn btn-primary btn-sm ms-auto d-flex align-items-center gap-1" onClick={onNewPayment}
-            title="Zadat platbu nevázanou na fakturu (daně, poplatky, ad-hoc)">
-            <iconify-icon icon="solar:add-square-bold-duotone" />
-            Nová platba
-          </button>
         </div>
         {(() => {
           const hasAnyFilter = !!(search || castkaOd || castkaDo || datumOd || datumDo || typFilter !== 'all' || ucetFilter !== 'all' || stavFilters.size > 0 || activeQueueLabel);
@@ -1672,8 +1838,8 @@ function TransakceTable({
           );
         })()}
       </div>
-      <div className="table-responsive">
-        <table className="table table-hover table-centered table-nowrap mb-0" style={{ fontSize: 12 }}>
+      <div className="table-responsive" style={{ overflow: 'visible' }}>
+        <table className="table table-hover table-centered table-nowrap mb-0 banka-trans-table" style={{ fontSize: 12 }}>
           <thead className="table-light">
             <tr>
               <th>Datum</th>
@@ -1696,10 +1862,9 @@ function TransakceTable({
               // Phase 2.3 — overdue má červený levý okraj, delegace ukazuje avatar
               const rowStyle: React.CSSProperties = {
                 cursor: 'pointer',
-                ...(t.isOverdueAtBank ? { boxShadow: 'inset 3px 0 0 #dc3545', background: '#fdf3f4' } : {}),
               };
               return (
-                <tr key={t.id} className={isActive ? 'table-active' : ''}
+                <tr key={t.id} className={isActive ? 'table-active banka-row-selected' : ''}
                     style={rowStyle}
                     onClick={(e) => {
                       const row = e.currentTarget;
@@ -1729,17 +1894,12 @@ function TransakceTable({
                       <iconify-icon icon={t.typ === 'prichoz' ? 'solar:arrow-down-bold' : 'solar:arrow-up-bold'} style={{ fontSize: 11 }} />
                       {t.typ === 'prichoz' ? 'Příchozí' : 'Odchozí'}
                     </span>
-                    {/* Vedlejší badge (interní převod / overdue / delegace) */}
-                    {(isInternalTransfer(t, BANKA_UCTY) || t.isOverdueAtBank || t.delegatedTo) && (
+                    {/* Vedlejší badge (interní převod / delegace) */}
+                    {(isInternalTransfer(t, BANKA_UCTY) || t.delegatedTo) && (
                       <div className="d-flex align-items-center gap-1 mt-1 flex-wrap">
                         {isInternalTransfer(t, BANKA_UCTY) && (
                           <span className="badge bg-info-subtle text-info" style={{ fontSize: 9 }} title="Interní převod mezi firemními účty">
                             <iconify-icon icon="solar:transfer-horizontal-bold-duotone" style={{ fontSize: 9 }} />
-                          </span>
-                        )}
-                        {t.isOverdueAtBank && (
-                          <span className="badge bg-danger-subtle text-danger" style={{ fontSize: 9 }} title={`V bance neuhrazená · splatnost ${t.splatnost ?? '—'}`}>
-                            <iconify-icon icon="solar:bell-bing-bold-duotone" style={{ fontSize: 9 }} />
                           </span>
                         )}
                         {t.delegatedTo && (
@@ -2491,9 +2651,7 @@ export default function BankaView({ state, update }: Props) {
           const u = BANKA_UCTY.find((x) => x.id === t.ucetId);
           if (u && u.provozovny.length > 0) return false;
         }
-        if (activeQueue === 'overdue-at-bank' && !t.isOverdueAtBank)                  return false;
         if (activeQueue === 'delegated'       && !t.delegatedTo)                      return false;
-        if (activeQueue === 'with-candidates' && (t.candidates?.length ?? 0) === 0)   return false;
         if (activeQueue === 'waiting-review'  && !t.isWaitingReview)                  return false;
         if (activeQueue === 'error'           && !t.hasError)                         return false;
       }
@@ -2618,7 +2776,6 @@ export default function BankaView({ state, update }: Props) {
       <AutoSyncBar
         pendingCount={pendingCount}
         paymentsQueueCount={5}
-        apiCallsUsed={187}
       />
       <SimpleMetrics transakce={mergedAllTransakce} />
       <BalanceOverview ucty={mergedUcty} />
