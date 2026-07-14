@@ -686,6 +686,8 @@ function UverFormModal({ initial, ucty, onSave, onClose }: {
                     <option value="leasing-finanční">Finanční leasing</option>
                   </select>
                 </div>
+                {/* Stav se nastavuje jen u editace — nový úvěr je vždy „Aktivní" (zápis 14. 7. 2026) */}
+                {isEdit && (
                 <div className="col-md-6">
                   <label className="form-label fs-12 fw-semibold">Stav</label>
                   <select className="form-select form-select-sm" value={form.stav}
@@ -696,6 +698,7 @@ function UverFormModal({ initial, ucty, onSave, onClose }: {
                     <option value="pozastaven">Pozastaven</option>
                   </select>
                 </div>
+                )}
 
                 {/* Banka — sekce */}
                 <div className="col-12 mt-2">
