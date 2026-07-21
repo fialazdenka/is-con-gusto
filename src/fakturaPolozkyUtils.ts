@@ -9,30 +9,37 @@ export const DPH_SAZBA: Record<FakturaKategorie, number> = {
   ostatni: 0.21,
 };
 
-const POLOZKY_PODIL: Record<FakturaKategorie, { popis: string; podil: number }[]> = {
+// Druh položky pro schvalovací workflow (zápis 14. 7. 2026):
+//  - 'surovina' = zboží dohledatelné v dodacích listech (Septim) → auto-schválení (zeleně)
+//  - 'rezie'    = režijní náklad (doprava, obaly, poplatky, energie, nájem…) → schvaluje účetní (oranžově)
+export type PolozkaDruh = 'surovina' | 'rezie';
+
+const POLOZKY_PODIL: Record<FakturaKategorie, { popis: string; podil: number; druh: PolozkaDruh }[]> = {
   zbozi: [
-    { popis: 'Maso a drůbež',                podil: 0.38 },
-    { popis: 'Zelenina, ovoce a bylinky',    podil: 0.22 },
-    { popis: 'Suchý sortiment a koření',     podil: 0.22 },
-    { popis: 'Nápoje a doplňkový sortiment', podil: 0.18 },
+    { popis: 'Maso a drůbež',                podil: 0.34, druh: 'surovina' },
+    { popis: 'Zelenina, ovoce a bylinky',    podil: 0.20, druh: 'surovina' },
+    { popis: 'Suchý sortiment a koření',     podil: 0.20, druh: 'surovina' },
+    { popis: 'Nápoje a doplňkový sortiment', podil: 0.14, druh: 'surovina' },
+    { popis: 'Obalový a čisticí materiál',   podil: 0.07, druh: 'rezie' },
+    { popis: 'Doprava a logistika',          podil: 0.05, druh: 'rezie' },
   ],
   energie: [
-    { popis: 'Spotřeba elektrické energie',  podil: 0.78 },
-    { popis: 'Distribuční poplatek',         podil: 0.22 },
+    { popis: 'Spotřeba elektrické energie',  podil: 0.78, druh: 'rezie' },
+    { popis: 'Distribuční poplatek',         podil: 0.22, druh: 'rezie' },
   ],
   najem: [
-    { popis: 'Nájem nebytových prostor',     podil: 0.85 },
-    { popis: 'Záloha na služby',             podil: 0.15 },
+    { popis: 'Nájem nebytových prostor',     podil: 0.85, druh: 'rezie' },
+    { popis: 'Záloha na služby',             podil: 0.15, druh: 'rezie' },
   ],
   sluzby: [
-    { popis: 'Poskytnuté služby dle smlouvy', podil: 0.88 },
-    { popis: 'Administrativní poplatek',      podil: 0.12 },
+    { popis: 'Poskytnuté služby dle smlouvy', podil: 0.88, druh: 'rezie' },
+    { popis: 'Administrativní poplatek',      podil: 0.12, druh: 'rezie' },
   ],
   vyplaty: [
-    { popis: 'Mzdové náklady',               podil: 1.0 },
+    { popis: 'Mzdové náklady',               podil: 1.0, druh: 'rezie' },
   ],
   ostatni: [
-    { popis: 'Plnění dle smlouvy',           podil: 1.0 },
+    { popis: 'Plnění dle smlouvy',           podil: 1.0, druh: 'rezie' },
   ],
 };
 
@@ -41,6 +48,7 @@ export interface FakturaPolozkaGen {
   base: number;        // bez DPH
   total: number;       // s DPH
   dphSazba: number;
+  druh: PolozkaDruh;
 }
 
 export function generateFakturaPolozky(castka: number, kategorie: FakturaKategorie): FakturaPolozkaGen[] {
@@ -54,7 +62,7 @@ export function generateFakturaPolozky(castka: number, kategorie: FakturaKategor
       ? zaklad - polozky.slice(0, i).reduce((s, pp) => s + Math.round(zaklad * pp.podil), 0)
       : Math.round(zaklad * p.podil);
     const total   = Math.round(base * (1 + sazba));
-    return { popis: p.popis, base, total, dphSazba: sazba };
+    return { popis: p.popis, base, total, dphSazba: sazba, druh: p.druh };
   });
 }
 

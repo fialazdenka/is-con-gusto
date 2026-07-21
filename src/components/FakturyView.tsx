@@ -48,12 +48,15 @@ export type SortCol = 'cislo' | 'dodavatel' | 'castka' | 'splatnost' | 'odeslatD
 
 // Stav chips pro PŘIJATÉ faktury (workflow schvalování)
 const STAV_CHIPS: { value: FakturaStavPlatby; label: string }[] = [
-  { value: 'nova',          label: 'Nová' },
-  { value: 'ceka-na-schvaleni',  label: 'Ke schválení' },
-  { value: 'schvalena',     label: 'Schválená' },
-  { value: 'zamitnuta',     label: 'Zamítnutá' },
-  { value: 'pozastavena',     label: 'Pozastavená' },
-  { value: 'uhrazena',     label: 'Uhrazená' },
+  { value: 'nova',                label: 'Nová' },
+  { value: 'ceka-na-schvaleni',   label: 'Čeká na schválení' },
+  { value: 'castecne-schvalena',  label: 'Částečně schválená' },
+  { value: 'schvalena',           label: 'Schválená' },
+  { value: 'pozastavena',         label: 'Pozastavená' },
+  { value: 'zamitnuta',           label: 'Zamítnutá' },
+  { value: 'v-bance',             label: 'V bance' },
+  { value: 'v-bance-neuhrazena',  label: 'V bance neuhrazená' },
+  { value: 'uhrazena',            label: 'Uhrazená' },
 ];
 // Phase 8.4 (zápis 19. 6. 2026) — Stav chips pro VYDANÉ faktury (workflow vystavení → úhrada)
 const STAV_CHIPS_VYDANE: { value: FakturaStavPlatby; label: string }[] = [
@@ -84,7 +87,7 @@ const DATE_PRESETS: { label: string; from: string; to: string }[] = [
 const STAV_UHRADY_OPTIONS: { value: string; label: string; set: FakturaStavPlatby[] }[] = [
   { value: 'all',           label: 'Všechny',       set: [] },
   { value: 'uhrazene',      label: 'Uhrazené',      set: ['uhrazena'] },
-  { value: 'neuhrazene',    label: 'Neuhrazené',    set: ['nova', 'ceka-na-schvaleni', 'schvalena', 'pozastavena', 'v-bance', 'v-bance-neuhrazena'] },
+  { value: 'neuhrazene',    label: 'Neuhrazené',    set: ['nova', 'ceka-na-schvaleni', 'castecne-schvalena', 'schvalena', 'pozastavena', 'v-bance', 'v-bance-neuhrazena'] },
   { value: 'po-splatnosti', label: 'Po splatnosti', set: ['v-bance-neuhrazena'] },
 ];
 
@@ -645,8 +648,9 @@ export default function FakturyView({ state, update, fixedTyp }: Props) {
       {/* Horní action bar odebrán (zápis 13. 7. 2026) — CTA pro zadání dokladu je nově POD
           výběrem typu dokladu a kontextově zohledňuje vybraný typ. */}
 
-      {/* Typ dokladu — NADŘAZENÝ výběr nad vším pod ním (KPI / filtry / tabulka reflektují výběr).
-          Zobrazeno jako hlavní tab bar (podtržení) pro přijaté i vydané faktury (zápis 13. 7. 2026). */}
+      {/* Hlavička sekce: Typ dokladu (vlevo) + CTA „Nová faktura" vpravo nahoře (zápis 21. 7. 2026).
+          Tab bar = NADŘAZENÝ výběr; KPI / filtry / tabulka reflektují výběr. */}
+      <div className="d-flex justify-content-between align-items-end flex-wrap gap-3 mb-3" style={{ borderBottom: '2px solid #e9ecef' }}>
       {(() => {
         const formaCounts = {
           standard:  allFakturyRaw.filter((f) => !f.forma || f.forma === 'standard').length,
@@ -667,7 +671,7 @@ export default function FakturyView({ state, update, fixedTyp }: Props) {
         const showDaneTab = fixedTyp === 'prijata' || !fixedTyp;
         const daneColor = '#0dcaf0';
         return (
-          <div className="mb-3" style={{ borderBottom: '2px solid #e9ecef' }}>
+          <div>
             <div className="d-flex align-items-center gap-1 flex-wrap">
               {tabs.map((t) => {
                 const active = !daneMode && formaTab === t.value;
@@ -726,7 +730,7 @@ export default function FakturyView({ state, update, fixedTyp }: Props) {
         );
       })()}
 
-      {/* Kontextové CTA POD výběrem typu — zohledňuje vybraný typ dokladu.
+      {/* Kontextové CTA vpravo nahoře — zohledňuje vybraný typ dokladu.
           Přijaté → „Přijatá faktura/dobropis/…"; Vydané → „Vystavit fakturu/dobropis/…". */}
       {(() => {
         const forma: FakturaForma = formaFilters.size === 1 ? Array.from(formaFilters)[0] : 'standard';
@@ -761,7 +765,7 @@ export default function FakturyView({ state, update, fixedTyp }: Props) {
         // V režimu Daně nabídneme jen „Přidat daňový doklad" (formulář ve stylu faktury)
         if (daneMode) {
           return (
-            <div className="d-flex gap-2 flex-wrap mb-3">
+            <div className="d-flex gap-2 flex-wrap pb-2">
               <button className="btn btn-primary btn-sm d-flex align-items-center gap-1"
                 onClick={() => { setNovaDane((d) => ({ ...d, provozovna: prov })); setShowNovaDane(true); }}
                 title="Zadat daňový doklad (DPH, DPPO, silniční…)">
@@ -772,7 +776,7 @@ export default function FakturyView({ state, update, fixedTyp }: Props) {
           );
         }
         return (
-          <div className="d-flex gap-2 flex-wrap mb-3">
+          <div className="d-flex gap-2 flex-wrap pb-2">
             {showPrijata && (
               <button className="btn btn-primary btn-sm d-flex align-items-center gap-1" onClick={openPrijata}
                 title="Zadat přijatý doklad vybraného typu">
@@ -790,6 +794,7 @@ export default function FakturyView({ state, update, fixedTyp }: Props) {
           </div>
         );
       })()}
+      </div>
 
       {/* Obsah faktur (upozornění + filtry + tabulka) — skryté v režimu Daně */}
       {!daneMode && (
@@ -804,6 +809,7 @@ export default function FakturyView({ state, update, fixedTyp }: Props) {
         const zalohNeuhr    = base.filter((f) => f.forma === 'zalohova' && !paid(stavOf(f)) && stavOf(f) !== 'zamitnuta');
         const zalohNespar   = base.filter((f) => f.forma === 'zalohova' && paid(stavOf(f)) && !f.spojenaSId);
         const pozastavene   = base.filter((f) => stavOf(f) === 'pozastavena');
+        const castecne      = base.filter((f) => stavOf(f) === 'castecne-schvalena');
 
         const neuhrSet = new Set(STAV_UHRADY_OPTIONS.find((o) => o.value === 'neuhrazene')?.set ?? []);
         const uhrSet   = new Set(STAV_UHRADY_OPTIONS.find((o) => o.value === 'uhrazene')?.set ?? []);
@@ -832,6 +838,11 @@ export default function FakturyView({ state, update, fixedTyp }: Props) {
             key: 'pozastavene', forma: 'standard' as FakturaForma, show: pozastavene.length > 0, count: pozastavene.length,
             label: 'Pozastavené faktury', color: '#e08e0b', icon: 'solar:pause-circle-bold-duotone',
             onClick: () => { setFormaFilters(new Set()); setStavUhrady('all'); setStavFilters(new Set(['pozastavena'])); },
+          },
+          {
+            key: 'castecne', forma: 'standard' as FakturaForma, show: castecne.length > 0, count: castecne.length,
+            label: 'Režie čeká na účetní', color: '#e67e00', icon: 'solar:pie-chart-2-bold-duotone',
+            onClick: () => { setFormaFilters(new Set()); setStavUhrady('all'); setStavFilters(new Set(['castecne-schvalena'])); },
           },
         ].filter((c) => c.show && (formaTab === 'all' || c.forma === formaTab));
 
@@ -945,23 +956,6 @@ export default function FakturyView({ state, update, fixedTyp }: Props) {
                 <option value="asc">Od nejstarších</option>
               </select>
             </div>
-            <div className="col-6 col-md">
-              <label className="form-label fs-13 fw-semibold mb-1">Stav úhrady</label>
-              <select
-                className="form-select form-select-sm"
-                value={stavUhrady}
-                onChange={(e) => {
-                  const v = e.target.value;
-                  setStavUhrady(v);
-                  const opt = STAV_UHRADY_OPTIONS.find((o) => o.value === v);
-                  setStavFilters(new Set(opt?.set ?? []));
-                }}
-              >
-                {STAV_UHRADY_OPTIONS.map((o) => (
-                  <option key={o.value} value={o.value}>{o.label}</option>
-                ))}
-              </select>
-            </div>
           </div>
 
           {/* Řádek 2 — období + typ data + náklad */}
@@ -1027,6 +1021,67 @@ export default function FakturyView({ state, update, fixedTyp }: Props) {
               </select>
             </div>
           </div>
+
+          {/* Řádek 3 — částka Od–Do + multi-checkbox Stav (zápis 21. 7. 2026) */}
+          <div className="row g-3 mt-1 align-items-end">
+            <div className="col-6 col-md-2">
+              <label className="form-label fs-13 fw-semibold mb-1">Částka od (Kč)</label>
+              <input
+                type="number"
+                className="form-control form-control-sm"
+                placeholder="0"
+                value={castkaOd}
+                onChange={(e) => setCastkaOd(e.target.value)}
+                onWheel={(e) => (e.target as HTMLElement).blur()}
+              />
+            </div>
+            <div className="col-6 col-md-2">
+              <label className="form-label fs-13 fw-semibold mb-1">Částka do (Kč)</label>
+              <input
+                type="number"
+                className="form-control form-control-sm"
+                placeholder="∞"
+                value={castkaDo}
+                onChange={(e) => setCastkaDo(e.target.value)}
+                onWheel={(e) => (e.target as HTMLElement).blur()}
+              />
+            </div>
+            <div className="col-12 col-md">
+              <label className="form-label fs-13 fw-semibold mb-1 d-flex align-items-center gap-2">
+                Stav
+                {stavFilters.size > 0 && (
+                  <button type="button" className="btn btn-link btn-sm p-0 text-decoration-none fs-11"
+                    onClick={() => setStavFilters(new Set())}>
+                    <iconify-icon icon="solar:close-circle-bold-duotone" className="me-1" />
+                    Zrušit ({stavFilters.size})
+                  </button>
+                )}
+              </label>
+              <div className="d-flex flex-wrap gap-1">
+                {(typDokladu === 'vydana'
+                  ? STAV_CHIPS_VYDANE
+                  : typDokladu === 'prijata'
+                    ? STAV_CHIPS
+                    : [...STAV_CHIPS, ...STAV_CHIPS_VYDANE]
+                ).map((c) => {
+                  const active = stavFilters.has(c.value);
+                  return (
+                    <button key={c.value} type="button"
+                      className={`badge border-0 ${active ? 'bg-dark text-white' : 'bg-secondary-subtle text-secondary'}`}
+                      style={{ cursor: 'pointer', fontSize: 11 }}
+                      onClick={() => setStavFilters((prev) => {
+                        const n = new Set(prev);
+                        if (n.has(c.value)) n.delete(c.value); else n.add(c.value);
+                        return n;
+                      })}>
+                      {active && <iconify-icon icon="solar:check-circle-bold" className="me-1" style={{ fontSize: 11 }} />}
+                      {c.label}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          </div>
         </div>
       </div>
 
@@ -1057,9 +1112,9 @@ export default function FakturyView({ state, update, fixedTyp }: Props) {
             localStavy={localStavy}
             localPrirazeni={localPrirazeni}
             showExtraCols={false}
-            showMatching={true}
+            showMatching={false}
             tableTitle="Přehled faktur"
-            showZaplacene={stavFilters.has('uhrazena')}
+            showZaplacene={true}
             selectedRowId={drawerFakturaId}
             search={search}
             onRowClick={(id) => {
@@ -1127,60 +1182,7 @@ export default function FakturyView({ state, update, fixedTyp }: Props) {
         )}
       </div>
 
-      {/* Sticky bulk akční bar
-          CUSTOM: sticky bottom bar – není v Larkon, v produkci Bootstrap .sticky-bottom */}
-      {selectedIds.size > 0 && (
-        <div
-          style={{
-            position: 'fixed',
-            bottom: 24,
-            left: '50%',
-            transform: 'translateX(-50%)',
-            zIndex: 100,
-          }}
-        >
-          <div className="d-flex align-items-center gap-2 px-4 py-3 bg-white rounded shadow">
-            <span className="fw-semibold fs-13 me-2">{selectedIds.size} faktur vybráno</span>
-            <button className="btn btn-light btn-sm" onClick={() => setSelectedIds(new Set())}>
-              Zrušit výběr
-            </button>
-            {/* Phase 8.5 (zápis 10. 6. 2026) — Bulk akce per zápis: exporty + označit jako uhrazené */}
-            <button className="btn btn-outline-primary btn-sm" onClick={() => {
-              alert(`Stahuji PDF balíček s ${selectedIds.size} fakturami…\n(mock — v produkci by se vygeneroval ZIP)`);
-              setSelectedIds(new Set());
-            }} title="Stáhnout vybrané faktury jako jeden ZIP s PDFky">
-              <iconify-icon icon="solar:download-bold-duotone" className="me-1" />
-              Exportovat PDF ({selectedIds.size})
-            </button>
-            <button className="btn btn-outline-secondary btn-sm" onClick={() => {
-              alert(`Posílám PDF s ${selectedIds.size} fakturami účetní e-mailem…\n(mock — v produkci by se otevřel mail panel)`);
-              setSelectedIds(new Set());
-            }} title="Hromadně odeslat účetní (přílohou)">
-              <iconify-icon icon="solar:letter-bold-duotone" className="me-1" />
-              Odeslat účetní
-            </button>
-            <button className="btn btn-outline-success btn-sm" onClick={() => {
-              setLocalStavy((prev) => {
-                const next = { ...prev };
-                selectedIds.forEach((id) => { next[id] = 'uhrazena'; });
-                return next;
-              });
-              setSelectedIds(new Set());
-            }} title="Hromadně označit jako uhrazené (přijatá strana — platba odeslána z banky)">
-              <iconify-icon icon="solar:check-square-bold-duotone" className="me-1" />
-              Označit uhrazené
-            </button>
-            <div className="vr mx-1"></div>
-            <button
-              className="btn btn-success btn-sm"
-              onClick={handleBulkSchvalit}
-            >
-              <iconify-icon icon="solar:check-circle-bold-duotone" className="me-1" />
-              Schválit ({selectedIds.size})
-            </button>
-          </div>
-        </div>
-      )}
+      {/* Bulk toolbar odstraněn (zápis 21. 7. 2026) — jednořádkový systém bez hromadného výběru. */}
       </>
       )}
 

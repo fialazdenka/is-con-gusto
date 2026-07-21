@@ -14,6 +14,7 @@ export type FakturaStavPlatby =
   // ── Přijaté faktury (workflow schvalování + platba) ──
   | 'nova'                    // zadaná, čeká na přiřazení schvalovatele
   | 'ceka-na-schvaleni'       // má schvalovatele, čeká na rozhodnutí
+  | 'castecne-schvalena'      // suroviny auto-schváleny (Septim), režie čeká na účetní
   | 'schvalena'               // schválená k úhradě
   | 'pozastavena'             // dočasně pozastavená (jen po schválení)
   | 'zamitnuta'               // zamítnuta schvalovatelem
@@ -92,7 +93,9 @@ export interface FakturaPlatby {
   provozovna: string;
   castka: number;
   datum: string;          // datum vystavení
+  duzp?: string;          // datum uskutečnění zdanitelného plnění (fallback = datum vystavení)
   splatnost: string;      // účetní splatnost
+  zpusobUhrady?: ZpusobUhrady;  // druh platby (značí kolegyně při zadání; zatím náhodně/dle formy)
   stav: FakturaStavPlatby;
   typDokladu: TypDokladu;
   vs?: string;               // variabilní symbol
@@ -625,7 +628,7 @@ export const FAKTURY_PLATBY: FakturaPlatby[] = [
   // ── U ČÁPA ──
   { id: 'fp19', cislo: 'FAK-2026-0051', dodavatel: 'Plzeňský Prazdroj', kategorie: 'zbozi' as FakturaKategorie, provozovna: 'u-capa', castka: 38_400, datum: '2026-04-09', splatnost: '2026-04-16', stav: 'schvalena' as FakturaStavPlatby, typDokladu: 'prijata' as TypDokladu, schvalil: 'Petr Dohnal', datumSchvaleni: '11. 4. 2026', poznamka: 'Týdenní dodávka piva – duben' },
   { id: 'fp20', cislo: 'FAK-2026-0052', dodavatel: 'Správa budov s.r.o.', kategorie: 'najem' as FakturaKategorie, provozovna: 'u-capa', castka: 62_000, datum: '2026-04-05', splatnost: '2026-04-20', stav: 'schvalena' as FakturaStavPlatby, typDokladu: 'prijata' as TypDokladu, schvalil: 'Petr Dohnal', datumSchvaleni: '7. 4. 2026', poznamka: 'Nájem duben – Štefánikova' },
-  { id: 'fp21', cislo: 'FAK-2026-0053', dodavatel: 'Makro Cash & Carry', kategorie: 'zbozi' as FakturaKategorie, provozovna: 'u-capa', castka: 14_700, datum: '2026-04-11', splatnost: '2026-04-18', stav: 'ceka-na-schvaleni' as FakturaStavPlatby, typDokladu: 'prijata' as TypDokladu, prirazenaOsoba: 'u-petr' },
+  { id: 'fp21', cislo: 'FAK-2026-0053', dodavatel: 'Makro Cash & Carry', kategorie: 'zbozi' as FakturaKategorie, provozovna: 'u-capa', castka: 14_700, datum: '2026-04-11', splatnost: '2026-04-18', stav: 'castecne-schvalena' as FakturaStavPlatby, typDokladu: 'prijata' as TypDokladu, prirazenaOsoba: 'u-petr', poznamka: 'Suroviny auto-schváleny z DL (Septim), režie (obaly, doprava) čeká na účetní' },
   { id: 'fp22', cislo: 'FAK-2026-0054', dodavatel: 'E.ON Energie', kategorie: 'energie' as FakturaKategorie, provozovna: 'u-capa', castka: 9_800, datum: '2026-04-08', splatnost: '2026-04-17', stav: 'v-bance' as FakturaStavPlatby, typDokladu: 'prijata' as TypDokladu, schvalil: 'Petr Dohnal', datumSchvaleni: '10. 4. 2026' },
 
   // ── KOREK WINEBAR ──
@@ -942,6 +945,19 @@ export function deriveVS(cislo: string): string {
 
 export function getVS(faktura: { vs?: string; cislo: string }): string {
   return faktura.vs ?? deriveVS(faktura.cislo);
+}
+
+// Druh platby / způsob úhrady. V produkci značí kolegyně při zadání přijaté faktury.
+export type ZpusobUhrady = 'hotovost' | 'karta' | 'banka' | 'zapocet' | 'zalohova' | 'stravenky';
+
+// Zatím deterministicky z ID/formy (banka nejčastější), aby se hodnota neměnila mezi rendery.
+export function getZpusobUhrady(f: { id: string; zpusobUhrady?: ZpusobUhrady; forma?: FakturaForma }): ZpusobUhrady {
+  if (f.zpusobUhrady) return f.zpusobUhrady;
+  // Úhrada zápočtem — dobropis / offset (vzájemný zápočet); zálohovou fakturou — proforma
+  if (f.forma === 'offset' || f.forma === 'dobropis') return 'zapocet';
+  if (f.forma === 'zalohova') return 'zalohova';
+  const h = parseInt(f.id.replace(/\D/g, ''), 10) || 0;
+  return (['banka', 'banka', 'karta', 'hotovost', 'stravenky'] as const)[h % 5];
 }
 
 export function getFakturyVProcesu(provozovna: string): FakturaPlatby[] {

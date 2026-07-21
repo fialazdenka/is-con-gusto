@@ -22,6 +22,7 @@ interface Props {
 const STAV_META: Record<FakturaStavPlatby, { cls: string; label: string; icon: string }> = {
   nova:                 { cls: 'bg-secondary-subtle text-secondary', label: 'Nová',                  icon: 'solar:document-bold-duotone' },
   'ceka-na-schvaleni':  { cls: 'bg-warning-subtle text-warning',     label: 'Čeká na schválení',     icon: 'solar:clock-circle-bold-duotone' },
+  'castecne-schvalena': { cls: 'bg-warning-subtle text-warning',     label: 'Částečně schválená',    icon: 'solar:pie-chart-2-bold-duotone' },
   schvalena:            { cls: 'bg-success-subtle text-success',     label: 'Schválená',             icon: 'solar:check-circle-bold-duotone' },
   pozastavena:          { cls: 'bg-warning-subtle text-warning',     label: 'Pozastavená',           icon: 'solar:pause-circle-bold-duotone' },
   zamitnuta:            { cls: 'bg-danger-subtle text-danger',       label: 'Zamítnutá',             icon: 'solar:close-circle-bold-duotone' },

@@ -802,6 +802,12 @@ export function fDate(dateStr: string): string {
   return d.toLocaleDateString('cs-CZ', { day: 'numeric', month: 'short' });
 }
 
+// Plné datum včetně roku (den. měsíc. rok) — pro přehledy, kde má být datum vždy celé.
+export function fDateFull(dateStr: string): string {
+  const d = new Date(dateStr + 'T12:00:00');
+  return d.toLocaleDateString('cs-CZ', { day: 'numeric', month: 'numeric', year: 'numeric' });
+}
+
 export function fDateShort(dateStr: string): string {
   const d = new Date(dateStr + 'T12:00:00');
   return d.toLocaleDateString('cs-CZ', {

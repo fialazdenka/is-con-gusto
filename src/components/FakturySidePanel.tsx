@@ -13,6 +13,7 @@ import {
   BANKOVNI_UCTY,
 } from '../platbyData';
 import { PROVOZOVNY, fCzk, fDate } from '../data';
+import { generateFakturaPolozky } from '../fakturaPolozkyUtils';
 
 const FORMA_INFO: Record<FakturaForma, { label: string; icon: string; color: string; bg: string; popis: string }> = {
   standard: { label: 'Standardní', icon: 'solar:document-bold-duotone',         color: '#9097a7', bg: '#f8f9fa',  popis: 'Běžná faktura' },
@@ -104,6 +105,7 @@ interface Props {
 const STAV_META: Record<FakturaStavPlatby, { cls: string; label: string; icon: string }> = {
   nova:                 { cls: 'bg-secondary-subtle text-secondary', label: 'Nová',                  icon: 'solar:document-bold-duotone' },
   'ceka-na-schvaleni':  { cls: 'bg-warning-subtle text-warning',     label: 'Čeká na schválení',     icon: 'solar:clock-circle-bold-duotone' },
+  'castecne-schvalena': { cls: 'bg-warning-subtle text-warning',     label: 'Částečně schválená',    icon: 'solar:pie-chart-2-bold-duotone' },
   schvalena:            { cls: 'bg-success-subtle text-success',     label: 'Schválená',             icon: 'solar:check-circle-bold-duotone' },
   pozastavena:          { cls: 'bg-warning-subtle text-warning',     label: 'Pozastavená',           icon: 'solar:pause-circle-bold-duotone' },
   zamitnuta:            { cls: 'bg-danger-subtle text-danger',       label: 'Zamítnutá',             icon: 'solar:close-circle-bold-duotone' },
@@ -254,7 +256,8 @@ export default function FakturySidePanel({
   const datumSchvFinal = localDatumSchvaleni || faktura.datumSchvaleni || '';
 
   const isLocked    = faktura.isLocked === true;
-  const isAprovable = !isLocked && (effectiveStav === 'nova' || effectiveStav === 'ceka-na-schvaleni');
+  // 'castecne-schvalena' = suroviny auto-schváleny, účetní ještě doschvaluje režii → stále schválitelná
+  const isAprovable = !isLocked && (effectiveStav === 'nova' || effectiveStav === 'ceka-na-schvaleni' || effectiveStav === 'castecne-schvalena');
   const isZastavena = !isLocked && effectiveStav === 'pozastavena';
   const isZamitnuta = !isLocked && effectiveStav === 'zamitnuta';
   // Phase 8.4 (zápis 19. 6. 2026) — VYDANÉ faktury mají jiný workflow (vystavení → úhrada),
@@ -455,6 +458,86 @@ export default function FakturySidePanel({
             </div>
           </div>
           )}
+
+          {/* ── Položky faktury: suroviny vs. režie (zápis 14. 7. 2026) ──
+              Suroviny = dohledatelné v dodacích listech (Septim) → auto-schváleno (zeleně).
+              Režie = obaly, doprava, poplatky, energie… → schvaluje účetní (oranžově). */}
+          {activeTab === 'detail' && !isVydana && faktura.forma !== 'dobropis' && (() => {
+            const polozky = generateFakturaPolozky(Math.abs(faktura.castka), effectiveKategorie ?? faktura.kategorie);
+            const suroviny = polozky.filter((p) => p.druh === 'surovina');
+            const rezie    = polozky.filter((p) => p.druh === 'rezie');
+            const surovinySum = suroviny.reduce((s, p) => s + p.total, 0);
+            const rezieSum    = rezie.reduce((s, p) => s + p.total, 0);
+            // Suroviny jsou auto-schváleny jakmile faktura prošla párováním (má matching stav sparovana/castecne),
+            // jinak čekají spolu s režií. Pro wireframe: auto pokud stav ≥ částečně schválená nebo matching sparovana.
+            const surovinyAuto = effectiveStav === 'castecne-schvalena' || effectiveStav === 'schvalena'
+              || effectiveStav === 'uhrazena' || effectiveStav === 'v-bance'
+              || matching?.stav === 'sparovana' || matching?.stav === 'castecne-sparovana';
+            const rezieSchvaleno = effectiveStav === 'schvalena' || effectiveStav === 'uhrazena' || effectiveStav === 'v-bance';
+            return (
+              <div className="p-3 border-bottom">
+                <div className="d-flex align-items-center gap-2 mb-2">
+                  <iconify-icon icon="solar:checklist-minimalistic-bold-duotone" style={{ fontSize: 16, color: '#6c757d' }} />
+                  <span className="text-muted fs-11 text-uppercase fw-semibold">Položky — suroviny vs. režie</span>
+                </div>
+
+                {/* Suroviny */}
+                {suroviny.length > 0 && (
+                  <div className="mb-2 rounded border" style={{ borderColor: '#bbf7d0', background: '#f0fdf4' }}>
+                    <div className="d-flex align-items-center justify-content-between px-2 py-1 border-bottom" style={{ borderColor: '#bbf7d0' }}>
+                      <span className="d-inline-flex align-items-center gap-1 fw-semibold" style={{ color: '#198754', fontSize: 12 }}>
+                        <iconify-icon icon="solar:leaf-bold-duotone" style={{ fontSize: 14 }} />
+                        Suroviny
+                        <span className="badge" style={{ background: surovinyAuto ? '#198754' : '#d1f0db', color: surovinyAuto ? '#fff' : '#198754', fontSize: 9 }}>
+                          {surovinyAuto ? '✓ Auto-schváleno' : 'Čeká na párování'}
+                        </span>
+                      </span>
+                      <span className="czk-num fw-bold" style={{ color: '#198754', fontSize: 12 }}>{fCzk(surovinySum)}</span>
+                    </div>
+                    {suroviny.map((p) => (
+                      <div key={p.popis} className="d-flex align-items-center justify-content-between px-2 py-1" style={{ fontSize: 12 }}>
+                        <span>{p.popis}</span>
+                        <span className="czk-num text-muted">{fCzk(p.total)}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {/* Režie */}
+                {rezie.length > 0 && (
+                  <div className="rounded border" style={{ borderColor: '#ffe082', background: '#fff8e1' }}>
+                    <div className="d-flex align-items-center justify-content-between px-2 py-1 border-bottom" style={{ borderColor: '#ffe082' }}>
+                      <span className="d-inline-flex align-items-center gap-1 fw-semibold" style={{ color: '#e67e00', fontSize: 12 }}>
+                        <iconify-icon icon="solar:box-bold-duotone" style={{ fontSize: 14 }} />
+                        Režie
+                        <span className="badge" style={{ background: rezieSchvaleno ? '#198754' : '#ffe082', color: rezieSchvaleno ? '#fff' : '#8a6d00', fontSize: 9 }}>
+                          {rezieSchvaleno ? '✓ Schváleno' : 'Schvaluje účetní'}
+                        </span>
+                      </span>
+                      <span className="czk-num fw-bold" style={{ color: '#e67e00', fontSize: 12 }}>{fCzk(rezieSum)}</span>
+                    </div>
+                    {rezie.map((p) => (
+                      <div key={p.popis} className="d-flex align-items-center justify-content-between px-2 py-1" style={{ fontSize: 12 }}>
+                        <span>{p.popis}</span>
+                        <span className="czk-num text-muted">{fCzk(p.total)}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {/* Souhrn stavu částečného schválení */}
+                {surovinyAuto && !rezieSchvaleno && rezie.length > 0 && (
+                  <div className="d-flex align-items-start gap-2 mt-2 px-2 py-2 rounded" style={{ background: '#fff8e1', fontSize: 11 }}>
+                    <iconify-icon icon="solar:pie-chart-2-bold-duotone" style={{ fontSize: 15, color: '#e67e00', flexShrink: 0 }} />
+                    <span>
+                      <strong>Částečně schválená</strong> — suroviny ({fCzk(surovinySum)}) auto-schváleny z dodacích listů,
+                      režie ({fCzk(rezieSum)}) čeká na schválení účetní.
+                    </span>
+                  </div>
+                )}
+              </div>
+            );
+          })()}
 
           {/* ── Účetní kategorie (editovatelná i u uzamčené faktury) ── */}
           {activeTab === 'detail' && isLocked && (

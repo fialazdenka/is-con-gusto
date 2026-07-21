@@ -16,7 +16,7 @@
 //   CUSTOM: localPrirazeni prop        → session-local přiřazení (v produkci backend)
 
 import type { ProvozovnaId } from '../types';
-import type { FakturaStavPlatby, FakturaKategorie, TypDokladu, MatchingStav, FakturaForma } from '../platbyData';
+import type { FakturaStavPlatby, FakturaKategorie, TypDokladu, MatchingStav, FakturaForma, ZpusobUhrady } from '../platbyData';
 import {
   getFakturyForProvozovna,
   getOdeslatDo,
@@ -25,12 +25,13 @@ import {
   isSplatneVObdobi,
   getMatchingData,
   getVS,
+  getZpusobUhrady,
   KATEGORIE_LABELS,
   PROCESSING_DAYS_DEFAULT,
   SCHVALOVACI_OSOBY,
   getEffektivniStav,
 } from '../platbyData';
-import { PROVOZOVNY, fCzk, fDate } from '../data';
+import { PROVOZOVNY, fCzk, fDateFull } from '../data';
 
 export type SortCol = 'cislo' | 'dodavatel' | 'castka' | 'splatnost' | 'odeslatDo' | 'stav' | null;
 
@@ -83,6 +84,7 @@ const STAV_META: Record<FakturaStavPlatby, { cls: string; label: string }> = {
   // Přijaté
   nova:                 { cls: 'bg-secondary-subtle text-secondary', label: 'Nová' },
   'ceka-na-schvaleni':  { cls: 'bg-warning-subtle text-warning',     label: 'Čeká na schválení' },
+  'castecne-schvalena': { cls: 'bg-warning-subtle text-warning',     label: 'Částečně schválená' },
   schvalena:            { cls: 'bg-success-subtle text-success',     label: 'Schválená' },
   pozastavena:          { cls: 'bg-warning-subtle text-warning',     label: 'Pozastavená' },
   zamitnuta:            { cls: 'bg-danger-subtle text-danger',       label: 'Zamítnutá' },
@@ -110,6 +112,62 @@ const KAT_META: Record<FakturaKategorie, { color: string }> = {
   vyplaty: { color: '#14b8a6' },
   ostatni: { color: '#9097a7' },
 };
+
+// ── Ikonový systém stavů (zápis 21. 7. 2026, dle rozpisu kolegyň) ──
+// Stav = ikona místo textu; plný název v tooltipu.
+const STAV_ICON: Record<FakturaStavPlatby, { icon: string; color: string }> = {
+  nova:                 { icon: 'solar:document-bold-duotone',        color: '#9097a7' },
+  'ceka-na-schvaleni':  { icon: 'solar:clock-circle-bold-duotone',    color: '#e67e00' },
+  'castecne-schvalena': { icon: 'solar:pie-chart-2-bold-duotone',     color: '#e67e00' },
+  schvalena:            { icon: 'mdi:check-bold',                     color: '#198754' },
+  pozastavena:          { icon: 'solar:pause-circle-bold-duotone',    color: '#8b5cf6' },
+  zamitnuta:            { icon: 'solar:close-circle-bold-duotone',    color: '#dc3545' },
+  // „V bance" = prošlo schválením → fajfka zůstává (kontrola, že platba v bance JE schválená).
+  // Info „už v bance" nese modrý domeček (druh platby), ne stav ikona.
+  'v-bance':            { icon: 'mdi:check-bold',                     color: '#198754' },
+  'v-bance-neuhrazena': { icon: 'mdi:exclamation-thick',              color: '#dc3545' },
+  uhrazena:             { icon: 'solar:check-square-bold-duotone',    color: '#198754' },
+  vystavena:            { icon: 'solar:file-check-bold-duotone',      color: '#0d6efd' },
+  nezaplacena:          { icon: 'mdi:exclamation-thick',              color: '#dc3545' },
+  zaplacena:            { icon: 'solar:check-square-bold-duotone',    color: '#198754' },
+};
+
+// Druh platby — jasně rozlišitelné symboly. Barva: šedá dokud není uhrazeno, zelená po úhradě
+// (převod navíc modrá, když je v bance). Zápočet / zálohová faktura / stravenky = další způsoby úhrady.
+const ZPUSOB_META: Record<ZpusobUhrady, { icon: string; label: string }> = {
+  hotovost:  { icon: 'fa6-solid:sack-dollar',        label: 'Hotově' },              // měšec zlata
+  karta:     { icon: 'fa6-solid:credit-card',        label: 'Kartou' },              // platební karta
+  banka:     { icon: 'fa6-solid:building-columns',   label: 'Převodem' },            // bankovní budova
+  zapocet:   { icon: 'fa6-solid:right-left',         label: 'Zápočtem' },            // protější šipky
+  zalohova:  { icon: 'fa6-solid:file-invoice-dollar', label: 'Zálohovou fakturou' }, // zálohová faktura
+  stravenky: { icon: 'fa6-solid:ticket',             label: 'Stravenkami' },         // stravenky
+};
+
+// Zkratka druhu dokladu (dle formy + přijatá/vydaná) — dle rozpisu kolegyň.
+// (DAP = Daně přijaté řeší samostatná sekce Daně.)
+function dokladZkratka(typ: TypDokladu, forma?: FakturaForma): string {
+  const f = forma ?? 'standard';
+  if (typ === 'vydana') {
+    return f === 'dobropis' ? 'ODDV' : f === 'zalohova' ? 'ZFAV' : f === 'offset' ? 'JINV' : 'FAV';
+  }
+  return f === 'dobropis' ? 'ODDP' : f === 'zalohova' ? 'ZFAP' : f === 'offset' ? 'JINP' : 'FAP';
+}
+const ZKRATKA_COLOR: Record<FakturaForma, string> = {
+  standard: '#0d6efd',
+  dobropis: '#dc3545',
+  zalohova: '#0dcaf0',
+  offset:   '#fd7e14',
+};
+
+// Barva řádku — jen smysluplné stavy: oranžová (čeká na schválení), fialová (pozastavená),
+// červená (po splatnosti). Ostatní stavy řádek nebarví.
+function rowBgForStav(stav: FakturaStavPlatby, poSpl: boolean): string {
+  const paid = stav === 'uhrazena' || stav === 'zaplacena';
+  if (stav === 'pozastavena')                             return '#f3e8ff';  // fialový
+  if ((poSpl || stav === 'v-bance-neuhrazena') && !paid)  return '#ffe9e9';  // červený (po splatnosti)
+  if (stav === 'ceka-na-schvaleni')                       return '#fff3e0';  // oranžový (čeká na schválení)
+  return '';
+}
 
 export default function FakturyTable({
   provozovna,
@@ -207,8 +265,8 @@ export default function FakturyTable({
 
   // ── Řazení per Phase 8 (zápis 10. 6. 2026) — sjednocené stavy přijatých + vydaných ──
   const STAV_ORDER: Record<FakturaStavPlatby, number> = {
-    nova: 1, 'ceka-na-schvaleni': 2, schvalena: 3, pozastavena: 4,
-    'v-bance': 5, 'v-bance-neuhrazena': 6, uhrazena: 7, zamitnuta: 8,
+    nova: 1, 'ceka-na-schvaleni': 2, 'castecne-schvalena': 3, schvalena: 4, pozastavena: 5,
+    'v-bance': 6, 'v-bance-neuhrazena': 7, uhrazena: 8, zamitnuta: 9,
     // Vydané — řadíme po vlastní ose: vystavená → nezaplacená → zaplacená
     vystavena: 1, nezaplacena: 2, zaplacena: 3,
   };
@@ -237,7 +295,7 @@ export default function FakturyTable({
 
   return (
     <div className="card">
-      {/* Phase 8.5 (zápis 10. 6. 2026) — hromadný výběr vrácen pro bulk akce (Exportovat PDF / Označit uhrazené / Schválit) */}
+      {/* Jednořádkový systém (zápis 21. 7. 2026) — bez hromadného výběru / checkboxů. Klik na řádek = detail. */}
       <div className="card-header d-flex align-items-center justify-content-between gap-3">
         <h5 className="card-title mb-0 flex-grow-1">
           {tableTitle}
@@ -245,18 +303,6 @@ export default function FakturyTable({
             {zobrazene.length} {zobrazene.length === 1 ? 'faktura' : zobrazene.length < 5 ? 'faktury' : 'faktur'}
           </small>
         </h5>
-        {zobrazene.length > 0 && (
-          <button
-            className="btn btn-sm btn-outline-secondary"
-            onClick={() => {
-              if (zobrazene.every((f) => selectedIds.has(f.id))) onToggleAll([]);
-              else onToggleAll(zobrazene.map((f) => f.id));
-            }}
-            title={zobrazene.every((f) => selectedIds.has(f.id)) ? 'Zrušit výběr' : 'Vybrat všechny zobrazené'}>
-            <iconify-icon icon={zobrazene.every((f) => selectedIds.has(f.id)) ? 'solar:close-square-bold-duotone' : 'solar:check-square-bold-duotone'} className="me-1" />
-            {zobrazene.every((f) => selectedIds.has(f.id)) ? 'Zrušit výběr' : `Vybrat vše (${zobrazene.length})`}
-          </button>
-        )}
       </div>
 
       {/* SOURCE: Larkon .table.table-hover.table-centered.table-nowrap */}
@@ -266,9 +312,11 @@ export default function FakturyTable({
             {/* Phase 8 (zápis 10. 6. 2026) — zjednodušené sloupce: Dodavatel (+ číslo/VS) / Provoz / Splatnost / Částka / Stav.
                 Odstraněny: hromadné zaškrtávání, Typ dokladu, Kategorie, Odeslat do, Přiřazeno (přesunuto do detailu). */}
             <tr>
+              <th>Typ</th>
               <SortableTh col="dodavatel" label="Dodavatel"       sortBy={sortBy} sortDir={sortDir} onSort={onSortChange} />
-              <SortableTh col="cislo"     label="Číslo faktury"    sortBy={sortBy} sortDir={sortDir} onSort={onSortChange} />
+              <SortableTh col="cislo"     label="VS"               sortBy={sortBy} sortDir={sortDir} onSort={onSortChange} />
               <th>Datum vystavení</th>
+              <th>DUZP</th>
               {provozovna === 'all' && <th>Provoz</th>}
               <SortableTh col="splatnost" label="Splatnost" sortBy={sortBy} sortDir={sortDir} onSort={onSortChange} />
               <SortableTh col="castka"    label="Částka"    sortBy={sortBy} sortDir={sortDir} onSort={onSortChange} className="text-end" />
@@ -291,29 +339,37 @@ export default function FakturyTable({
               const poSpl    = isPoSplatnosti(f.splatnost);
               const urgentni = isUrgentni(f.splatnost, processingDays);
               const odeslatDo = getOdeslatDo(f.splatnost, processingDays);
-              const vybiratelna = effectiveStav === 'schvalena';
-              const vybrana = selectedIds.has(f.id);
-              const { cls, label } = STAV_META[effectiveStav] ?? STAV_META['nova'];
-              const matching = showMatching ? getMatchingData(f.id) : undefined;
+              const { label } = STAV_META[effectiveStav] ?? STAV_META['nova'];
+              const matching = getMatchingData(f.id);
               const matchMeta = matching ? MATCHING_META[matching.stav] : null;
 
+              // ── Ikonový cluster (dle rozpisu kolegyň) ──
+              const zp        = getZpusobUhrady(f);
+              const zpMeta    = ZPUSOB_META[zp];
+              const paid      = effectiveStav === 'uhrazena' || effectiveStav === 'zaplacena';
+              const vBance    = effectiveStav === 'v-bance';
+              // Barví se JEN ikona druhu platby: šedá = neuhrazeno · zelená = uhrazeno ·
+              // modrá = jen převodem (domeček) když je faktura už v bance a čeká na úhradu
+              const zpColor   = paid ? '#198754' : (zp === 'banka' && vBance) ? '#0d6efd' : '#9097a7';
+              const stavIcon  = STAV_ICON[effectiveStav] ?? STAV_ICON['nova'];
+              const matchStav = matching?.stav;
+              const sColor    = matchStav === 'sparovana' ? '#198754'
+                : (matchStav === 'castecne-sparovana' || matchStav === 'nesedi-dl') ? '#e67e00' : '#9097a7';
+              const isDup     = matchStav === 'duplikat';
+              const hasDoc    = ((parseInt(f.id.replace(/\D/g, ''), 10) || 0) % 4) !== 0;
+
               const isActiveRow = f.id === selectedRowId;
-              let rowClass = '';
-              if (isActiveRow) rowClass = 'table-active';
-              else if (vybrana) rowClass = 'table-primary';
-              else if (poSpl) rowClass = 'table-danger';
-              else if (urgentni) rowClass = 'table-warning';
+              const rowBg = isActiveRow ? '' : rowBgForStav(effectiveStav, poSpl);
 
               return (
                 <tr
                   key={f.id}
-                  className={rowClass}
-                  style={{ cursor: 'pointer' }}
+                  className={isActiveRow ? 'table-active' : ''}
+                  style={{ cursor: 'pointer', ...(rowBg ? { background: rowBg } : {}) }}
                   onClick={(e) => {
                     const row = e.currentTarget;
                     const wasSelected = selectedRowId === f.id;
                     if (onRowClick) onRowClick(f.id);
-                    else if (vybiratelna) onToggle(f.id);
                     // Phase 8.5 (zápis 19. 6. 2026) — Zarovnání horní hrany kliknutého řádku s horní hranou
                     // sticky panelu vpravo (jen pod topbar). Pattern z BankaView.
                     if (!wasSelected && onRowClick) {
@@ -328,25 +384,35 @@ export default function FakturyTable({
                     }
                   }}
                 >
-                  {/* Phase 8 — Dodavatel (+ číslo + VS + forma) */}
-                  <td style={{ width: 260, maxWidth: 260 }}>
-                    <div className="d-flex align-items-center gap-1 flex-wrap">
-                      <span className="fw-semibold text-truncate" title={f.dodavatel} style={{ maxWidth: '100%' }}>{f.dodavatel}</span>
-                      {f.forma && f.forma !== 'standard' && (
-                        <span className={`badge ${FORMA_META[f.forma].cls}`} style={{ fontSize: 9 }}>
-                          <iconify-icon icon={FORMA_META[f.forma].icon} className="me-1" style={{ fontSize: 10 }} />
-                          {FORMA_META[f.forma].label}
+                  {/* Typ dokladu — zkratka dle formy (přijaté: FAP/ODDP/ZFAP/JINP; vydané: FAV/ODDV/ZFAV/JINV) */}
+                  <td>
+                    {(() => {
+                      const forma = f.forma ?? 'standard';
+                      const barva = ZKRATKA_COLOR[forma];
+                      return (
+                        <span className="badge fw-bold czk-num"
+                          style={{ background: `${barva}1a`, color: barva, fontSize: 11 }}
+                          title={dokladZkratka(f.typDokladu, forma)}>
+                          {dokladZkratka(f.typDokladu, forma)}
                         </span>
-                      )}
-                    </div>
-                    <div className="text-muted fs-11 czk-num">
-                      VS {getVS(f)}
-                    </div>
+                      );
+                    })()}
                   </td>
-                  {/* Číslo faktury (samostatný sloupec) */}
-                  <td className="czk-num fw-semibold">{f.cislo}</td>
+                  {/* Dodavatel — jen název (forma je nově ve sloupci „Typ" vlevo) */}
+                  <td style={{ width: 260, maxWidth: 260 }}>
+                    <span className="fw-semibold text-truncate d-block" title={`${f.dodavatel} · VS ${getVS(f)}`} style={{ maxWidth: '100%' }}>{f.dodavatel}</span>
+                  </td>
+                  {/* VS primárně; číslo faktury jen jako miniaturní poznámka, když se liší (úspora šířky) */}
+                  <td className="czk-num">
+                    <div className="fw-semibold">{getVS(f)}</div>
+                    {f.cislo !== getVS(f) && (
+                      <div className="text-muted" style={{ fontSize: 10, lineHeight: 1.1 }}>č. {f.cislo}</div>
+                    )}
+                  </td>
                   {/* Datum vystavení */}
-                  <td>{fDate(f.datum)}</td>
+                  <td className="text-nowrap">{fDateFull(f.datum)}</td>
+                  {/* DUZP — datum uskutečnění zdanitelného plnění (fallback = datum vystavení) */}
+                  <td className="text-nowrap">{fDateFull(f.duzp ?? f.datum)}</td>
                   {provozovna === 'all' && (
                     <td>
                       <div className="d-flex align-items-center gap-2">
@@ -357,25 +423,41 @@ export default function FakturyTable({
                     </td>
                   )}
                   <td>
-                    <span className={poSpl ? 'text-danger fw-bold' : ''}>{fDate(f.splatnost)}</span>
-                    {poSpl && <div className="text-danger fs-11 fw-bold">PO SPLATNOSTI</div>}
-                    {urgentni && !poSpl && (
-                      <div className="text-warning fs-11 fw-bold">Odeslat: {fDate(odeslatDo)}</div>
-                    )}
+                    <span
+                      className={`text-nowrap ${poSpl ? 'text-danger fw-bold' : urgentni ? 'text-warning fw-bold' : ''}`}
+                      title={poSpl ? 'Po splatnosti' : urgentni ? `Odeslat do ${fDateFull(odeslatDo)}` : undefined}>
+                      {fDateFull(f.splatnost)}
+                    </span>
                   </td>
                   <td className={`text-end fw-bold czk-num ${f.castka < 0 ? 'text-danger' : ''}`}>{fCzk(f.castka)}</td>
+                  {/* Stav = ikonový cluster (dle rozpisu kolegyň): stav · druh platby · párování „S" · dokument · zámek.
+                      Řádek je navíc podbarvený dle stavu. Plné názvy v tooltipu. */}
                   <td>
-                    <div className="d-flex align-items-center gap-1 flex-wrap">
-                      <span className={`badge ${cls}`}>{label}</span>
-                      {effectiveStav === 'ceka-na-schvaleni' && prirazenaOsoba && (
-                        <span className="text-muted fs-11" title={`Čeká na schválení od ${prirazenaOsoba.jmeno}`}>
-                          od <strong>{prirazenaOsoba.jmeno.split(' ')[0]}</strong>
-                        </span>
+                    <div className="d-flex align-items-center gap-2 flex-nowrap">
+                      {/* Workflow stav (ikona místo textu) */}
+                      <iconify-icon icon={stavIcon.icon}
+                        title={`Stav: ${label}${effectiveStav === 'ceka-na-schvaleni' && prirazenaOsoba ? ` (od ${prirazenaOsoba.jmeno})` : ''}`}
+                        style={{ fontSize: effectiveStav === 'v-bance-neuhrazena' ? 24 : 21, color: stavIcon.color }} />
+                      {/* Druh platby — barví se jen tato ikona: šedá/zelená/modrá (převod v bance) */}
+                      <iconify-icon icon={zpMeta.icon}
+                        title={`${zpMeta.label} — ${paid ? 'uhrazeno' : (zp === 'banka' && vBance) ? 'v bance, čeká na úhradu' : 'neuhrazeno'}`}
+                        style={{ fontSize: 20, color: zpColor }} />
+                      {/* Párování se Septimem */}
+                      {isDup ? (
+                        <span className="badge bg-danger" style={{ fontSize: 11 }} title="Duplicitní dodací list">DUP</span>
+                      ) : (
+                        <span className="fw-bold" style={{ fontSize: 16, lineHeight: 1, color: sColor }}
+                          title={`Párování se Septimem${matchStav && MATCHING_META[matchStav] ? `: ${MATCHING_META[matchStav].label}` : ''}`}>S</span>
                       )}
+                      {/* Dokument — vždy viditelný: zelený = nahraný, šedý = bez přílohy */}
+                      <iconify-icon icon="solar:document-bold-duotone"
+                        title={hasDoc ? 'Dokument přiložen' : 'Bez dokumentu'}
+                        style={{ fontSize: 19, color: hasDoc ? '#198754' : '#9097a7' }} />
+                      {/* Zámek */}
                       {f.isLocked && (
                         <iconify-icon icon="solar:lock-keyhole-bold-duotone"
                           title="Faktura uzamčena (uzavřené účetní období)"
-                          style={{ fontSize: 14, color: '#6f42c1' }} />
+                          style={{ fontSize: 17, color: '#6f42c1' }} />
                       )}
                     </div>
                   </td>
