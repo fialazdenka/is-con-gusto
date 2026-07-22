@@ -138,7 +138,9 @@ export default function Topbar({ state, update, onMenuToggle }: Props) {
               <div className="topbar-divider d-none d-sm-block" />
               <select
                 className="form-select form-select-sm topbar-prov-select d-none d-sm-block"
-                value={selectedProvozovna}
+                value={selectedSection === 'platby' ? 'all' : selectedProvozovna}
+                disabled={selectedSection === 'platby'}
+                title={selectedSection === 'platby' ? 'Platby se řeší za celou firmu — výběr provozovny je neaktivní' : undefined}
                 onChange={(e) => update({ selectedProvozovna: e.target.value as ProvozovnaId })}
               >
                 <option value="all">Všechny provozovny</option>

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, type ReactNode } from 'react';
 import type { FakturaPlatby, FakturaStavPlatby, MatchingStav, FakturaForma, FakturaKategorie } from '../platbyData';
 import InvoicePreview from './InvoicePreview';
 import DLMatchingDetail from './DLMatchingDetail';
@@ -100,6 +100,9 @@ interface Props {
   recheckCount?: number;
   roundingApproved?: boolean;
   onApproveRounding?: (id: string, diff: number) => void;
+  // Znovupoužití napříč sekcemi (Platby aj.) — stejný detail, jen jiné CTA.
+  hideWorkflow?: boolean;      // skryje schvalovací workflow akce (Schválit/Odložit/Zamítnout…)
+  ctaSlot?: ReactNode;         // vlastní CTA blok (vloží se do záložky Detail místo workflow akcí)
 }
 
 // Druh platby — stejné ikony/popisky jako ikonový cluster v tabulce (FakturyTable).
@@ -230,6 +233,8 @@ export default function FakturySidePanel({
   recheckCount = 0,
   roundingApproved,
   onApproveRounding,
+  hideWorkflow = false,
+  ctaSlot,
 }: Props) {
 
   // Overlay panel se záložkami (Detail / Párování / Komunikace / Historie).
@@ -772,8 +777,13 @@ export default function FakturySidePanel({
           </div>
           )}
 
+          {/* ── Vlastní CTA blok (Platby aj.) — místo schvalovacího workflow ── */}
+          {activeTab === 'detail' && ctaSlot && (
+            <div className="p-3 border-bottom">{ctaSlot}</div>
+          )}
+
           {/* ── Schvalovací proces (Phase 8.2 — zápis 10. 6. 2026) — JEN PRO PŘIJATÉ ─ */}
-          {activeTab === 'detail' && isAprovable && !isLocked && !isVydana && (
+          {!hideWorkflow && activeTab === 'detail' && isAprovable && !isLocked && !isVydana && (
           <div className="p-3 border-bottom">
             <div className="d-flex align-items-center gap-2 mb-2">
               <iconify-icon icon="solar:bolt-bold-duotone" style={{ fontSize: 14, color: '#0d6efd' }} />
@@ -861,7 +871,7 @@ export default function FakturySidePanel({
           )}
 
           {/* ── Workflow akce — PŘIJATÉ (schvalování + platba) ───────── */}
-          {activeTab === 'detail' && !isVydana && (
+          {!hideWorkflow && activeTab === 'detail' && !isVydana && (
           <div className="p-3 border-bottom d-flex flex-column gap-2">
             {isAprovable && !isDuplikat && (
               <>
@@ -954,7 +964,7 @@ export default function FakturySidePanel({
           )}
 
           {/* Phase 8.4 (zápis 19. 6. 2026) — Workflow akce pro VYDANÉ faktury */}
-          {activeTab === 'detail' && isVydana && (
+          {!hideWorkflow && activeTab === 'detail' && isVydana && (
           <div className="p-3 border-bottom d-flex flex-column gap-2">
             {isVystavena && (
               <>
