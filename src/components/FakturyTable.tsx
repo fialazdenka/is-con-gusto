@@ -259,7 +259,12 @@ export default function FakturyTable({
     if (minCastka != null && f.castka < minCastka) return false;
     if (maxCastka != null && f.castka > maxCastka) return false;
 
-    if (search && !f.dodavatel.toLowerCase().includes(search.toLowerCase())) return false;
+    // Vyhledávání napříč: dodavatel + číslo faktury + variabilní symbol
+    if (search) {
+      const q = search.toLowerCase();
+      const hay = `${f.dodavatel} ${f.cislo} ${getVS(f)}`.toLowerCase();
+      if (!hay.includes(q)) return false;
+    }
     return true;
   });
 
@@ -270,13 +275,17 @@ export default function FakturyTable({
     // Vydané — řadíme po vlastní ose: vystavená → nezaplacená → zaplacená
     vystavena: 1, nezaplacena: 2, zaplacena: 3,
   };
-  // „Kompletní" faktura = nic k řešení: uhrazená/zaplacená (prošlo schválením) + spárovaná se Septimem.
-  // Takové řádky se obarví zeleně a spadnou na konec seznamu.
+  // „Kompletní" faktura = nic k řešení: uhrazená/zaplacená (prošlo schválením) A žádný otevřený
+  // párovací problém. Párování je „vyřešené", když je spárováno se Septimem NEBO je bez DL
+  // (nepáruje se — schvaluje se ručně; po zaplacení je hotová). Otevřené problémy (nesedí DL,
+  // duplicita, částečné, čeká na párování) brání kompletnosti.
+  const MATCHING_UNRESOLVED: MatchingStav[] = ['nesedi-dl', 'duplikat', 'castecne-sparovana', 'ceka-na-sparovani'];
   const isComplete = (f: FakturaPlatby): boolean => {
     const est = getEffektivniStav(localStavy[f.id] ?? f.stav, f.splatnost);
     const paid = est === 'uhrazena' || est === 'zaplacena';
-    const matched = getMatchingData(f.id)?.stav === 'sparovana';
-    return paid && matched;
+    const matchStav = getMatchingData(f.id)?.stav;
+    const parovaniOK = !matchStav || !MATCHING_UNRESOLVED.includes(matchStav);
+    return paid && parovaniOK;
   };
 
   const baseSorted = sortBy ? [...filtered].sort((a, b) => {
@@ -500,7 +509,8 @@ export default function FakturyTable({
             Datum odeslání = splatnost −{' '}
             <strong>{processingDays} dny</strong> (zpracování banky) ·{' '}
             <span className="text-warning fw-semibold">oranžová</span> = odeslat dnes ·{' '}
-            <span className="text-danger fw-semibold">červená</span> = po splatnosti
+            <span className="text-danger fw-semibold">červená</span> = po splatnosti ·{' '}
+            <span className="fw-semibold" style={{ color: '#198754' }}>zelená</span> = kompletní (nic k řešení)
           </span>
         </div>
       </div>

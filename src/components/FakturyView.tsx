@@ -122,6 +122,64 @@ interface Props {
   fixedTyp?: TypDokladu;
 }
 
+// Zaškrtávací dropdown pro výběr stavů (zápis 22. 7. 2026 — „stav jako zaškrtávací dropdown, min. klikání").
+function StavCheckDropdown({
+  options, selected, onToggle, onClear,
+}: {
+  options: { value: FakturaStavPlatby; label: string }[];
+  selected: Set<FakturaStavPlatby>;
+  onToggle: (v: FakturaStavPlatby) => void;
+  onClear: () => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!open) return;
+    const onDoc = (e: MouseEvent) => { if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false); };
+    document.addEventListener('mousedown', onDoc);
+    return () => document.removeEventListener('mousedown', onDoc);
+  }, [open]);
+  const count = selected.size;
+  return (
+    <div ref={ref} className="position-relative">
+      <button type="button"
+        className="form-select form-select-sm text-start d-flex align-items-center justify-content-between"
+        style={{ cursor: 'pointer' }}
+        onClick={() => setOpen((v) => !v)}>
+        <span className={count ? 'text-dark' : 'text-muted'}>
+          {count === 0 ? 'Všechny stavy' : count === 1
+            ? options.find((o) => selected.has(o.value))?.label
+            : `Vybráno: ${count}`}
+        </span>
+      </button>
+      {open && (
+        <div className="position-absolute mt-1 bg-white border rounded shadow-sm p-2"
+          style={{ zIndex: 1050, minWidth: '100%', maxHeight: 320, overflowY: 'auto' }}>
+          {count > 0 && (
+            <button type="button" className="btn btn-link btn-sm p-0 mb-2 text-decoration-none fs-11"
+              onClick={onClear}>
+              <iconify-icon icon="solar:close-circle-bold-duotone" className="me-1" />
+              Zrušit výběr ({count})
+            </button>
+          )}
+          {options.map((o) => {
+            const active = selected.has(o.value);
+            return (
+              <label key={o.value}
+                className="d-flex align-items-center gap-2 px-1 py-1 rounded fs-13"
+                style={{ cursor: 'pointer', background: active ? '#eef0f2' : 'transparent' }}>
+                <input type="checkbox" className="form-check-input mt-0" checked={active}
+                  onChange={() => onToggle(o.value)} />
+                {o.label}
+              </label>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function FakturyView({ state, update, fixedTyp }: Props) {
   const { selectedProvozovna } = state;
 
@@ -143,7 +201,6 @@ export default function FakturyView({ state, update, fixedTyp }: Props) {
   const [sortBy,             setSortBy]             = useState<SortCol>('splatnost');
   const [sortDir,            setSortDir]            = useState<'asc' | 'desc'>('asc');
   // Zjednodušené filtry (zápis 13. 7. 2026 — dle reference)
-  const [searchBy,           setSearchBy]           = useState<'cislo' | 'dodavatel' | 'vs'>('cislo');
   const [stavUhrady,         setStavUhrady]         = useState('all');
   const [datumPodle,         setDatumPodle]         = useState<'vystaveni' | 'splatnost'>('vystaveni');
   // Phase 8.10 — když je fixedTyp zadané, použij ho jako default. Tab-switcher pak skryje.
@@ -404,11 +461,17 @@ export default function FakturyView({ state, update, fixedTyp }: Props) {
       const topbar = parseInt(getComputedStyle(document.documentElement).getPropertyValue('--bs-topbar-height')) || 100;
       const hdr = tableColRef.current?.querySelector('.card-header') as HTMLElement | null;
       const top = `${Math.max(topbar, hdr ? hdr.getBoundingClientRect().bottom : topbar)}px`;
-      if (overlayPanelRef.current) overlayPanelRef.current.style.top = top;
+      if (overlayPanelRef.current) {
+        overlayPanelRef.current.style.top = top;
+        // Výška hlavičky detailu → tab lišta se přišpendlí přesně pod ni
+        const panelHdr = overlayPanelRef.current.querySelector('.card-header') as HTMLElement | null;
+        if (panelHdr) overlayPanelRef.current.style.setProperty('--fk-detail-hdr-h', `${panelHdr.offsetHeight}px`);
+      }
       if (overlayBackdropRef.current) overlayBackdropRef.current.style.top = top;
     };
     const onScroll = () => { if (!raf) raf = requestAnimationFrame(apply); };
     apply();
+    requestAnimationFrame(apply);   // po dokreslení hlavičky (chipy/fonty) přeměř výšku
     window.addEventListener('scroll', onScroll, true);
     window.addEventListener('resize', onScroll);
     return () => {
@@ -941,61 +1004,18 @@ export default function FakturyView({ state, update, fixedTyp }: Props) {
       {/* Filter bar (zjednodušený — zápis 13. 7. 2026, dle reference) */}
       <div className="card mb-4">
         <div className="card-body py-3">
-          {/* Řádek 1 — vyhledávání + řazení + stav úhrady */}
-          <div className="row g-3">
+          {/* Řádek 1 (vždy viditelný) — Hledat · Rychlý výběr · Stav (dropdown) · Seřadit */}
+          <div className="row g-3 align-items-end">
             <div className="col-12 col-md">
               <label className="form-label fs-13 fw-semibold mb-1">Hledat</label>
               <input
                 type="text"
                 className="form-control form-control-sm"
-                placeholder="Hledat…"
+                placeholder="Dodavatel, číslo faktury nebo VS…"
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
               />
             </div>
-            <div className="col-6 col-md">
-              <label className="form-label fs-13 fw-semibold mb-1">Vyhledat podle</label>
-              <select
-                className="form-select form-select-sm"
-                value={searchBy}
-                onChange={(e) => setSearchBy(e.target.value as typeof searchBy)}
-              >
-                <option value="cislo">Čísla faktury</option>
-                <option value="dodavatel">Dodavatele</option>
-                <option value="vs">Variabilního symbolu</option>
-              </select>
-            </div>
-            <div className="col-6 col-md">
-              <label className="form-label fs-13 fw-semibold mb-1">Seřadit podle</label>
-              <select
-                className="form-select form-select-sm"
-                value={sortBy ?? ''}
-                onChange={(e) => setSortBy((e.target.value || null) as SortCol)}
-              >
-                <option value="">Vyberte možnost</option>
-                <option value="cislo">Čísla faktury</option>
-                <option value="dodavatel">Dodavatele</option>
-                <option value="castka">Částky</option>
-                <option value="splatnost">Splatnosti</option>
-                <option value="stav">Stavu</option>
-              </select>
-            </div>
-            <div className="col-6 col-md">
-              <label className="form-label fs-13 fw-semibold mb-1">Seřadit</label>
-              <select
-                className="form-select form-select-sm"
-                value={sortDir}
-                onChange={(e) => setSortDir(e.target.value as 'asc' | 'desc')}
-              >
-                <option value="desc">Od nejnovějších</option>
-                <option value="asc">Od nejstarších</option>
-              </select>
-            </div>
-          </div>
-
-          {/* Řádek 2 — období + typ data + náklad */}
-          <div className="row g-3 mt-1">
-            {/* Rychlý výběr období (jako v Tržby detail) — nastaví Od/Do; ty zůstávají editovatelné ručně */}
             <div className="col-6 col-md">
               <label className="form-label fs-13 fw-semibold mb-1">Rychlý výběr</label>
               <select
@@ -1014,107 +1034,84 @@ export default function FakturyView({ state, update, fixedTyp }: Props) {
               </select>
             </div>
             <div className="col-6 col-md">
-              <label className="form-label fs-13 fw-semibold mb-1">Od</label>
-              <input
-                type="date"
-                className="form-control form-control-sm"
-                value={datumOd}
-                onChange={(e) => setDatumOd(e.target.value)}
+              <label className="form-label fs-13 fw-semibold mb-1">Stav</label>
+              <StavCheckDropdown
+                options={typDokladu === 'vydana'
+                  ? STAV_CHIPS_VYDANE
+                  : typDokladu === 'prijata'
+                    ? STAV_CHIPS
+                    : [...STAV_CHIPS, ...STAV_CHIPS_VYDANE]}
+                selected={stavFilters}
+                onToggle={(v) => setStavFilters((prev) => {
+                  const n = new Set(prev);
+                  if (n.has(v)) n.delete(v); else n.add(v);
+                  return n;
+                })}
+                onClear={() => setStavFilters(new Set())}
               />
+            </div>
+            <div className="col-6 col-md">
+              <label className="form-label fs-13 fw-semibold mb-1">Seřadit</label>
+              <select
+                className="form-select form-select-sm"
+                value={`${sortBy ?? ''}:${sortDir}`}
+                onChange={(e) => {
+                  const [sb, sd] = e.target.value.split(':');
+                  setSortBy((sb || null) as SortCol);
+                  setSortDir((sd as 'asc' | 'desc') || 'asc');
+                }}
+              >
+                <option value="splatnost:desc">Splatnost — nejnovější</option>
+                <option value="splatnost:asc">Splatnost — nejstarší</option>
+                <option value="castka:desc">Částka — nejvyšší</option>
+                <option value="castka:asc">Částka — nejnižší</option>
+                <option value="dodavatel:asc">Dodavatel A→Z</option>
+                <option value="stav:asc">Podle stavu</option>
+              </select>
+            </div>
+          </div>
+
+          {/* Řádek 2 — Od · Do · Podle · Náklad · Částka Od–Do */}
+          <div className="row g-3 mt-1 align-items-end">
+            <div className="col-6 col-md">
+              <label className="form-label fs-13 fw-semibold mb-1">Od</label>
+              <input type="date" className="form-control form-control-sm"
+                value={datumOd} onChange={(e) => setDatumOd(e.target.value)} />
             </div>
             <div className="col-6 col-md">
               <label className="form-label fs-13 fw-semibold mb-1">Do</label>
-              <input
-                type="date"
-                className="form-control form-control-sm"
-                value={datumDo}
-                onChange={(e) => setDatumDo(e.target.value)}
-              />
+              <input type="date" className="form-control form-control-sm"
+                value={datumDo} onChange={(e) => setDatumDo(e.target.value)} />
             </div>
             <div className="col-6 col-md">
               <label className="form-label fs-13 fw-semibold mb-1">Podle</label>
-              <select
-                className="form-select form-select-sm"
-                value={datumPodle}
-                onChange={(e) => setDatumPodle(e.target.value as typeof datumPodle)}
-              >
+              <select className="form-select form-select-sm"
+                value={datumPodle} onChange={(e) => setDatumPodle(e.target.value as typeof datumPodle)}>
                 <option value="vystaveni">Datum vystavení</option>
                 <option value="splatnost">Datum splatnosti</option>
               </select>
             </div>
             <div className="col-6 col-md">
               <label className="form-label fs-13 fw-semibold mb-1">Obsahuje náklad</label>
-              <select
-                className="form-select form-select-sm"
-                value={kategorieFilter}
-                onChange={(e) => setKategorieFilter(e.target.value)}
-              >
-                <option value="all">Vyberte možnost</option>
+              <select className="form-select form-select-sm"
+                value={kategorieFilter} onChange={(e) => setKategorieFilter(e.target.value)}>
+                <option value="all">Všechny</option>
                 {(Object.keys(KATEGORIE_LABELS) as FakturaKategorie[]).map((k) => (
                   <option key={k} value={k}>{KATEGORIE_LABELS[k]}</option>
                 ))}
               </select>
             </div>
-          </div>
-
-          {/* Řádek 3 — částka Od–Do + multi-checkbox Stav (zápis 21. 7. 2026) */}
-          <div className="row g-3 mt-1 align-items-end">
-            <div className="col-6 col-md-2">
+            <div className="col-6 col-md">
               <label className="form-label fs-13 fw-semibold mb-1">Částka od (Kč)</label>
-              <input
-                type="number"
-                className="form-control form-control-sm"
-                placeholder="0"
-                value={castkaOd}
-                onChange={(e) => setCastkaOd(e.target.value)}
-                onWheel={(e) => (e.target as HTMLElement).blur()}
-              />
+              <input type="number" className="form-control form-control-sm" placeholder="0"
+                value={castkaOd} onChange={(e) => setCastkaOd(e.target.value)}
+                onWheel={(e) => (e.target as HTMLElement).blur()} />
             </div>
-            <div className="col-6 col-md-2">
+            <div className="col-6 col-md">
               <label className="form-label fs-13 fw-semibold mb-1">Částka do (Kč)</label>
-              <input
-                type="number"
-                className="form-control form-control-sm"
-                placeholder="∞"
-                value={castkaDo}
-                onChange={(e) => setCastkaDo(e.target.value)}
-                onWheel={(e) => (e.target as HTMLElement).blur()}
-              />
-            </div>
-            <div className="col-12 col-md">
-              <label className="form-label fs-13 fw-semibold mb-1 d-flex align-items-center gap-2">
-                Stav
-                {stavFilters.size > 0 && (
-                  <button type="button" className="btn btn-link btn-sm p-0 text-decoration-none fs-11"
-                    onClick={() => setStavFilters(new Set())}>
-                    <iconify-icon icon="solar:close-circle-bold-duotone" className="me-1" />
-                    Zrušit ({stavFilters.size})
-                  </button>
-                )}
-              </label>
-              <div className="d-flex flex-wrap gap-1">
-                {(typDokladu === 'vydana'
-                  ? STAV_CHIPS_VYDANE
-                  : typDokladu === 'prijata'
-                    ? STAV_CHIPS
-                    : [...STAV_CHIPS, ...STAV_CHIPS_VYDANE]
-                ).map((c) => {
-                  const active = stavFilters.has(c.value);
-                  return (
-                    <button key={c.value} type="button"
-                      className={`badge border-0 ${active ? 'bg-dark text-white' : 'bg-secondary-subtle text-secondary'}`}
-                      style={{ cursor: 'pointer', fontSize: 11 }}
-                      onClick={() => setStavFilters((prev) => {
-                        const n = new Set(prev);
-                        if (n.has(c.value)) n.delete(c.value); else n.add(c.value);
-                        return n;
-                      })}>
-                      {active && <iconify-icon icon="solar:check-circle-bold" className="me-1" style={{ fontSize: 11 }} />}
-                      {c.label}
-                    </button>
-                  );
-                })}
-              </div>
+              <input type="number" className="form-control form-control-sm" placeholder="∞"
+                value={castkaDo} onChange={(e) => setCastkaDo(e.target.value)}
+                onWheel={(e) => (e.target as HTMLElement).blur()} />
             </div>
           </div>
         </div>

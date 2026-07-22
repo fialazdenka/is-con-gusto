@@ -1517,7 +1517,7 @@ tfoot .trzby-sticky-r {
   top: var(--bs-topbar-height, 100px);
   right: 0;
   bottom: 0;
-  width: 560px;
+  width: 600px;               /* desktop */
   max-width: 100%;
   overflow-y: auto;
   overscroll-behavior: contain;
@@ -1533,8 +1533,24 @@ tfoot .trzby-sticky-r {
   z-index: 30;
   box-shadow: 0 1px 0 var(--bs-border-color, #eef0f2);
 }
-@media (max-width: 991.98px) {
+/* Tab lišta přišpendlená hned pod hlavičkou (výška hlavičky měřena do --fk-detail-hdr-h) */
+.faktury-overlay-panel .faktury-panel-tabs {
+  position: sticky;
+  top: var(--fk-detail-hdr-h, 92px);
+  z-index: 25;
+}
+/* Tablet — užší panel 560 px */
+@media (max-width: 1199.98px) {
+  .faktury-overlay-panel { width: 560px; }
+}
+/* Mobil — přes celou obrazovku, výrazný křížek pro snadné zavření */
+@media (max-width: 767.98px) {
   .faktury-overlay-panel { width: 100%; }
+  .faktury-overlay-panel .card-header .btn-close {
+    font-size: 15px;
+    padding: 12px;
+    margin: -4px -4px 0 0;
+  }
 }
 @keyframes faktury-overlay-fade {
   from { opacity: 0; }
