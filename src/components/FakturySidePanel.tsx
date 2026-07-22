@@ -7,11 +7,13 @@ import type { SessionAuditEntry } from './FakturyView';
 import {
   getMatchingData,
   getVS,
+  getZpusobUhrady,
   SCHVALOVACI_OSOBY,
   KATEGORIE_LABELS,
   FAKTURY_PLATBY,
   BANKOVNI_UCTY,
 } from '../platbyData';
+import type { ZpusobUhrady } from '../platbyData';
 import { PROVOZOVNY, fCzk, fDate } from '../data';
 import { generateFakturaPolozky } from '../fakturaPolozkyUtils';
 
@@ -99,6 +101,16 @@ interface Props {
   roundingApproved?: boolean;
   onApproveRounding?: (id: string, diff: number) => void;
 }
+
+// Druh platby — stejné ikony/popisky jako ikonový cluster v tabulce (FakturyTable).
+const ZPUSOB_META: Record<ZpusobUhrady, { icon: string; label: string }> = {
+  hotovost:  { icon: 'fa6-solid:sack-dollar',         label: 'Hotově' },
+  karta:     { icon: 'fa6-solid:credit-card',         label: 'Kartou' },
+  banka:     { icon: 'fa6-solid:building-columns',    label: 'Převodem' },
+  zapocet:   { icon: 'fa6-solid:right-left',          label: 'Zápočtem' },
+  zalohova:  { icon: 'fa6-solid:file-invoice-dollar', label: 'Zálohovou fakturou' },
+  stravenky: { icon: 'fa6-solid:ticket',              label: 'Stravenkami' },
+};
 
 // ── Status metadata ────────────────────────────────────────────
 
@@ -220,7 +232,7 @@ export default function FakturySidePanel({
   onApproveRounding,
 }: Props) {
 
-  // Aktivní záložka v panelu (Detail / Párování / Komunikace / Historie)
+  // Overlay panel se záložkami (Detail / Párování / Komunikace / Historie).
   const [activeTab, setActiveTab] = useState<'detail' | 'parovani' | 'komunikace' | 'historie'>('detail');
   const [showAudit, setShowAudit] = useState(true);
   const [showPreview, setShowPreview] = useState(false);
@@ -250,6 +262,15 @@ export default function FakturySidePanel({
   const stavMeta   = STAV_META[effectiveStav] ?? STAV_META['nova'];
   const matchMeta  = matching ? MATCHING_META[matching.stav] : null;
   const prov       = PROVOZOVNY.find((p) => p.id === faktura.provozovna);
+
+  // ── Ikonový cluster do hlavičky (stejná pole jako v tabulce, jen s popisem) ──
+  const zp        = getZpusobUhrady(faktura);
+  const zpMeta    = ZPUSOB_META[zp];
+  const paid      = effectiveStav === 'uhrazena' || effectiveStav === 'zaplacena';
+  const vBance    = effectiveStav === 'v-bance';
+  const zpColor   = paid ? '#198754' : (zp === 'banka' && vBance) ? '#0d6efd' : '#9097a7';
+  const zpStatus  = paid ? 'uhrazeno' : (zp === 'banka' && vBance) ? 'v bance, čeká na úhradu' : 'neuhrazeno';
+  const hasDoc    = ((parseInt(faktura.id.replace(/\D/g, ''), 10) || 0) % 4) !== 0;
   const prirazeniId = localPrirazeni || faktura.prirazenaOsoba || '';
   const prirazenaOsoba = SCHVALOVACI_OSOBY.find((o) => o.id === prirazeniId);
   const schvalilFinal = localSchvalil || faktura.schvalil || '';
@@ -289,26 +310,46 @@ export default function FakturySidePanel({
   }
 
   return (
-    <div style={{
-      position: 'sticky',
-      top: 'calc(var(--bs-topbar-height, 100px) + 16px)',          // přesně pod topbarem
-      maxHeight: 'calc(100vh - var(--bs-topbar-height, 100px) - 32px)', // zbylá výška viewportu
-      overflowY: 'auto'
-    }}>
-      <div className="card">
+    <div>
+      {/* Overlay panel — roste do výšky obsahu, roluje se celý (scroll řeší wrapper ve FakturyView) */}
+      <div className="card mb-0">
 
         {/* ── Header ──────────────────────────────────── */}
         <div className="card-header d-flex align-items-start gap-2">
           <div className="flex-grow-1 min-width-0">
-            <div className="d-flex align-items-center gap-2 flex-wrap mb-1">
+            {/* Ikonový cluster s popisem — stejná pole jako v tabulce (stav · párování · druh platby · dokument · zámek) */}
+            <div className="d-flex align-items-center gap-2 flex-wrap mb-2">
+              {/* Stav */}
               <span className={`badge ${stavMeta.cls}`}>
                 <iconify-icon icon={stavMeta.icon} className="me-1" style={{ fontSize: 11 }} />
                 {stavMeta.label}
               </span>
+              {/* Párování se Septimem */}
               {matchMeta && (
                 <span className={`badge ${matchMeta.cls}`}>
                   <iconify-icon icon={matchMeta.icon} className="me-1" style={{ fontSize: 11 }} />
                   {matchMeta.label}
+                </span>
+              )}
+              {/* Druh platby */}
+              <span className="badge d-inline-flex align-items-center gap-1"
+                style={{ background: `${zpColor}1a`, color: zpColor, fontWeight: 600 }}
+                title={`${zpMeta.label} — ${zpStatus}`}>
+                <iconify-icon icon={zpMeta.icon} style={{ fontSize: 12 }} />
+                {zpMeta.label}
+              </span>
+              {/* Dokument */}
+              <span className="badge d-inline-flex align-items-center gap-1"
+                style={{ background: hasDoc ? '#e8f5ee' : '#f1f3f5', color: hasDoc ? '#198754' : '#9097a7', fontWeight: 600 }}>
+                <iconify-icon icon="solar:document-bold-duotone" style={{ fontSize: 12 }} />
+                {hasDoc ? 'Dokument přiložen' : 'Bez dokumentu'}
+              </span>
+              {/* Zámek */}
+              {isLocked && (
+                <span className="badge d-inline-flex align-items-center gap-1"
+                  style={{ background: '#f3eaff', color: '#6f42c1', fontWeight: 600 }}>
+                  <iconify-icon icon="solar:lock-keyhole-bold-duotone" style={{ fontSize: 12 }} />
+                  Uzamčeno
                 </span>
               )}
             </div>
@@ -360,8 +401,8 @@ export default function FakturySidePanel({
 
         <div className="card-body p-0">
 
-          {/* ── Tab navigation ──────────────────────────── */}
-          <div className="border-bottom px-2" style={{ background: '#fafbfc' }}>
+          {/* ── Záložky (Detail / Párování / Komunikace / Historie) ── */}
+          <div className="faktury-panel-tabs border-bottom px-2" style={{ background: '#fafbfc' }}>
             <ul className="nav nav-tabs border-0" style={{ flexWrap: 'nowrap' }}>
               {([
                 { id: 'detail',     label: 'Detail',     icon: 'solar:document-text-bold-duotone' },
@@ -995,7 +1036,7 @@ export default function FakturySidePanel({
           </div>
           )}
 
-          {/* ── Audit timeline ───────────────────────────── */}
+          {/* ── Audit timeline (tab Historie) ─────────────── */}
           {activeTab === 'historie' && (
           <div className="p-3 border-bottom">
             <button
@@ -1042,7 +1083,7 @@ export default function FakturySidePanel({
           </div>
           )}
 
-          {/* ── Interní komunikace ──────────────────────── */}
+          {/* ── Interní komunikace (tab Komunikace) ──────── */}
           {activeTab === 'komunikace' && (
           <div className="p-3">
             <div className="d-flex align-items-center gap-2 mb-3">

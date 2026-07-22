@@ -16,7 +16,7 @@
 //   CUSTOM: localPrirazeni prop        → session-local přiřazení (v produkci backend)
 
 import type { ProvozovnaId } from '../types';
-import type { FakturaStavPlatby, FakturaKategorie, TypDokladu, MatchingStav, FakturaForma, ZpusobUhrady } from '../platbyData';
+import type { FakturaPlatby, FakturaStavPlatby, FakturaKategorie, TypDokladu, MatchingStav, FakturaForma, ZpusobUhrady } from '../platbyData';
 import {
   getFakturyForProvozovna,
   getOdeslatDo,
@@ -270,7 +270,16 @@ export default function FakturyTable({
     // Vydané — řadíme po vlastní ose: vystavená → nezaplacená → zaplacená
     vystavena: 1, nezaplacena: 2, zaplacena: 3,
   };
-  const zobrazene = sortBy ? [...filtered].sort((a, b) => {
+  // „Kompletní" faktura = nic k řešení: uhrazená/zaplacená (prošlo schválením) + spárovaná se Septimem.
+  // Takové řádky se obarví zeleně a spadnou na konec seznamu.
+  const isComplete = (f: FakturaPlatby): boolean => {
+    const est = getEffektivniStav(localStavy[f.id] ?? f.stav, f.splatnost);
+    const paid = est === 'uhrazena' || est === 'zaplacena';
+    const matched = getMatchingData(f.id)?.stav === 'sparovana';
+    return paid && matched;
+  };
+
+  const baseSorted = sortBy ? [...filtered].sort((a, b) => {
     const dir = sortDir === 'asc' ? 1 : -1;
     let cmp = 0;
     switch (sortBy) {
@@ -282,7 +291,9 @@ export default function FakturyTable({
       case 'stav':       cmp = (STAV_ORDER[getEffektivniStav(localStavy[a.id] ?? a.stav, a.splatnost)] ?? 99) - (STAV_ORDER[getEffektivniStav(localStavy[b.id] ?? b.stav, b.splatnost)] ?? 99); break;
     }
     return cmp * dir;
-  }) : filtered;
+  }) : [...filtered];
+  // Kompletní faktury vždy dolů (stabilní sort zachová pořadí uvnitř skupin).
+  const zobrazene = baseSorted.sort((a, b) => (isComplete(a) ? 1 : 0) - (isComplete(b) ? 1 : 0));
 
   const vybiratelne = zobrazene.filter((f) => f.stav === 'schvalena');
   const vsechnyVybrany = vybiratelne.length > 0 && vybiratelne.every((f) => selectedIds.has(f.id));
@@ -359,7 +370,9 @@ export default function FakturyTable({
               const hasDoc    = ((parseInt(f.id.replace(/\D/g, ''), 10) || 0) % 4) !== 0;
 
               const isActiveRow = f.id === selectedRowId;
-              const rowBg = isActiveRow ? '' : rowBgForStav(effectiveStav, poSpl);
+              // Kompletní (uhrazená + spárovaná = nic k řešení) → zelený řádek. Jinak stavové barvy.
+              const komplet = isComplete(f);
+              const rowBg = isActiveRow ? '' : (komplet ? '#e6f7ec' : rowBgForStav(effectiveStav, poSpl));
 
               return (
                 <tr

@@ -1496,3 +1496,51 @@ tfoot .trzby-sticky-r {
   background: transparent !important;
   opacity: 0.68;
 }
+
+/* ============================================================
+   Faktury — detail jako overlay okno (offcanvas zprava)
+   Tabulka zůstává full-width; detail se vysune přes obsah.
+   Panel roste do výšky obsahu (sekce pod sebou), roluje se celý.
+   ============================================================ */
+.faktury-overlay-backdrop {
+  position: fixed;
+  top: var(--bs-topbar-height, 100px);
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(15, 23, 42, 0.28);
+  z-index: 1045;
+  animation: faktury-overlay-fade 0.15s ease-out;
+}
+.faktury-overlay-panel {
+  position: fixed;
+  top: var(--bs-topbar-height, 100px);
+  right: 0;
+  bottom: 0;
+  width: 560px;
+  max-width: 100%;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  z-index: 1046;
+  padding: 0;                 /* žádný horní padding → sticky hlavička sedí flush nahoře (nic neprosvítá) */
+  background: #fff;
+  box-shadow: -8px 0 28px rgba(15, 23, 42, 0.18);
+  animation: faktury-overlay-slide 0.18s ease-out;
+}
+/* Sticky identity hlavička detailu — drží se nahoře panelu, obsah roluje pod ní */
+.faktury-overlay-panel > div > .card { border: 0; border-radius: 0; }
+.faktury-overlay-panel .card-header {
+  z-index: 30;
+  box-shadow: 0 1px 0 var(--bs-border-color, #eef0f2);
+}
+@media (max-width: 991.98px) {
+  .faktury-overlay-panel { width: 100%; }
+}
+@keyframes faktury-overlay-fade {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+@keyframes faktury-overlay-slide {
+  from { transform: translateX(24px); opacity: 0; }
+  to   { transform: translateX(0);    opacity: 1; }
+}

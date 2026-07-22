@@ -20,7 +20,7 @@
 //   CUSTOM: .bulk-bar                  → sticky bottom bar (position: sticky, bottom: 0)
 //   CUSTOM: file upload placeholder    → .lk-custom div pro drag-drop PDF
 
-import { useState, useCallback, useEffect, Fragment } from 'react';
+import { useState, useCallback, useEffect, useRef, Fragment } from 'react';
 import type { AppState, ProvozovnaId } from '../types';
 import type { TypDokladu, FakturaStavPlatby, FakturaKategorie, MatchingStav, FakturaForma } from '../platbyData';
 import {
@@ -382,6 +382,41 @@ export default function FakturyView({ state, update, fixedTyp }: Props) {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [state.pendingFakturaId]);
+
+  // Overlay detail — zavření klávesou Esc
+  useEffect(() => {
+    if (!drawerFakturaId) return;
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setDrawerFakturaId(null); };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [drawerFakturaId]);
+
+  // Overlay detail — začíná pod hlavičkou tabulky „Přehled faktur" (ta zůstává nad ním).
+  // Pozici píšeme imperativně přímo na DOM (přes ref), aby scroll nepřekresloval celý view.
+  const tableColRef = useRef<HTMLDivElement>(null);
+  const overlayPanelRef = useRef<HTMLDivElement>(null);
+  const overlayBackdropRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!drawerFakturaId) return;
+    let raf = 0;
+    const apply = () => {
+      raf = 0;
+      const topbar = parseInt(getComputedStyle(document.documentElement).getPropertyValue('--bs-topbar-height')) || 100;
+      const hdr = tableColRef.current?.querySelector('.card-header') as HTMLElement | null;
+      const top = `${Math.max(topbar, hdr ? hdr.getBoundingClientRect().bottom : topbar)}px`;
+      if (overlayPanelRef.current) overlayPanelRef.current.style.top = top;
+      if (overlayBackdropRef.current) overlayBackdropRef.current.style.top = top;
+    };
+    const onScroll = () => { if (!raf) raf = requestAnimationFrame(apply); };
+    apply();
+    window.addEventListener('scroll', onScroll, true);
+    window.addEventListener('resize', onScroll);
+    return () => {
+      if (raf) cancelAnimationFrame(raf);
+      window.removeEventListener('scroll', onScroll, true);
+      window.removeEventListener('resize', onScroll);
+    };
+  }, [drawerFakturaId]);
 
   // Phase 8.10 (zápis 22. 6. 2026) — Když uživatel přepne v sidebaru mezi Přijaté/Vydané,
   // FakturyView se rerendruje se stejným klíčem, ale fixedTyp se změní → sync interní typDokladu.
@@ -1085,9 +1120,9 @@ export default function FakturyView({ state, update, fixedTyp }: Props) {
         </div>
       </div>
 
-      {/* ── Layout: full-width tabulka když není vybrána žádná faktura, jinak 2-col ── */}
-      <div className="row g-4 align-items-start">
-        <div className={drawerFaktura ? 'col-xl-7 col-lg-7' : 'col-12'}>
+      {/* ── Layout: tabulka vždy full-width; detail se otevře jako overlay okno ── */}
+      <div className="row g-4">
+        <div className="col-12" ref={tableColRef}>
           <FakturyTable
             provozovna={selectedProvozovna as ProvozovnaId}
             periodOd={periodOd}
@@ -1123,8 +1158,13 @@ export default function FakturyView({ state, update, fixedTyp }: Props) {
             }}
           />
         </div>
-        {drawerFaktura && (
-        <div className="col-xl-5 col-lg-5">
+      </div>
+
+      {/* ── Overlay detail faktury (offcanvas zprava, roluje se celý) ── */}
+      {drawerFaktura && (
+        <>
+          <div ref={overlayBackdropRef} className="faktury-overlay-backdrop" onClick={() => setDrawerFakturaId(null)} />
+          <div ref={overlayPanelRef} className="faktury-overlay-panel">
           <FakturySidePanel
             faktura={drawerFaktura}
             effectiveStav={drawerFaktura ? getEffektivniStav(localStavy[drawerFaktura.id] ?? drawerFaktura.stav, drawerFaktura.splatnost) : 'nova'}
@@ -1178,9 +1218,9 @@ export default function FakturyView({ state, update, fixedTyp }: Props) {
               });
             }}
           />
-        </div>
-        )}
-      </div>
+          </div>
+        </>
+      )}
 
       {/* Bulk toolbar odstraněn (zápis 21. 7. 2026) — jednořádkový systém bez hromadného výběru. */}
       </>
