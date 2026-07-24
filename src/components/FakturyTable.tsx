@@ -35,13 +35,48 @@ import { PROVOZOVNY, fCzk, fDateFull } from '../data';
 
 export type SortCol = 'cislo' | 'dodavatel' | 'castka' | 'splatnost' | 'odeslatDo' | 'stav' | null;
 
+// Filtr „Stavy" (zápis 24. 7. 2026) — jednotný multiselect: úhrada / workflow / způsob platby / párování s DL.
+export type StavyKey =
+  | 'neuhrazene' | 'uhrazene' | 'uhrazene-zapocet' | 'uhrazene-zaloha'
+  | 'schvalene' | 'v-bance' | 'v-bance-neuhr' | 'pozastavene' | 'po-splatnosti'
+  | 'hotove' | 'kartou' | 'stravenky' | 'prevodem'
+  | 'dl-ceka' | 'dl-nesparovane' | 'dl-sparovane' | 'dl-duplicita';
+
+// Odpovídá faktura danému klíči? (jeden vybraný klíč = OR)
+function matchStavy(f: FakturaPlatby, key: StavyKey, effStav: FakturaStavPlatby): boolean {
+  const paid = effStav === 'uhrazena' || effStav === 'zaplacena';
+  const zp = getZpusobUhrady(f);
+  const m = getMatchingData(f.id)?.stav;
+  switch (key) {
+    case 'neuhrazene':       return !paid;
+    case 'uhrazene':         return paid;
+    case 'uhrazene-zapocet': return paid && (zp === 'zapocet' || f.forma === 'offset');
+    case 'uhrazene-zaloha':  return paid && (zp === 'zalohova' || f.forma === 'zalohova');
+    case 'schvalene':        return effStav === 'schvalena';
+    case 'v-bance':          return effStav === 'v-bance';
+    case 'v-bance-neuhr':    return effStav === 'v-bance-neuhrazena';
+    case 'pozastavene':      return effStav === 'pozastavena';
+    case 'po-splatnosti':    return isPoSplatnosti(f.splatnost) && !paid;
+    case 'hotove':           return zp === 'hotovost';
+    case 'kartou':           return zp === 'karta';
+    case 'stravenky':        return zp === 'stravenky';
+    case 'prevodem':         return zp === 'banka';
+    case 'dl-ceka':          return m === 'ceka-na-sparovani';
+    case 'dl-nesparovane':   return m === 'nesedi-dl' || m === 'castecne-sparovana' || m === 'bez-dl';
+    case 'dl-sparovane':     return m === 'sparovana';
+    case 'dl-duplicita':     return m === 'duplikat';
+    default:                 return false;
+  }
+}
+
 interface Props {
   provozovna: ProvozovnaId;
   periodOd: string;
   periodDo: string;
   kategorieFilter: string;
   stavFilter?: string;                                  // legacy single-select (zachováno pro zpětnou kompatibilitu)
-  stavFilters?: Set<FakturaStavPlatby>;                 // nový multiselect
+  stavFilters?: Set<FakturaStavPlatby>;                 // workflow multiselect (interní — alerty/presety)
+  stavyFilters?: Set<StavyKey>;                         // „Stavy" — jednotný multiselect (úhrada/workflow/platba/DL)
   matchingFilter?: MatchingStav | 'all';                // legacy single-select
   matchingFilters?: Set<MatchingStav>;                  // nový multiselect
   formaFilters?: Set<FakturaForma>;                     // speciální účetní formy (zálohová / dobropis / offset)
@@ -51,6 +86,7 @@ interface Props {
   // Phase 8.11 (zápis 22. 6. 2026) — Datum filter (splatnost od/do)
   datumOd?: string;
   datumDo?: string;
+  datumPodle?: 'vystaveni' | 'splatnost' | 'duzp';   // na které datum aplikovat datumOd/Do
   sortBy?: SortCol;
   sortDir?: 'asc' | 'desc';
   onSortChange?: (col: SortCol) => void;
@@ -184,6 +220,8 @@ export default function FakturyTable({
   castkaDo = '',
   datumOd  = '',
   datumDo  = '',
+  stavyFilters,
+  datumPodle = 'splatnost',
   sortBy = null,
   sortDir = 'asc',
   onSortChange,
@@ -216,12 +254,25 @@ export default function FakturyTable({
     if (typDokladu !== 'all' && f.typDokladu !== typDokladu) return false;
     if (kategorieFilter !== 'all' && f.kategorie !== kategorieFilter) return false;
 
-    // Phase 8.11 (zápis 22. 6. 2026) — Datum filter (splatnost od/do)
-    if (datumOd && f.splatnost < datumOd) return false;
-    if (datumDo && f.splatnost > datumDo) return false;
+    // Datum filter — dle „Podle" (vystavení / splatnost / DUZP)
+    {
+      const dField = datumPodle === 'vystaveni' ? f.datum
+        : datumPodle === 'duzp' ? (f.duzp ?? f.datum)
+        : f.splatnost;
+      if (datumOd && dField < datumOd) return false;
+      if (datumDo && dField > datumDo) return false;
+    }
 
     // ── Multiselect stav (nová cesta) ──
     if (stavFilters && stavFilters.size > 0 && !stavFilters.has(f.stav)) return false;
+
+    // ── „Stavy" — jednotný multiselect (OR přes vybrané klíče) ──
+    if (stavyFilters && stavyFilters.size > 0) {
+      const effStav = getEffektivniStav(localStavy?.[f.id] ?? f.stav, f.splatnost);
+      let ok = false;
+      for (const key of stavyFilters) { if (matchStavy(f, key, effStav)) { ok = true; break; } }
+      if (!ok) return false;
+    }
 
     // ── Legacy single-select stavFilter (pro zpětnou kompatibilitu) ──
     if (stavFilter) {

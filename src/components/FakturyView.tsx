@@ -83,12 +83,27 @@ const DATE_PRESETS: { label: string; from: string; to: string }[] = [
   { label: 'Minulý rok',     from: '2025-01-01', to: '2025-12-31' },
 ];
 
-// Zjednodušený filtr „Stav úhrady" (mapuje na set FakturaStavPlatby)
-const STAV_UHRADY_OPTIONS: { value: string; label: string; set: FakturaStavPlatby[] }[] = [
-  { value: 'all',           label: 'Všechny',       set: [] },
-  { value: 'uhrazene',      label: 'Uhrazené',      set: ['uhrazena'] },
-  { value: 'neuhrazene',    label: 'Neuhrazené',    set: ['nova', 'ceka-na-schvaleni', 'castecne-schvalena', 'schvalena', 'pozastavena', 'v-bance', 'v-bance-neuhrazena'] },
-  { value: 'po-splatnosti', label: 'Po splatnosti', set: ['v-bance-neuhrazena'] },
+// Filtr „Stavy" (zápis 24. 7. 2026) — jednotný multiselect napříč úhradou / workflow /
+// způsobem platby / párováním s DL. Predikáty (kdy faktura odpovídá klíči) jsou ve FakturyTable.
+import type { StavyKey } from './FakturyTable';
+export const STAVY_OPTIONS: { value: StavyKey; label: string }[] = [
+  { value: 'neuhrazene',      label: 'Neuhrazené' },
+  { value: 'uhrazene',        label: 'Uhrazené' },
+  { value: 'uhrazene-zapocet',label: 'Uhrazené zápočtem' },
+  { value: 'uhrazene-zaloha', label: 'Uhrazené zálohovou fakturou' },
+  { value: 'schvalene',       label: 'Schválené' },
+  { value: 'v-bance',         label: 'V bance' },
+  { value: 'v-bance-neuhr',   label: 'V bance neuhrazené' },
+  { value: 'pozastavene',     label: 'Pozastavené' },
+  { value: 'po-splatnosti',   label: 'Po splatnosti' },
+  { value: 'hotove',          label: 'Hotově' },
+  { value: 'kartou',          label: 'Kartou' },
+  { value: 'stravenky',       label: 'Stravenkami' },
+  { value: 'prevodem',        label: 'Bankovním převodem' },
+  { value: 'dl-ceka',         label: 'Čeká na spárování s DL' },
+  { value: 'dl-nesparovane',  label: 'Nespárované s DL' },
+  { value: 'dl-sparovane',    label: 'Spárované s DL' },
+  { value: 'dl-duplicita',    label: 'Duplicitní DL' },
 ];
 
 const MATCHING_CHIPS: { value: MatchingStav; label: string }[] = [
@@ -123,12 +138,12 @@ interface Props {
 }
 
 // Zaškrtávací dropdown pro výběr stavů (zápis 22. 7. 2026 — „stav jako zaškrtávací dropdown, min. klikání").
-function StavCheckDropdown({
+function StavCheckDropdown<T extends string>({
   options, selected, onToggle, onClear,
 }: {
-  options: { value: FakturaStavPlatby; label: string }[];
-  selected: Set<FakturaStavPlatby>;
-  onToggle: (v: FakturaStavPlatby) => void;
+  options: { value: T; label: string }[];
+  selected: Set<T>;
+  onToggle: (v: T) => void;
   onClear: () => void;
 }) {
   const [open, setOpen] = useState(false);
@@ -189,6 +204,7 @@ export default function FakturyView({ state, update, fixedTyp }: Props) {
   const [entitaFilter,    setEntitaFilter]    = useState<'all-entity' | PravniEntita>('all-entity');
   const [kategorieFilter,    setKategorieFilter]    = useState('all');
   const [stavFilters,        setStavFilters]        = useState<Set<FakturaStavPlatby>>(new Set());
+  const [stavyFilters,       setStavyFilters]       = useState<Set<StavyKey>>(new Set());
   const [matchingFilters,    setMatchingFilters]    = useState<Set<MatchingStav>>(new Set());
   const [formaFilters,       setFormaFilters]       = useState<Set<FakturaForma>>(new Set());
   const [presetFilters,      setPresetFilters]      = useState<Set<'po-splatnosti' | 'tydni' | 'uzamcene'>>(new Set());
@@ -200,9 +216,8 @@ export default function FakturyView({ state, update, fixedTyp }: Props) {
   const [datumDo,            setDatumDo]            = useState('');
   const [sortBy,             setSortBy]             = useState<SortCol>('splatnost');
   const [sortDir,            setSortDir]            = useState<'asc' | 'desc'>('asc');
-  // Zjednodušené filtry (zápis 13. 7. 2026 — dle reference)
-  const [stavUhrady,         setStavUhrady]         = useState('all');
-  const [datumPodle,         setDatumPodle]         = useState<'vystaveni' | 'splatnost'>('vystaveni');
+  // Zjednodušené filtry (zápis 13. 7. 2026 — dle reference; DUZP doplněno 24. 7. 2026)
+  const [datumPodle,         setDatumPodle]         = useState<'vystaveni' | 'splatnost' | 'duzp'>('vystaveni');
   // Phase 8.10 — když je fixedTyp zadané, použij ho jako default. Tab-switcher pak skryje.
   const [typDokladu,         setTypDokladu]         = useState<TypDokladu | 'all'>(fixedTyp ?? 'all');
   const [search,             setSearch]             = useState('');
@@ -909,9 +924,6 @@ export default function FakturyView({ state, update, fixedTyp }: Props) {
         const pozastavene   = base.filter((f) => stavOf(f) === 'pozastavena');
         const castecne      = base.filter((f) => stavOf(f) === 'castecne-schvalena');
 
-        const neuhrSet = new Set(STAV_UHRADY_OPTIONS.find((o) => o.value === 'neuhrazene')?.set ?? []);
-        const uhrSet   = new Set(STAV_UHRADY_OPTIONS.find((o) => o.value === 'uhrazene')?.set ?? []);
-
         // Upozornění reflektuje výběr v horní liště (Typ dokladu): při „Vše" se ukážou všechna,
         // jinak jen ta, která patří k vybranému typu dokladu.
         const formaTab: 'all' | FakturaForma = formaFilters.size === 1 ? Array.from(formaFilters)[0] : 'all';
@@ -920,27 +932,27 @@ export default function FakturyView({ state, update, fixedTyp }: Props) {
           {
             key: 'dobropis-neuhr', forma: 'dobropis' as FakturaForma, show: dobropisNeuhr.length > 0, count: dobropisNeuhr.length,
             label: 'Neuhrazené dobropisy', color: '#dc3545', icon: 'solar:undo-left-round-bold-duotone',
-            onClick: () => { setFormaFilters(new Set(['dobropis'])); setStavUhrady('neuhrazene'); setStavFilters(new Set(neuhrSet)); },
+            onClick: () => { setFormaFilters(new Set(['dobropis'])); setStavyFilters(new Set(['neuhrazene'])); },
           },
           {
             key: 'zaloh-neuhr', forma: 'zalohova' as FakturaForma, show: zalohNeuhr.length > 0, count: zalohNeuhr.length,
             label: 'Neuhrazené zálohové', color: '#fd7e14', icon: 'solar:wallet-money-bold-duotone',
-            onClick: () => { setFormaFilters(new Set(['zalohova'])); setStavUhrady('neuhrazene'); setStavFilters(new Set(neuhrSet)); },
+            onClick: () => { setFormaFilters(new Set(['zalohova'])); setStavyFilters(new Set(['neuhrazene'])); },
           },
           {
             key: 'zaloh-nespar', forma: 'zalohova' as FakturaForma, show: zalohNespar.length > 0, count: zalohNespar.length,
             label: 'Zálohové bez finální faktury', color: '#6f42c1', icon: 'solar:link-broken-minimalistic-bold-duotone',
-            onClick: () => { setFormaFilters(new Set(['zalohova'])); setStavUhrady('uhrazene'); setStavFilters(new Set(uhrSet)); },
+            onClick: () => { setFormaFilters(new Set(['zalohova'])); setStavyFilters(new Set(['uhrazene'])); },
           },
           {
             key: 'pozastavene', forma: 'standard' as FakturaForma, show: pozastavene.length > 0, count: pozastavene.length,
             label: 'Pozastavené faktury', color: '#e08e0b', icon: 'solar:pause-circle-bold-duotone',
-            onClick: () => { setFormaFilters(new Set()); setStavUhrady('all'); setStavFilters(new Set(['pozastavena'])); },
+            onClick: () => { setFormaFilters(new Set()); setStavyFilters(new Set(['pozastavene'])); },
           },
           {
             key: 'castecne', forma: 'standard' as FakturaForma, show: castecne.length > 0, count: castecne.length,
             label: 'Režie čeká na účetní', color: '#e67e00', icon: 'solar:pie-chart-2-bold-duotone',
-            onClick: () => { setFormaFilters(new Set()); setStavUhrady('all'); setStavFilters(new Set(['castecne-schvalena'])); },
+            onClick: () => { setFormaFilters(new Set()); setStavFilters(new Set(['castecne-schvalena'])); },
           },
         ].filter((c) => c.show && (formaTab === 'all' || c.forma === formaTab));
 
@@ -1034,20 +1046,16 @@ export default function FakturyView({ state, update, fixedTyp }: Props) {
               </select>
             </div>
             <div className="col-6 col-md">
-              <label className="form-label fs-13 fw-semibold mb-1">Stav</label>
+              <label className="form-label fs-13 fw-semibold mb-1">Stavy</label>
               <StavCheckDropdown
-                options={typDokladu === 'vydana'
-                  ? STAV_CHIPS_VYDANE
-                  : typDokladu === 'prijata'
-                    ? STAV_CHIPS
-                    : [...STAV_CHIPS, ...STAV_CHIPS_VYDANE]}
-                selected={stavFilters}
-                onToggle={(v) => setStavFilters((prev) => {
+                options={STAVY_OPTIONS}
+                selected={stavyFilters}
+                onToggle={(v) => setStavyFilters((prev) => {
                   const n = new Set(prev);
                   if (n.has(v)) n.delete(v); else n.add(v);
                   return n;
                 })}
-                onClear={() => setStavFilters(new Set())}
+                onClear={() => setStavyFilters(new Set())}
               />
             </div>
             <div className="col-6 col-md">
@@ -1089,6 +1097,7 @@ export default function FakturyView({ state, update, fixedTyp }: Props) {
                 value={datumPodle} onChange={(e) => setDatumPodle(e.target.value as typeof datumPodle)}>
                 <option value="vystaveni">Datum vystavení</option>
                 <option value="splatnost">Datum splatnosti</option>
+                <option value="duzp">Datum DUZP</option>
               </select>
             </div>
             <div className="col-6 col-md">
@@ -1117,6 +1126,7 @@ export default function FakturyView({ state, update, fixedTyp }: Props) {
         </div>
       </div>
 
+
       {/* ── Layout: tabulka vždy full-width; detail se otevře jako overlay okno ── */}
       <div className="row g-4">
         <div className="col-12" ref={tableColRef}>
@@ -1133,6 +1143,8 @@ export default function FakturyView({ state, update, fixedTyp }: Props) {
             castkaDo={castkaDo}
             datumOd={datumOd}
             datumDo={datumDo}
+            stavyFilters={stavyFilters}
+            datumPodle={datumPodle}
             sortBy={sortBy}
             sortDir={sortDir}
             onSortChange={handleSort}
